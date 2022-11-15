@@ -1,0 +1,2 @@
+"""Methods for AFNI."""
+pass

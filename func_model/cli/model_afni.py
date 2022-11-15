@@ -24,7 +24,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/hpc/group/labarlab/EmoRep_BIDS",
+        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",
         help=textwrap.dedent(
             """\
             Path to BIDS-formatted project directory
@@ -65,14 +65,14 @@ def main():
 
     # Setup group project directory, paths
     proj_deriv = os.path.join(proj_dir, "derivatives")
+    proj_rawdata = os.path.join(proj_dir, "rawdata")
 
     # Get environmental vars
     sing_afni = os.environ["SING_AFNI"]
     user_name = os.environ["USER"]
 
     # Setup work directory, for intermediates
-    proj_name = os.path.basename(proj_dir)
-    work_deriv = os.path.join("/work", user_name, proj_name, "derivatives")
+    work_deriv = os.path.join("/work", user_name, "EmoRep/derivatives")
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,
@@ -85,6 +85,7 @@ def main():
     for subj in subj_list:
         _, _ = submit.schedule_afni(
             subj,
+            proj_rawdata,
             proj_deriv,
             work_deriv,
             sing_afni,

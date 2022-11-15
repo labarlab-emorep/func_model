@@ -67,6 +67,7 @@ def sbatch(
 
 def schedule_afni(
     subj,
+    proj_rawdata,
     proj_deriv,
     work_deriv,
     sing_afni,
@@ -79,6 +80,9 @@ def schedule_afni(
 
     Parameters
     ----------
+
+
+
     subj : str
         BIDS subject identifier
     proj_deriv : path
@@ -99,19 +103,14 @@ def schedule_afni(
         [1] subprocess stderr
     """
     # Setup software derivatives dirs, for working
-    work_fp = os.path.join(work_deriv, "fmriprep")
-    work_fs = os.path.join(work_deriv, "freesurfer")
-    work_fsl = os.path.join(work_deriv, "fsl")
-    for h_dir in [work_fp, work_fs, work_fsl]:
-        if not os.path.exists(h_dir):
-            os.makedirs(h_dir)
+    work_afni = os.path.join(work_deriv, "model_afni")
+    if not os.path.exists(work_afni):
+        os.makedirs(work_afni)
 
     # Setup software derivatives dirs, for storage
-    proj_fp = os.path.join(proj_deriv, "fmriprep")
-    proj_fsl = os.path.join(proj_deriv, "fsl")
-    for h_dir in [proj_fp, proj_fsl]:
-        if not os.path.exists(h_dir):
-            os.makedirs(h_dir)
+    proj_afni = os.path.join(proj_deriv, "model_afni")
+    if not os.path.exists(proj_afni):
+        os.makedirs(proj_afni)
 
     # Write parent python script
     sbatch_cmd = f"""\
@@ -129,6 +128,8 @@ def schedule_afni(
         #
         workflow.pipeline_afni(
             "{subj}",
+            "{proj_rawdata}",
+            "{proj_deriv}",
             "{work_deriv}",
             "{sing_afni}",
             "{log_dir}",
