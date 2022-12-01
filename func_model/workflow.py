@@ -2,8 +2,6 @@
 # %%
 import os
 import glob
-import pandas as pd
-import numpy as np
 from func_model import afni
 
 
@@ -65,9 +63,9 @@ def pipeline_afni(
 
         # Generate timing files
         make_tf = afni.TimingFiles(subj, sess, task, subj_work, sess_events)
-        make_tf.common_events()
-        make_tf.task_events()
-
+        _ = make_tf.common_events()
+        _ = make_tf.session_events()
+        _ = make_tf.select_events()
 
     # Generate deconvolution matrics
 

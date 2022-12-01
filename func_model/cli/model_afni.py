@@ -72,7 +72,7 @@ def main():
     user_name = os.environ["USER"]
 
     # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", user_name, "EmoRep/derivatives")
+    work_deriv = os.path.join("/work", user_name, "EmoRep")
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,

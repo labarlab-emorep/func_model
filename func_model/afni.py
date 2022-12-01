@@ -5,28 +5,112 @@ import numpy as np
 
 
 class TimingFiles:
-    """Title.
+    """Create timing files for various types of EmoRep events.
 
-    Desc.
+    Aggregate all BIDS task events files for a participant's session,
+    and then generate AFNI-style timing files (row number == run number)
+    with onset or onset:duration information for each line.
+
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    task : str
+        [movies | scenarios]
+        Name of task
+    subj_work : path
+        Location of working directory for intermediates
+    sess_events : list
+        Paths to subject, session BIDS events files
+
+    Attributes
+    ----------
+    df_events : pd.DataFrame
+        Combined events data into single dataframe
+    events_run : list
+        Run identifier extracted from event file name
+    sess : str
+        BIDS session identifier
+    sess_events : list
+        Paths to subject, session BIDS events files
+    subj : str
+        BIDS subject identifier
+    subj_tf_dir : path
+        Output location for writing subject, session
+        timing files
+    task : str
+        [movies | scenarios]
+        Name of task
+
+    Methods
+    -------
+    common_events(marry=True, common_name=None)
+        Generate timing files for common events
+        (replay, judge, and wash)
+    select_events(marry=True, select_name=None)
+        Generate timing files for selection trials
+        (emotion, intensity)
+    session_events(marry=True, emotion_name=None, emo_query=False)
+        Generate timing files for movie or scenario emotions
+
+    Notes
+    -----
+    -   Timing files are written to self.subj_tf_dir.
+    -   All timing files use a 6 character camel-case identifier in
+        the description field of the BIDS file name, the first
+        3 characters specify the type of event and last 3
+        characters indicate the event name. 6 characters are used
+        due to limitations of sub-brick label lengths.
+        For example:
+        -   desc-comWas = a common event, wash specifically
+        -   desc-movFea = a movie event, with fear stimuli
+        -   desc-sceNeu = a scenario event, with neutral stimuli
+        -   desc-selInt = a selection event, with intensity prompt
 
     """
 
     def __init__(self, subj, sess, task, subj_work, sess_events):
-        """Title.
+        """Initialize object.
 
-        Desc.
+        Setup attributes, make timing file directory, and combine all
+        events files into a single dataframe.
+
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        task : str
+            [movies | scenarios]
+            Name of task
+        subj_work : path
+            Location of working directory for intermediates
+        sess_events : list
+            Paths to subject, session BIDS events files
 
         Attributes
         ----------
-        subj
-        sess
-        task
-        sess_events
-        subj_tf_dir
+        sess : str
+            BIDS session identifier
+        sess_events : list
+            Paths to subject, session BIDS events files
+        subj : str
+            BIDS subject identifier
+        subj_tf_dir : path
+            Output location for writing subject, session
+            timing files
+        task : str
+            [movies | scenarios]
+            Name of task
 
         Raises
         ------
         ValueError
+            Unexpected task name
+            Insufficient number of sess_events
 
         """
         # Check arguments
@@ -38,7 +122,7 @@ class TimingFiles:
         if len(sess_events) < 1:
             raise ValueError("Cannot make timing files from 0 events.tsv")
 
-        # Set attributes
+        # Set attributes, make output location
         self.subj = subj
         self.sess = sess
         self.task = task
@@ -51,14 +135,19 @@ class TimingFiles:
         self._event_dataframe()
 
     def _event_dataframe(self):
-        """Title.
-
-        Desc.
+        """Combine data from events files into dataframe.
 
         Attributes
         ----------
-        df_events
-        events_run
+        df_events : pd.DataFrame
+            Column names == events files, run column added
+        events_run : list
+            Run identifier extracted from event file name
+
+        Raises
+        ------
+        ValueError
+            The number of events files and number of runs are unequal
 
         """
         # Read-in events files, construct list of dataframes. Determine
@@ -76,24 +165,31 @@ class TimingFiles:
         self.df_events = pd.concat(events_data).reset_index(drop=True)
 
     def _check_run(self, current_run, count_run, line_content):
-        """Title.
+        """Manage cases of missing run data.
 
-        # Anticipate missing runs, e.g. ER0093 where chk_run == 6,
-        # events_run ==7.
+        Deprecated.
+
+        Anticipate missing run data, e.g. ER0093 who is missing
+        run-6 events data. If current_run does not equal count_run
+        (current_run = 7, count_run = 6 for ER0093 case), then
+        prepend an AFNI-style empty line.
 
         Parameters
         ----------
-        current_run
-        count_run
-        line_content
+        current_run : int
+            Derived from self.events_run
+        count_run : int
+            Counter to track iteration number
+        line_content : str
+            Values to be added to AFNI-style timing file line
 
         Returns
         -------
         tuple
+            [0] = original|updated line
+            [1] = original|updated iteration counter
 
         """
-        # Prepend an AFNI empty line if counter is ahead of
-        # run, update counter.
         if current_run == count_run:
             return (line_content, count_run)
         else:
@@ -102,21 +198,25 @@ class TimingFiles:
             return (line_fill, count_run)
 
     def _onset_duration(self, idx_event, marry):
-        """Title.
+        """Extract onset and duration information.
 
-        Desc.
+        Pull onset, duration values from self.df_events for
+        indicies supplied with idx_event.
 
         Parameters
         ----------
-        idx_event
-        marry
+        idx_event : list
+            Indicies of self.df_events for behavior of interest
+        marry : bool
+            Whether to return AFNI-styled married onset:duration,
+            or just onset times.
 
         Returns
         -------
         list
+            Event onset or onset:duration times
 
         """
-        #
         onset = self.df_events.loc[idx_event, "onset"].tolist()
         duration = self.df_events.loc[idx_event, "duration"].tolist()
         if marry:
@@ -124,50 +224,75 @@ class TimingFiles:
         else:
             return [str(x) for x in onset]
 
-    def common_events(self, marry=True, event_name=None):
-        """Title.
+    def common_events(self, marry=True, common_name=None):
+        """Generate timing files for common events across both sessions.
 
-        Desc.
+        Make timing files for replay, judge, and wash events. Ouput timing
+        file will use the 1D extension, use a BIDs-ish naming convention
+        (sub-*_sess-*_task-*_desc-*_events.1D), and write the BIDS
+        description field with "com[Rep|Jud|Was]" (e.g. desc-comRep).
+
+        Fixations (fixS, fix) will be used as baseline in the deconvolution
+        models, so timing files for these events are not generated.
 
         Parameters
         ----------
-        marry
-        event_name
+        marry : bool, optional
+            Whether to generate timing file with AFNI-styled married
+            onset:duration or just onset times.
+        common_name : None or str, optional
+            [replay | judge | wash]
+            Generate a timing file for a specific event
+
+        Returns
+        -------
+        list
+            Paths to generated timing files
+
+        Raises
+        ------
+        RunTimeError
+            Generated timing file is empty
+        TypeError
+            Parameter for marry is not bool
+        ValueError
+            Parameter for common_name is not found in common_dict
 
         Notes
         -----
+        Timing files written to self.subj_tf_dir
 
         """
-        #
+        # Validate marry argument
         if not isinstance(marry, bool):
             raise TypeError("Argument 'marry' is bool")
 
-        # Set basic trial types -- fix will be baseline, so do not include.
-        # TODO deal with different emotion responses and NRs
+        # Set basic trial types
+        #   key = value in self.df_events["trial_types"]
+        #   value = AFNI-style description
         common_dict = {
             "replay": "comRep",
             "judge": "comJud",
-            "emotion": "comEmo",
-            "intensity": "comInt",
             "wash": "comWas",
         }
 
-        #
-        if event_name:
+        # Validate user input and generate new common_dict
+        if common_name:
             valid_list = [x for x in common_dict.keys()]
-            if event_name not in valid_list:
+            if common_name not in valid_list:
                 raise ValueError(
-                    f"Inappropriate event supplied : {event_name}"
+                    f"Inappropriate event supplied : {common_name}"
                 )
             h_dict = {}
-            h_dict[event_name] = common_dict[event_name]
+            h_dict[common_name] = common_dict[common_name]
             del common_dict
             common_dict = h_dict
 
-        #
+        # Generate timing files for all events in common_dict
+        out_list = []
         for event, tf_name in common_dict.items():
 
-            # Make empty file
+            # Make an empty file
             tf_path = os.path.join(
                 self.subj_tf_dir,
                 f"{self.subj}_{self.sess}_task-{self.task}_"
@@ -175,105 +300,225 @@ class TimingFiles:
             )
             open(tf_path, "w").close()
 
-            #
-            chk_run = 0
+            # Get event info for each run
             for run in self.events_run:
 
-                #
+                # Identify index of events, make an AFNI line for events
                 idx_event = self.df_events.index[
                     (self.df_events["trial_type"] == event)
                     & (self.df_events["run"] == run)
                 ].tolist()
                 ons_dur = self._onset_duration(idx_event, marry)
-                h_line = " ".join(ons_dur)
+                line_content = " ".join(ons_dur)
 
-                #
-                chk_run += 1
-                line_content, chk_run = self._check_run(run, chk_run, h_line)
-
-                #
+                # Append line to timing file
                 with open(tf_path, "a") as tf:
                     tf.writelines(f"{line_content}\n")
 
-    def task_events(self, marry=True, emotion_name=None):
-        """Title.
+            # Check for content in timing file
+            if os.stat(tf_path).st_size == 0:
+                raise RuntimeError(f"Empty file detected : {tf_path}")
+            else:
+                out_list.append(tf_path)
+        return out_list
 
-        Desc.
+    def select_events(self, marry=True, select_name=None):
+        """Generate timing files for selection trials.
+
+        Make timing files for trials where participant selects emotion
+        or intensity from a list. Ouput timing file will use the 1D
+        extension, use a BIDs-ish naming convention
+        (sub-*_sess-*_task-*_desc-*_events.1D), and write the BIDS
+        description field with "sel[Int|Emo]" (e.g. desc-selInt).
+
+        This method could be accomplished by common_events method as the
+        only real differences are found in select_dict. This method
+        was written separately, however, in anticipation of future desires
+        to compare the selection responses to the movie|scenario
+        previously presented.
 
         Parameters
         ----------
-        marry
-        emotion_name
+        marry : bool, optional
+            Whether to generate timing file with AFNI-styled married
+            onset:duration or just onset times.
+        select_name : None or str, optional
+            [emotion | intensity]
+            Generate a timing file for a specific event
+
+        Returns
+        -------
+        list
+            Paths to generated timing files
+
+        Raises
+        ------
+        RunTimeError
+            Generated timing file is empty
+        TypeError
+            Parameter for marry is not bool
+        ValueError
+            Parameter for select_name is not found in select_dict
 
         Notes
         -----
+        Timing files written to self.subj_tf_dir
 
         """
-        #
+        # Validate marry argument
         if not isinstance(marry, bool):
             raise TypeError("Argument 'marry' is bool")
 
-        #
-        get_events = getattr(self, f"_{self.task}_events")
-        get_events(marry, emotion_name)
+        # Set selection trial types
+        #   key = value in self.df_events["trial_types"]
+        #   value = AFNI-style description
+        select_dict = {
+            "emotion": "selEmo",
+            "intensity": "selInt",
+        }
 
-    def _movies_events(self, marry, emotion_name):
-        """Title.
+        # Validate user input and generate new select_dict
+        if select_name:
+            valid_list = [x for x in select_dict.keys()]
+            if select_name not in valid_list:
+                raise ValueError(
+                    f"Inappropriate event supplied : {select_name}"
+                )
+            h_dict = {}
+            h_dict[select_name] = select_dict[select_name]
+            del select_dict
+            select_dict = h_dict
 
-        Desc.
+        # Generate timing files for all events in select_dict
+        out_list = []
+        for select, tf_name in select_dict.items():
+
+            # Make an empty file
+            tf_path = os.path.join(
+                self.subj_tf_dir,
+                f"{self.subj}_{self.sess}_task-{self.task}_"
+                + f"desc-{tf_name}_events.1D",
+            )
+            open(tf_path, "w").close()
+
+            # Get event info for each run
+            for run in self.events_run:
+
+                # Identify index of events, make an AFNI line for events
+                idx_select = self.df_events.index[
+                    (self.df_events["trial_type"] == select)
+                    & (self.df_events["run"] == run)
+                ]
+                ons_dur = self._onset_duration(idx_select, marry)
+                line_content = " ".join(ons_dur)
+
+                # Append line to timing file
+                with open(tf_path, "a") as tf:
+                    tf.writelines(f"{line_content}\n")
+
+            # Check for content in timing file
+            if os.stat(tf_path).st_size == 0:
+                raise RuntimeError(f"Empty file detected : {tf_path}")
+            else:
+                out_list.append(tf_path)
+        return out_list
+
+    def session_events(self, marry=True, emotion_name=None, emo_query=False):
+        """Generate timing files for session-specific stimulus trials.
+
+        Make timing files for emotions presented during movies or scenarios.
+        Ouput timing file will use the 1D extension, use a BIDs-ish naming
+        convention (sub-*_sess-*_task-*_desc-*_events.1D), and write the BIDS
+        description field with in a [mov|sce]Emotion format, using 3
+        characters to identify the emotion. For example, movFea = movie with
+        fear stimuli, sceCal = scenario with calmness stimuli.
 
         Parameters
         ----------
-        marry
-        emotion_name
+        marry : bool, optional
+            Whether to generate timing file with AFNI-styled married
+            onset:duration or just onset times.
+        emotion_name : None or str, optional
+            Generate a timing file for a specific emotion, see
+            emo_query.
+        emo_query : bool, optional
+            Print a list of emotions, useful for specifying
+            emotion_name.
+
+        Returns
+        -------
+        list
+            Paths to generated timing files, or emotions that will be
+            extracted from events files (if emo_query=True).
 
         Notes
         -----
+        Timing files written to self.subj_tf_dir
 
         """
-        #
-        movie_dict = {
-            "amusement": "movAmu",
-            "anger": "movAng",
-            "anxiety": "movAnx",
-            "awe": "movAwe",
-            "calmness": "movCal",
-            "craving": "movCra",
-            "disgust": "movDis",
-            "excitement": "movExc",
-            "fear": "movFea",
-            "horror": "movHor",
-            "joy": "movJoy",
-            "neutral": "movNeu",
-            "romance": "movRom",
-            "sadness": "movSad",
-            "surprise": "movSur",
+        # Validate bool args
+        if not isinstance(emo_query, bool):
+            raise TypeError("Argument 'emo_query' is bool")
+        if not isinstance(marry, bool):
+            raise TypeError("Argument 'marry' is bool")
+
+        # Set selection trial types
+        #   key = value in self.df_events["emotion"]
+        #   value = AFNI-style description
+        sess_dict = {
+            "amusement": "Amu",
+            "anger": "Ang",
+            "anxiety": "Anx",
+            "awe": "Awe",
+            "calmness": "Cal",
+            "craving": "Cra",
+            "disgust": "Dis",
+            "excitement": "Exc",
+            "fear": "Fea",
+            "horror": "Hor",
+            "joy": "Joy",
+            "neutral": "Neu",
+            "romance": "Rom",
+            "sadness": "Sad",
+            "surprise": "Sur",
         }
 
-        # Find movie trials, determine emotion trial types
+        # Provide emotions in sess_dict
+        if emo_query:
+            return [x for x in sess_dict.keys()]
+
+        # Validate user input, generate emo_list
         if emotion_name:
-            valid_list = [x for x in movie_dict.keys()]
+            valid_list = [x for x in sess_dict.keys()]
             if emotion_name not in valid_list:
                 raise ValueError(
                     f"Inappropriate emotion supplied : {emotion_name}"
                 )
             emo_list = [emotion_name]
         else:
-            idx_movie = self.df_events.index[
-                self.df_events["trial_type"] == "movie"
+
+            # Identify unique emotions in dataframe
+            trial_type_value = self.task[:-1]
+            idx_sess = self.df_events.index[
+                self.df_events["trial_type"] == trial_type_value
             ].tolist()
-            emo_all = self.df_events.loc[idx_movie, "emotion"].tolist()
+            emo_all = self.df_events.loc[idx_sess, "emotion"].tolist()
             emo_list = np.unique(np.array(emo_all)).tolist()
 
-        #
+        # Generate timing files for all events in emo_list
+        out_list = []
         for emo in emo_list:
 
-            #
-            if emo not in movie_dict.keys():
+            # Check that emo is found in planned dictionary
+            if emo not in sess_dict.keys():
                 raise ValueError(f"Unexpected emotion encountered : {emo}")
 
-            # Make empty file
-            tf_name = movie_dict[emo]
+            # Determine timing file name, make an empty file
+            tf_name = (
+                f"mov{sess_dict[emo]}"
+                if self.task == "movies"
+                else f"sce{sess_dict[emo]}"
+            )
             tf_path = os.path.join(
                 self.subj_tf_dir,
                 f"{self.subj}_{self.sess}_task-{self.task}_"
@@ -281,169 +526,29 @@ class TimingFiles:
             )
             open(tf_path, "w").close()
 
-            #
-            chk_run = 0
+            # Get emo info for each run
             for run in self.events_run:
 
-                #
+                # Identify index of emotions, account for emotion
+                # not occurring in current run, make appropriate
+                # AFNI line for event.
                 idx_emo = self.df_events.index[
                     (self.df_events["emotion"] == emo)
                     & (self.df_events["run"] == run)
                 ].tolist()
-
-                #
                 if not idx_emo:
-                    h_line = "*"
+                    line_content = "*"
                 else:
                     ons_dur = self._onset_duration(idx_emo, marry)
-                    h_line = " ".join(ons_dur)
+                    line_content = " ".join(ons_dur)
 
-                #
-                chk_run += 1
-                line_content, chk_run = self._check_run(run, chk_run, h_line)
-
-                #
+                # Append line to timing file
                 with open(tf_path, "a") as tf:
                     tf.writelines(f"{line_content}\n")
 
-
-# def movie_timing(subj, sess, task, subj_work, sess_events):
-#     """Title.
-
-#     Desc.
-
-#     """
-#     # Read in events, add run info. Use run value from file
-#     # name string to anticipate missing runs.
-#     # TODO check that events_data, events_run have same length
-#     events_data = [pd.read_table(x) for x in sess_events]
-#     events_run = [int(x.split("_run-")[1].split("_")[0]) for x in sess_events]
-#     for idx, _ in enumerate(events_data):
-#         events_data[idx]["run"] = events_run[idx]
-#     df_events = pd.concat(events_data).reset_index(drop=True)
-
-#     #
-#     subj_tf_dir = os.path.join(subj_work, "timing_files")
-#     if not os.path.exists(subj_tf_dir):
-#         os.makedirs(subj_tf_dir)
-
-#     # Set basic trial types -- fix will be baseline, so do not include.
-#     # TODO deal with different emotion responses and NRs
-#     common_switch = {
-#         "replay": "evRep",
-#         "judge": "evJud",
-#         "emotion": "evEmo",
-#         "intensity": "evInt",
-#         "wash": "evWas",
-#     }
-
-#     #
-#     for event, tf_name in common_switch.items():
-
-#         # Make empty file
-#         tf_path = os.path.join(
-#             subj_tf_dir, f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D"
-#         )
-#         open(tf_path, "w").close()
-
-#         #
-#         chk_run = 0
-#         for run in events_run:
-
-#             #
-#             idx_event = df_events.index[
-#                 (df_events["trial_type"] == event) & (df_events["run"] == run)
-#             ].tolist()
-#             onset = df_events.loc[idx_event, "onset"].tolist()
-#             duration = df_events.loc[idx_event, "duration"].tolist()
-#             ons_dur = [f"{ons}:{dur}" for ons, dur in zip(onset, duration)]
-
-#             # Anticipate missing runs, e.g. ER0093 where chk_run == 6,
-#             # events_run ==7. If a run is missing, use AFNI fill
-#             # and then write events_run to a new line. Update
-#             # chk_run to realign.
-#             chk_run += 1
-#             if run == chk_run:
-#                 line_content = " ".join(ons_dur)
-#             else:
-#                 line_content = f"*\n{' '.join(ons_dur)}"
-#                 chk_run += 1
-
-#             #
-#             with open(tf_path, "a") as tf:
-#                 tf.writelines(f"{line_content}\n")
-
-#     # Find movie trials, determine emotion trial types
-#     idx_movie = df_events.index[df_events["trial_type"] == "movie"].tolist()
-#     stim_info_list = df_events.loc[idx_movie, "stim_info"].tolist()
-#     emo_all_list = [x.split("_")[0] for x in stim_info_list]
-#     emo_list = np.unique(np.array(emo_all_list)).tolist()
-
-#     #
-#     # TODO check keys are in emo_list
-#     movie_switch = {
-#         "amusement": "movAmu",
-#         "anger": "movAng",
-#         "anxiety": "movAnx",
-#         "awe": "movAwe",
-#         "calmness": "movCal",
-#         "craving": "movCra",
-#         "disgust": "movDis",
-#         "excitement": "movExc",
-#         "fear": "movFea",
-#         "horror": "movHor",
-#         "joy": "movJoy",
-#         "neutral": "movNeu",
-#         "romance": "movRom",
-#         "sadness": "movSad",
-#         "surprise": "movSur",
-#     }
-
-#     #
-#     for emo, tf_name in movie_switch.items():
-
-#         # Make empty file
-#         tf_path = os.path.join(
-#             subj_tf_dir, f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D"
-#         )
-#         open(tf_path, "w").close()
-
-#         #
-#         chk_run = 0
-#         for run in events_run:
-
-#             #
-#             idx_emo = df_events.index[
-#                 (df_events["stim_info"].str.contains(emo))
-#                 & (df_events["run"] == run)
-#             ].tolist()
-
-#             #
-#             if not idx_emo:
-#                 h_line = "*\n"
-#             else:
-#                 onset = df_events.loc[idx_emo, "onset"].tolist()
-#                 duration = df_events.loc[idx_emo, "duration"].tolist()
-#                 ons_dur = [f"{ons}:{dur}" for ons, dur in zip(onset, duration)]
-#                 h_line = f"{' '.join(ons_dur)}\n"
-
-#             #
-#             chk_run += 1
-#             if run == chk_run:
-#                 line_content = h_line
-#             else:
-#                 line_content = f"*\n{h_line}"
-#                 chk_run += 1
-
-#             #
-#             with open(tf_path, "a") as tf:
-#                 tf.writelines(f"{line_content}")
-
-
-def scenario_timing():
-    """Title.
-
-    Desc.
-
-    """
-    pass
+            # Check for content in timing file
+            if os.stat(tf_path).st_size == 0:
+                raise RuntimeError(f"Empty file detected : {tf_path}")
+            else:
+                out_list.append(tf_path)
+        return out_list
