@@ -5,7 +5,30 @@ import subprocess
 import textwrap
 
 
-def sbatch(
+def submit_subprocess(bash_cmd, chk_path, job_name):
+    """Title.
+
+    Desc.
+
+    """
+    # Run command and check for output
+    h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+    h_out, h_err = h_sp.communicate()
+    h_sp.wait()
+    if not os.path.exists(chk_path):
+        print(
+            f"""\n
+        {job_name} failed!
+            command : {bash_cmd}
+            stdout : {h_out}
+            stderr : {h_err}\n
+        """
+        )
+        raise FileNotFoundError(f"Expected to find file : {chk_path}")
+    return chk_path
+
+
+def submit_sbatch(
     bash_cmd,
     job_name,
     log_dir,

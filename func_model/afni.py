@@ -1,7 +1,9 @@
 """Methods for AFNI."""
 import os
+import subprocess
 import pandas as pd
 import numpy as np
+from func_model import submit
 
 
 class TimingFiles:
@@ -23,7 +25,8 @@ class TimingFiles:
     subj_work : path
         Location of working directory for intermediates
     sess_events : list
-        Paths to subject, session BIDS events files
+        Paths to subject, session BIDS events files sorted
+        by run number
 
     Attributes
     ----------
@@ -34,7 +37,8 @@ class TimingFiles:
     sess : str
         BIDS session identifier
     sess_events : list
-        Paths to subject, session BIDS events files
+        Paths to subject, session BIDS events files sorted
+        by run number
     subj : str
         BIDS subject identifier
     subj_tf_dir : path
@@ -89,14 +93,16 @@ class TimingFiles:
         subj_work : path
             Location of working directory for intermediates
         sess_events : list
-            Paths to subject, session BIDS events files
+            Paths to subject, session BIDS events files sorted
+            by run number
 
         Attributes
         ----------
         sess : str
             BIDS session identifier
         sess_events : list
-            Paths to subject, session BIDS events files
+            Paths to subject, session BIDS events files sorted
+            by run number
         subj : str
             BIDS subject identifier
         subj_tf_dir : path
@@ -462,7 +468,7 @@ class TimingFiles:
         if not isinstance(marry, bool):
             raise TypeError("Argument 'marry' is bool")
 
-        # Set selection trial types
+        # Set emotion types
         #   key = value in self.df_events["emotion"]
         #   value = AFNI-style description
         sess_dict = {
@@ -552,3 +558,185 @@ class TimingFiles:
             else:
                 out_list.append(tf_path)
         return out_list
+
+
+class MakeMasks:
+    """Title.
+
+    Desc.
+
+    """
+
+    def __init__(
+        self,
+        subj,
+        sess,
+        subj_work,
+        proj_deriv,
+        anat_dict,
+        func_dict,
+        sing_afni,
+    ):
+        """Title.
+
+        Desc.
+
+        """
+        self.subj = subj
+        self.sess = sess
+        self.subj_work = subj_work
+        self.proj_deriv = proj_deriv
+        self.anat_dict = anat_dict
+        self.func_dict = func_dict
+        self.sing_afni = sing_afni
+
+    def intersect(self, c_frac=0.5, nbr_type="NN2", n_nbr=17):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        c_fract
+        nbr_type
+        n_nbr
+
+        Notes
+        -----
+        Adds new key:value to self.anat_dict
+            ["mask-intersect"] = /path/to/intersection/mask
+
+        """
+        out_path = (
+            f"{self.subj_work}/{self.subj}_"
+            + f"{self.sess}_desc-intersect_mask.nii.gz"
+        )
+
+        #
+        if not os.path.exists(out_path):
+            auto_list = []
+            for run_file in self.func_dict["func-preproc"]:
+                h_name = "tmp_autoMask_" + os.path.basename(run_file)
+                h_out = os.path.join(self.subj_work, h_name)
+                bash_list = [
+                    "singularity run",
+                    "--cleanenv",
+                    f"--bind {self.proj_deriv}:{self.proj_deriv}",
+                    f"--bind {self.subj_work}:{self.subj_work}",
+                    f"--bind {self.subj_work}:/opt/home",
+                    self.sing_afni,
+                    "3dAutomask",
+                    f"-clfrac {c_frac}",
+                    f"-{nbr_type}",
+                    f"-nbhrs {n_nbr}",
+                    f"-prefix {h_out}",
+                    run_file,
+                ]
+                bash_cmd = " ".join(bash_list)
+                auto_list.append(
+                    submit.submit_subprocess(bash_cmd, h_out, "Automask")
+                )
+
+            #
+            union_out = os.path.join(self.subj_work, "tmp_union.nii.gz")
+            bash_list = [
+                "singularity run",
+                "--cleanenv",
+                f"--bind {self.proj_deriv}:{self.proj_deriv}",
+                f"--bind {self.subj_work}:{self.subj_work}",
+                f"--bind {self.subj_work}:/opt/home",
+                self.sing_afni,
+                "3dmask_tool",
+                f"-inputs {' '.join(auto_list)}",
+                "-union",
+                f"-prefix {union_out}",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, union_out, "Union")
+
+            #
+            bash_list = [
+                "singularity run",
+                "--cleanenv",
+                f"--bind {self.proj_deriv}:{self.proj_deriv}",
+                f"--bind {self.subj_work}:{self.subj_work}",
+                f"--bind {self.subj_work}:/opt/home",
+                self.sing_afni,
+                "3dmask_tool",
+                f"-input {union_out} {self.anat_dict['mask-brain']}",
+                "-inter",
+                f"-prefix {out_path}",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_path, "Intersect")
+
+        #
+        self.anat_dict["mask-intersect"] = out_path
+
+    def tissue(self, thresh=0.5):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        thresh
+
+        Notes
+        -----
+        Adds new key:value to self.anat_dict
+            ["mask-CSe"] = /path/to/eroded/CSF/mask
+            ["mask-WMe"] = /path/to/eroded/WM/mask
+
+        """
+        #
+        for tiss in ["CS", "WM"]:
+            out_tiss = os.path.join(
+                self.subj_work,
+                f"{self.subj}_label-{tiss}e_mask.nii.gz",
+            )
+            if not os.path.exists(out_tiss):
+
+                #
+                in_path = self.anat_dict[f"mask-prob{tiss}"]
+                bin_path = os.path.join(
+                    self.subj_work, f"tmp_{tiss}_bin.nii.gz"
+                )
+                bash_list = [
+                    "c3d",
+                    in_path,
+                    f"-thresh {thresh} 1 1 0",
+                    f"-o {bin_path}",
+                ]
+                bash_cmd = " ".join(bash_list)
+                _ = submit.submit_subprocess(
+                    bash_cmd, bin_path, f"Binarize {tiss}"
+                )
+
+                #
+                bash_list = [
+                    "singularity run",
+                    "--cleanenv",
+                    f"--bind {self.proj_deriv}:{self.proj_deriv}",
+                    f"--bind {self.subj_work}:{self.subj_work}",
+                    f"--bind {self.subj_work}:/opt/home",
+                    self.sing_afni,
+                    "3dmask_tool",
+                    f"-input {bin_path}",
+                    "-dilate_input -1",
+                    f"-prefix {out_tiss}",
+                ]
+                bash_cmd = " ".join(bash_list)
+                _ = submit.submit_subprocess(
+                    bash_cmd, bin_path, f"Erode {tiss}"
+                )
+
+            self.anat_dict[f"mask-{tiss}e"] = out_tiss
+
+    def minimum(self):
+        """Title.
+
+        Desc.
+
+        """
+        self.anat_dict["mask-minimum"] = ""
