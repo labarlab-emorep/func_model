@@ -10,6 +10,20 @@ def submit_subprocess(bash_cmd, chk_path, job_name):
 
     Desc.
 
+    Parameters
+    ----------
+    bash_cmd
+    chk_path
+    job_name
+
+    Returns
+    -------
+    path
+
+    Raises
+    ------
+    FileNotFoundError
+
     """
     # Run command and check for output
     h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
@@ -90,6 +104,7 @@ def submit_sbatch(
 
 def schedule_afni(
     subj,
+    sess,
     proj_rawdata,
     proj_deriv,
     work_deriv,
@@ -104,10 +119,10 @@ def schedule_afni(
     Parameters
     ----------
 
-
-
     subj : str
         BIDS subject identifier
+    sess : str
+
     proj_deriv : path
         Location of project derivatives, e.g.
         /hpc/group/labarlab/EmoRep_BIDS/derivatives
@@ -124,6 +139,11 @@ def schedule_afni(
     tuple
         [0] subprocess stdout
         [1] subprocess stderr
+
+    Notes
+    -----
+
+
     """
     # Setup software derivatives dirs, for working
     work_afni = os.path.join(work_deriv, "model_afni")
@@ -141,16 +161,16 @@ def schedule_afni(
 
         #SBATCH --job-name=p{subj[4:]}
         #SBATCH --output={log_dir}/par{subj[4:]}.txt
-        #SBATCH --time=30:00:00
-        #SBATCH --mem=4000
+        #SBATCH --time=10:00:00
+        #SBATCH --mem=8000
 
         import os
         import sys
         from func_model import workflow
 
-        #
         workflow.pipeline_afni(
             "{subj}",
+            "{sess}",
             "{proj_rawdata}",
             "{proj_deriv}",
             "{work_deriv}",
@@ -160,7 +180,7 @@ def schedule_afni(
 
     """
     sbatch_cmd = textwrap.dedent(sbatch_cmd)
-    py_script = f"{log_dir}/run_model-afni_{subj}.py"
+    py_script = f"{log_dir}/run_model-afni_{subj}_{sess}.py"
     with open(py_script, "w") as ps:
         ps.write(sbatch_cmd)
     h_sp = subprocess.Popen(

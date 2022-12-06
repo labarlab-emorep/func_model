@@ -1,4 +1,5 @@
 """Run processing methods for workflow."""
+# %%
 import os
 import glob
 import fnmatch
@@ -7,23 +8,39 @@ from func_model import afni
 
 # %%
 def afni_sanity_tfs(subj, sess, subj_work, subj_sess_raw):
-    """Title.
+    """Make timing files for sanity check.
 
-    Desc.
+    Generate a set of AFNI-styled timing files in order to
+    check the design and manipulation.
+
+    Timing files for common, session stimulus, and selection
+    tasks are generated. Fixations are excluded to serve as
+    model baseline.
 
     Parameters
     ----------
-    subj
-    sess
-    subj_work
-    subj_sess_raw
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    subj_work : path
+        Location of working directory for generating intermediate files
+    subj_sess_raw : path
+        Location of participant's session rawdata, used to find
+        BIDS event files
 
     Returns
     -------
     dict
+        key = indicate type of timing file
+        value = list of paths to timing files
 
     Raises
     ------
+    FileNotFoundError
+        BIDS event files are missing
+    ValueError
+        Unexpected task name
 
     """
     # Find events files
@@ -49,28 +66,46 @@ def afni_sanity_tfs(subj, sess, subj_work, subj_sess_raw):
 
 
 # %%
-def afni_sanity_preproc(subj, sess, subj_work, proj_deriv):
+def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
     """Title.
 
     Desc.
 
+    Parameters
+    ----------
+    subj
+    sess
+    subj_work
+    proj_deriv
+    sing_afni
+
+    Returns
+    -------
+    tuple
+
+    Raises
+    ------
+    FileNotFoundError
+
     """
-    #
+    # Set search dictionary used to make anat_dict
+    #   key = identifier of file in anat_dict
+    #   value = searchable string by glob
     get_anat_dict = {
         "anat-preproc": "desc-preproc_T1w",
         "mask-brain": "desc-brain_mask",
         "mask-probCS": "label-CSF_probseg",
         "mask-probGM": "label-GM_probseg",
-        "mask-probWM": "label-WM_progseg",
+        "mask-probWM": "label-WM_probseg",
     }
 
-    #
+    # Setup dictionary of anatomical files
     anat_dict = {}
     subj_deriv_fp = os.path.join(proj_deriv, f"pre_processing/fmriprep/{subj}")
     for key, search in get_anat_dict.items():
         file_path = sorted(
             glob.glob(
-                f"{subj_deriv_fp}/**/anat/{subj}_*{search}.nii.gz",
+                f"{subj_deriv_fp}/**/anat/{subj}_*space-*_{search}.nii.gz",
                 recursive=True,
             )
         )
@@ -86,7 +121,7 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv):
     mot_files = [
         x
         for x in glob.glob(f"{subj_deriv_fp}/{sess}/func/*timeseries.tsv")
-        if not fnmatch.fnmatch("task-rest", x)
+        if not fnmatch.fnmatch(x, "*task-rest*")
     ]
     mot_files.sort()
     if not mot_files:
@@ -101,10 +136,10 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv):
     run_files = [
         x
         for x in glob.glob(f"{subj_deriv_fsl}/*tfiltAROMAMasked_bold.nii.gz")
-        if not fnmatch.fnmatch("task-rest", x)
+        if not fnmatch.fnmatch(x, "*task-rest*")
     ]
     run_files.sort()
-    if not mot_files:
+    if not run_files:
         raise FileNotFoundError(
             "Expected to find fsl_denoise files *tfiltAROMAMasked_bold.nii.gz"
         )
@@ -123,26 +158,23 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv):
     func_dict["func-preproc"] = run_files
 
     # make masks
-    make_masks = afni.MakeMasks(subj, sess, anat_dict, func_dict)
+    make_masks = afni.MakeMasks(
+        subj, sess, subj_work, proj_deriv, anat_dict, func_dict, sing_afni
+    )
     make_masks.intersect()
+    make_masks.tissue()
+    make_masks.minimum()
+    anat_dict = make_masks.anat_dict
+    del make_masks
 
     # scale
 
     # make afni-style motion files
+    return (func_dict, anat_dict)
 
 
 # # %%
 # def afni_sanity_motion():
-#     """Title.
-
-#     Desc.
-
-#     """
-#     pass
-
-
-# # %%
-# def afni_sanity_masks():
 #     """Title.
 
 #     Desc.

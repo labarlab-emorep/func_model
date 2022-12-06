@@ -9,6 +9,7 @@ model_afni -s sub-ER0009
 import os
 import sys
 import time
+import glob
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
@@ -74,24 +75,43 @@ def main():
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", user_name, "EmoRep")
     now_time = datetime.now()
+    # log_dir = os.path.join(
+    #     work_deriv,
+    #     f"logs/func_model-afni_{now_time.strftime('%y-%m-%d_%H:%M')}",
+    # )
     log_dir = os.path.join(
         work_deriv,
-        f"logs/func_model-afni_{now_time.strftime('%y-%m-%d_%H:%M')}",
+        "logs/func_model-afni_test",
     )
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    # Submit jobs for subj_list
+    #
     for subj in subj_list:
-        _, _ = submit.schedule_afni(
-            subj,
-            proj_rawdata,
-            proj_deriv,
-            work_deriv,
-            sing_afni,
-            log_dir,
-        )
-        time.sleep(3)
+        sess_list = [
+            os.path.basename(x)
+            for x in glob.glob(
+                f"{proj_deriv}/pre_processing/fsl_denoise/{subj}/ses-*"
+            )
+        ]
+        if not sess_list:
+            print(
+                "No pre-processed sessions detected for" + f" {subj}, skipping"
+            )
+            continue
+
+        #
+        for sess in sess_list[:1]:
+            _, _ = submit.schedule_afni(
+                subj,
+                sess,
+                proj_rawdata,
+                proj_deriv,
+                work_deriv,
+                sing_afni,
+                log_dir,
+            )
+            time.sleep(3)
 
 
 if __name__ == "__main__":

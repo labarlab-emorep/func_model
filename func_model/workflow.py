@@ -41,7 +41,9 @@ def pipeline_afni(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps
-    sess_pp = run_pipeline.afni_sanity_preproc()
+    sess_func, sess_anat = run_pipeline.afni_sanity_preproc(
+        subj, sess, subj_work, proj_deriv, sing_afni
+    )
 
     # Generate timing files
     sess_tfs = run_pipeline.afni_sanity_tfs(

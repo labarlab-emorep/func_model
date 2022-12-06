@@ -1,6 +1,5 @@
 """Methods for AFNI."""
 import os
-import subprocess
 import pandas as pd
 import numpy as np
 from func_model import submit
@@ -269,6 +268,8 @@ class TimingFiles:
         Timing files written to self.subj_tf_dir
 
         """
+        print("Making timing files for common events")
+
         # Validate marry argument
         if not isinstance(marry, bool):
             raise TypeError("Argument 'marry' is bool")
@@ -371,6 +372,8 @@ class TimingFiles:
         Timing files written to self.subj_tf_dir
 
         """
+        print("Making timing files for selection trials")
+
         # Validate marry argument
         if not isinstance(marry, bool):
             raise TypeError("Argument 'marry' is bool")
@@ -462,6 +465,8 @@ class TimingFiles:
         Timing files written to self.subj_tf_dir
 
         """
+        print("Making timing files for session-specific trials")
+
         # Validate bool args
         if not isinstance(emo_query, bool):
             raise TypeError("Argument 'emo_query' is bool")
@@ -561,9 +566,40 @@ class TimingFiles:
 
 
 class MakeMasks:
-    """Title.
+    """Generate masks for AFNI-style analyses.
 
-    Desc.
+    Make masks required by, suggested for AFNI-style deconvolutions
+    and group analyses.
+
+    Attributes
+    ----------
+    anat_dict : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed anatomical files.
+    func_dict : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed functional files.
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    sess : str
+        BIDS session identifier
+    sing_afni : path
+        Location of AFNI singularity file
+    subj : str
+        BIDS subject identifier
+    subj_work : path
+        Location of working directory for intermediates
+
+    Methods
+    -------
+    intersect(c_frac=0.5, nbr_type="NN2", n_nbr=17)
+        Generate an anatomical-functional intersection mask
+    tissue(thresh=0.5)
+        Make eroded tissue masks
+    minimum()
+        Mask voxels with some meaningful signal across all
+        volumes and runs.
 
     """
 
@@ -577,9 +613,27 @@ class MakeMasks:
         func_dict,
         sing_afni,
     ):
-        """Title.
+        """Initialize object.
 
-        Desc.
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        subj_work : path
+            Location of working directory for intermediates
+        proj_deriv : path
+            Location of project derivatives, containing fmriprep
+            and fsl_denoise sub-directories
+        anat_dict : dict
+            Contains reference names (key) and paths (value) to
+            preprocessed anatomical files.
+        func_dict : dict
+            Contains reference names (key) and paths (value) to
+            preprocessed functional files.
+        sing_afni : path
+            Location of AFNI singularity file
 
         """
         self.subj = subj
@@ -591,15 +645,28 @@ class MakeMasks:
         self.sing_afni = sing_afni
 
     def intersect(self, c_frac=0.5, nbr_type="NN2", n_nbr=17):
-        """Title.
+        """Create an func-anat intersection mask.
 
-        Desc.
+        Generate a binary mask for voxels associated with both
+        preprocessed anat and func data.
 
         Parameters
         ----------
-        c_fract
-        nbr_type
-        n_nbr
+        c_fract : float, optional
+            Clip level fraction for AFNI's 3dAutomask
+        nbr_type : str, optional
+            [NN1 | NN2 | NN3]
+            Nearest-neighbor type for AFNI's 3dAautomask
+        n_nbr : int, optional
+            Number of neibhors needed to avoid eroding in
+            AFNI's 3dAutomask.
+
+        Raises
+        ------
+        TypeError
+            Invalid types for optional args
+        ValueError
+            Invalid parameters for optional args
 
         Notes
         -----
@@ -607,17 +674,56 @@ class MakeMasks:
             ["mask-intersect"] = /path/to/intersection/mask
 
         """
+        print("Making intersection mask")
+
+        # Validate arguments
+        if not isinstance(c_frac, float):
+            raise TypeError("c_frac must be float type")
+        if not isinstance(nbr_type, str):
+            raise TypeError("nbr_frac must be str type")
+        if not isinstance(n_nbr, int):
+            raise TypeError("n_nbrc must be int type")
+        if c_frac < 0.1 or c_frac > 0.9:
+            raise ValueError("c_fract must be between 0.1 and 0.9")
+        if nbr_type not in ["NN1", "NN2", "NN3"]:
+            raise ValueError("nbr_type must be NN1 | NN2 | NN3")
+        if n_nbr < 6 or n_nbr > 26:
+            raise ValueError("n_nbr must be between 6 and 26")
+
+        # Setup output path
         out_path = (
             f"{self.subj_work}/{self.subj}_"
             + f"{self.sess}_desc-intersect_mask.nii.gz"
         )
-
-        #
         if not os.path.exists(out_path):
+
+            # Make binary masks for each preprocessed func file
             auto_list = []
             for run_file in self.func_dict["func-preproc"]:
                 h_name = "tmp_autoMask_" + os.path.basename(run_file)
                 h_out = os.path.join(self.subj_work, h_name)
+                if not os.path.exists(h_out):
+                    bash_list = [
+                        "singularity run",
+                        "--cleanenv",
+                        f"--bind {self.proj_deriv}:{self.proj_deriv}",
+                        f"--bind {self.subj_work}:{self.subj_work}",
+                        f"--bind {self.subj_work}:/opt/home",
+                        self.sing_afni,
+                        "3dAutomask",
+                        f"-clfrac {c_frac}",
+                        f"-{nbr_type}",
+                        f"-nbhrs {n_nbr}",
+                        f"-prefix {h_out}",
+                        run_file,
+                    ]
+                    bash_cmd = " ".join(bash_list)
+                    _ = submit.submit_subprocess(bash_cmd, h_out, "Automask")
+                auto_list.append(h_out)
+
+            # Generate a union mask from the preprocessed masks
+            union_out = os.path.join(self.subj_work, "tmp_union.nii.gz")
+            if not os.path.exists(union_out):
                 bash_list = [
                     "singularity run",
                     "--cleanenv",
@@ -625,36 +731,16 @@ class MakeMasks:
                     f"--bind {self.subj_work}:{self.subj_work}",
                     f"--bind {self.subj_work}:/opt/home",
                     self.sing_afni,
-                    "3dAutomask",
-                    f"-clfrac {c_frac}",
-                    f"-{nbr_type}",
-                    f"-nbhrs {n_nbr}",
-                    f"-prefix {h_out}",
-                    run_file,
+                    "3dmask_tool",
+                    f"-inputs {' '.join(auto_list)}",
+                    "-union",
+                    f"-prefix {union_out}",
                 ]
                 bash_cmd = " ".join(bash_list)
-                auto_list.append(
-                    submit.submit_subprocess(bash_cmd, h_out, "Automask")
-                )
+                _ = submit.submit_subprocess(bash_cmd, union_out, "Union")
 
-            #
-            union_out = os.path.join(self.subj_work, "tmp_union.nii.gz")
-            bash_list = [
-                "singularity run",
-                "--cleanenv",
-                f"--bind {self.proj_deriv}:{self.proj_deriv}",
-                f"--bind {self.subj_work}:{self.subj_work}",
-                f"--bind {self.subj_work}:/opt/home",
-                self.sing_afni,
-                "3dmask_tool",
-                f"-inputs {' '.join(auto_list)}",
-                "-union",
-                f"-prefix {union_out}",
-            ]
-            bash_cmd = " ".join(bash_list)
-            _ = submit.submit_subprocess(bash_cmd, union_out, "Union")
-
-            #
+            # Make anat-func intersection mask from the union and
+            # fmriprep brain mask.
             bash_list = [
                 "singularity run",
                 "--cleanenv",
@@ -670,17 +756,26 @@ class MakeMasks:
             bash_cmd = " ".join(bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_path, "Intersect")
 
-        #
+        # Add path to intersection mask to attribute
         self.anat_dict["mask-intersect"] = out_path
 
     def tissue(self, thresh=0.5):
-        """Title.
+        """Make eroded tissue masks.
 
-        Desc.
+        Generate eroded white matter and CSF masks.
 
         Parameters
         ----------
-        thresh
+        thresh : float, optional
+            Threshold for binarizing probabilistic tissue
+            mask output by fMRIPrep.
+
+        Raises
+        ------
+        TypeError
+            Inappropriate types for optional args
+        ValueError
+            Inappropriate value for optional args
 
         Notes
         -----
@@ -689,15 +784,24 @@ class MakeMasks:
             ["mask-WMe"] = /path/to/eroded/WM/mask
 
         """
-        #
+        # Validate args
+        if not isinstance(thresh, float):
+            raise TypeError("thresh must be float type")
+        if float < 0.01 or float > 0.99:
+            raise ValueError("thresh must be between 0.01 and 0.99")
+
+        # Make CSF and WM masks
         for tiss in ["CS", "WM"]:
+            print(f"Making eroded tissue mask : {tiss}")
+
+            # Setup final path
             out_tiss = os.path.join(
                 self.subj_work,
                 f"{self.subj}_label-{tiss}e_mask.nii.gz",
             )
             if not os.path.exists(out_tiss):
 
-                #
+                # Binarize probabilistic tissue mask
                 in_path = self.anat_dict[f"mask-prob{tiss}"]
                 bin_path = os.path.join(
                     self.subj_work, f"tmp_{tiss}_bin.nii.gz"
@@ -713,11 +817,10 @@ class MakeMasks:
                     bash_cmd, bin_path, f"Binarize {tiss}"
                 )
 
-                #
+                # Eroded tissue mask
                 bash_list = [
                     "singularity run",
                     "--cleanenv",
-                    f"--bind {self.proj_deriv}:{self.proj_deriv}",
                     f"--bind {self.subj_work}:{self.subj_work}",
                     f"--bind {self.subj_work}:/opt/home",
                     self.sing_afni,
@@ -731,12 +834,108 @@ class MakeMasks:
                     bash_cmd, bin_path, f"Erode {tiss}"
                 )
 
+            # Add path to eroded tissue mask to attribute
             self.anat_dict[f"mask-{tiss}e"] = out_tiss
 
     def minimum(self):
-        """Title.
+        """Create a minimum-signal mask.
 
-        Desc.
+        Generate a mask for voxels in functional space that
+        contain a value greater than some minimum threshold
+        across all volumes and runs.
+
+        Based around AFNI's 3dTstat -min.
+
+        Notes
+        -----
+        Adds new key:value to self.anat_dict
+            ["mask-minimum"] = /path/to/map/of/minimum/epi/signal
 
         """
-        self.anat_dict["mask-minimum"] = ""
+        print("Making minimum value mask")
+
+        # Setup file path
+        out_path = (
+            f"{self.subj_work}/{self.subj}_"
+            + f"{self.sess}_desc-minval_mask.nii.gz"
+        )
+        if not os.path.exists(out_path):
+
+            # Make minimum value mask for each run
+            min_list = []
+            for run_file in self.func_dict["func-preproc"]:
+
+                # Mask epi voxels that have some data
+                h_name_bin = "tmp_bin_" + os.path.basename(run_file)
+                h_out_bin = os.path.join(self.subj_work, h_name_bin)
+                bash_list = [
+                    "singularity run",
+                    "--cleanenv",
+                    f"--bind {self.proj_deriv}:{self.proj_deriv}",
+                    f"--bind {self.subj_work}:{self.subj_work}",
+                    f"--bind {self.subj_work}:/opt/home",
+                    self.sing_afni,
+                    "3dcalc",
+                    "-overwrite",
+                    f"-a {run_file}",
+                    "-expr 1",
+                    f"-prefix {h_out_bin}",
+                ]
+                bash_cmd = " ".join(bash_list)
+                _ = submit.submit_subprocess(bash_cmd, h_out_bin, "Binary EPI")
+
+                # Make a mask for >min values
+                h_name_min = "tmp_min_" + os.path.basename(run_file)
+                h_out_min = os.path.join(self.subj_work, h_name_min)
+                bash_list = [
+                    "singularity run",
+                    "--cleanenv",
+                    f"--bind {self.subj_work}:{self.subj_work}",
+                    f"--bind {self.subj_work}:/opt/home",
+                    self.sing_afni,
+                    "3dTstat",
+                    "-min",
+                    f"-prefix {h_out_min}",
+                    h_out_bin,
+                ]
+                bash_cmd = " ".join(bash_list)
+                min_list.append(
+                    submit.submit_subprocess(
+                        bash_cmd, h_out_min, "Minimum EPI"
+                    )
+                )
+
+            # Average the minimum masks across runs
+            h_name_mean = f"tmp_{self.subj}_{self.sess}_desc-mean_mask.nii.gz"
+            h_out_mean = os.path.join(self.subj_work, h_name_mean)
+            bash_list = [
+                "singularity run",
+                "--cleanenv",
+                f"--bind {self.subj_work}:{self.subj_work}",
+                f"--bind {self.subj_work}:/opt/home",
+                self.sing_afni,
+                "3dMean",
+                "-datum short",
+                f"-prefix {h_out_mean}",
+                f"{' '.join(min_list)}",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, h_out_mean, "Mean EPI")
+
+            # Generate mask of non-zero voxels
+            bash_list = [
+                "singularity run",
+                "--cleanenv",
+                f"--bind {self.subj_work}:{self.subj_work}",
+                f"--bind {self.subj_work}:/opt/home",
+                self.sing_afni,
+                "3dcalc",
+                f"-a {h_out_mean}",
+                "-expr 'step(a-0.999)'",
+                f"-prefix {out_path}",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_path, "MinVal EPI")
+
+        # Update attribute with path to minimum mask
+        self.anat_dict["mask-minimum"] = out_path
