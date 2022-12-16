@@ -32,8 +32,8 @@ def afni_sanity_tfs(subj, sess, subj_work, subj_sess_raw):
     Returns
     -------
     dict
-        key = indicate type of timing file
-        value = list of paths to timing files
+        key = event name
+        value = path to timing file
 
     Raises
     ------
@@ -57,35 +57,80 @@ def afni_sanity_tfs(subj, sess, subj_work, subj_sess_raw):
         raise ValueError(f"Expected task names movies|scenarios, found {task}")
 
     # Generate timing files
-    sess_tfs = {}
     make_tf = afni.TimingFiles(subj, sess, task, subj_work, sess_events)
-    sess_tfs["common"] = make_tf.common_events()
-    sess_tfs["session"] = make_tf.session_events()
-    sess_tfs["select"] = make_tf.select_events()
+    tf_com = make_tf.common_events()
+    tf_sess = make_tf.session_events()
+    tf_sel = make_tf.select_events()
+    tf_all = tf_com + tf_sess + tf_sel
+
+    # Setup output dict
+    sess_tfs = {}
+    for tf_path in tf_all:
+        h_key = os.basename(tf_path).split("desc-")[1].split("_")[0]
+        sess_tfs[h_key] = tf_path
+
     return sess_tfs
 
 
 # %%
 def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
-    """Title.
+    """Conduct extra preprocessing for AFNI sanity check.
 
-    Desc.
+    Identify required files from fMRIPrep and FSL, then conduct
+    extra preprocessing to ready for AFNI deconvolution. The
+    pipeline steps are:
+        -   Make intersection mask
+        -   Make eroded CSF, WM masks
+        -   Make minimum-value mask
+        -   Spatially smooth EPI
+        -   Scale EPI timeseries
+        -   Make mean, derivative motion files
+        -   Make censor, inverted censor files
 
     Parameters
     ----------
-    subj
-    sess
-    subj_work
-    proj_deriv
-    sing_afni
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    subj_work : path
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    sing_afni : path
+        Location of AFNI singularity file
 
     Returns
     -------
     tuple
+        [0] = dictionary of functional files, "key": value description:
+            "func-motion": [/paths/to/fMRIPrep/timeseries.tsv]
+            "func-preproc": [/paths/to/fsl/denoised/nii]
+            "func-scaled": [/paths/to/scaled/nii]
+            "func-mean": /path/to/mean/motion/file
+            "func-deriv": /path/to/derivative/motion/file
+            "func-cens": /path/to/censor/file
+            "func-inv": /path/to/inverted/censor/file
+        [1] = dictionary of anatomical files, "key": value description:
+            "anat-preproc": /path/to/preprocessed/t1w/nii
+            "mask-brain": /path/to/anat/brain/mask
+            "mask-probCS": /path/to/probabilistic/csf/label
+            "mask-probGM": /path/to/probabilistic/gm/label
+            "mask-probWM": /path/to/probabilistic/WM/label
+            "mask-int": /path/to/epi-anat/intersection/mask
+            "mask-min": /path/to/minimum/value/mask
+            "mask-WMe": /path/to/eroded/wm/mask
+            "mask-CSe": /path/to/eroded/csf/mask
 
     Raises
     ------
     FileNotFoundError
+        Missing anatomical or functional fMRIPrep output
+        Missing functional FSL output
+    ValueError
+        Each preprocessed EPI file is not paired with an
+        fMRIPrep timeseries.tsv
 
     """
     # Set search dictionary used to make anat_dict
@@ -99,7 +144,7 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
         "mask-probWM": "label-WM_probseg",
     }
 
-    # Setup dictionary of anatomical files
+    # Start dictionary of anatomical files
     anat_dict = {}
     subj_deriv_fp = os.path.join(proj_deriv, f"pre_processing/fmriprep/{subj}")
     for key, search in get_anat_dict.items():
@@ -116,8 +161,7 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
                 f"Expected to find fmriprep file anat/*_{search}.nii.gz"
             )
 
-    #
-    func_dict = {}
+    # Find motion files from fMRIPrep
     mot_files = [
         x
         for x in glob.glob(f"{subj_deriv_fp}/{sess}/func/*timeseries.tsv")
@@ -129,7 +173,7 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
             "Expected to find fmriprep files func/*timeseries.tsv"
         )
 
-    # Get AROMA files, which are spatially smoothed
+    # Find preprocessed EPI files
     subj_deriv_fsl = os.path.join(
         proj_deriv, f"pre_processing/fsl_denoise/{subj}/{sess}/func"
     )
@@ -144,6 +188,7 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
             "Expected to find fsl_denoise files *tfiltMasked_bold.nii.gz"
         )
 
+    # Check that each preprocessed file has a motion file
     if len(run_files) != len(mot_files):
         raise ValueError(
             f"""
@@ -153,26 +198,25 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
         """
         )
 
+    # Start dictionary of EPI files
     func_dict = {}
     func_dict["func-motion"] = mot_files
     func_dict["func-preproc"] = run_files
 
-    # make masks
+    # Make required masks
     make_masks = afni.MakeMasks(
         subj, sess, subj_work, proj_deriv, anat_dict, func_dict, sing_afni
     )
-    make_masks.intersect()
-    make_masks.tissue()
-    make_masks.minimum()
-    anat_dict = make_masks.anat_dict
-    del make_masks
+    anat_dict["mask-int"] = make_masks.intersect()
+    tiss_masks = make_masks.tissue()
+    anat_dict["mask-WMe"] = tiss_masks["WM"]
+    anat_dict["mask-CSe"] = tiss_masks["CS"]
+    anat_dict["mask-min"] = make_masks.minimum()
 
-    # smooth
+    # Smooth and scale EPI data
     smooth_epi = afni.smooth_epi(
         subj_work, proj_deriv, func_dict["func-preproc"], sing_afni
     )
-
-    # scale
     func_dict["func-scaled"] = afni.scale_epi(
         subj_work,
         proj_deriv,
@@ -181,15 +225,15 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
         sing_afni,
     )
 
-    # make afni-style motion files
+    # Make AFNI-style motion and censor files
+    make_motion = afni.MotionCensor(
+        subj_work, proj_deriv, func_dict["func-motion"]
+    )
+    func_dict["func-mean"] = make_motion.mean_motion()
+    func_dict["func-deriv"] = make_motion.deriv_motion()
+    mot_cens, mot_cens_inv = make_motion.censor_volumes()
+    func_dict["func-cens"] = mot_cens
+    func_dict["func-inv"] = mot_cens_inv
+    _ = make_motion.count_motion()
+
     return (func_dict, anat_dict)
-
-
-# # %%
-# def afni_sanity_motion():
-#     """Title.
-
-#     Desc.
-
-#     """
-#     pass

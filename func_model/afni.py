@@ -1,5 +1,6 @@
 """Methods for AFNI."""
 import os
+import json
 import pandas as pd
 import numpy as np
 from func_model import submit
@@ -671,10 +672,10 @@ class MakeMasks:
         ValueError
             Invalid parameters for optional args
 
-        Notes
-        -----
-        Adds new key:value to self.anat_dict
-            ["mask-intersect"] = /path/to/intersection/mask
+        Returns
+        -------
+        path
+            Location of anat-epi intersection mask
 
         """
         print("\tMaking intersection mask")
@@ -758,9 +759,7 @@ class MakeMasks:
             ]
             bash_cmd = " ".join(bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_path, "Intersect")
-
-        # Add path to intersection mask to attribute
-        self.anat_dict["mask-intersect"] = out_path
+        return out_path
 
     def tissue(self, thresh=0.5):
         """Make eroded tissue masks.
@@ -780,11 +779,11 @@ class MakeMasks:
         ValueError
             Inappropriate value for optional args
 
-        Notes
-        -----
-        Adds new key:value to self.anat_dict
-            ["mask-CSe"] = /path/to/eroded/CSF/mask
-            ["mask-WMe"] = /path/to/eroded/WM/mask
+        Returns
+        -------
+        dict
+            ["CS"] = /path/to/eroded/CSF/mask
+            ["WM"] = /path/to/eroded/WM/mask
 
         """
         # Validate args
@@ -794,7 +793,8 @@ class MakeMasks:
             raise ValueError("thresh must be between 0.01 and 0.99")
 
         # Make CSF and WM masks
-        for tiss in ["CS", "WM"]:
+        out_dict = {"CS": "", "WM": ""}
+        for tiss in out_dict.keys():
             print(f"\tMaking eroded tissue mask : {tiss}")
 
             # Setup final path
@@ -837,8 +837,9 @@ class MakeMasks:
                     bash_cmd, bin_path, f"Erode {tiss}"
                 )
 
-            # Add path to eroded tissue mask to attribute
-            self.anat_dict[f"mask-{tiss}e"] = out_tiss
+            # Add path to eroded tissue mask
+            out_dict[tiss] = out_tiss
+        return out_dict
 
     def minimum(self):
         """Create a minimum-signal mask.
@@ -849,10 +850,10 @@ class MakeMasks:
 
         Based around AFNI's 3dTstat -min.
 
-        Notes
+        Returns
         -----
-        Adds new key:value to self.anat_dict
-            ["mask-minimum"] = /path/to/map/of/minimum/epi/signal
+        path
+            Location of minimum-value mask
 
         """
         print("\tMaking minimum value mask")
@@ -939,9 +940,7 @@ class MakeMasks:
             ]
             bash_cmd = " ".join(bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_path, "MinVal EPI")
-
-        # Update attribute with path to minimum mask
-        self.anat_dict["mask-minimum"] = out_path
+        return out_path
 
 
 def smooth_epi(
@@ -970,12 +969,22 @@ def smooth_epi(
     Returns
     -------
     list
-        Paths to scaled EPI files
+        Paths to smoothed EPI files
+
+    Raises
+    ------
+    TypeError
+        Improper parameter types
 
     """
-    print("\nSmoothing EPI files ...")
+    # Check arguments
+    if not isinstance(blur_size, int):
+        raise TypeError("Optional blur_size requires int")
+    if not isinstance(func_preproc, list):
+        raise TypeError("Argument func_preproc requires list")
 
     # Start return list, smooth each epi file
+    print("\nSmoothing EPI files ...")
     func_smooth = []
     for epi_path in func_preproc:
 
@@ -1035,10 +1044,18 @@ def scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
     list
         Paths to scaled EPI files
 
+    Raises
+    ------
+    TypeError
+        Improper parameter types
+
     """
-    print("\nScaling EPI files ...")
+    # Check arguments
+    if not isinstance(func_preproc, list):
+        raise TypeError("Argument func_preproc requires list")
 
     # Start return list, scale each epi file supplied
+    print("\nScaling EPI files ...")
     func_scaled = []
     for epi_path in func_preproc:
 
@@ -1094,69 +1111,149 @@ def scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
 
 
 class MotionCensor:
-    """Title.
+    """Make motion and censor files for AFNI deconvolution.
 
-    Desc.
+    Mine fMRIPrep timeseries.tsv files for required information,
+    and generate files in a format AFNI can use in 3dDeconvolve.
 
+    Attributes
+    ----------
+    func_motion : list
+        Locations of timeseries.tsv files produced by fMRIPrep
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    out_dir : path
+        Output directory for motion, censor files
+    out_str : str
+        Basic output file name
+
+    Methods
+    -------
+    mean_motion
+        Make average motion file for 6 dof
+    deriv_motion
+        Make derivative motion file for 6 dof
+    censor_volumes
+        Make censor and inverted censor files
+    count_motion
+        Determine number, proportion of censored volumes
 
     Notes
     -----
-    As runs do not have an equal number of volumes, motion/censor files
-    for each run are concatenated into a single file rather than
-    managing zero padding.
-
-    Writes 1D files - AFNI reads tsv as containing a header!
+    -   As runs do not have an equal number of volumes, motion/censor files
+        for each run are concatenated into a single file rather than
+        managing zero padding.
+    -   Output formats use 1D extension since AFNI assumes TSVs
+        contain a header.
 
     """
 
     def __init__(self, subj_work, proj_deriv, func_motion):
-        """Title.
+        """Setup for making motion, censor files.
 
-        Desc.
+        Set attributes, make output directory, setup basic
+        output file name.
 
         Parameters
         ----------
-        subj_work
-        proj_deriv
-        func_motion
+        subj_work : path
+            Location of working directory for intermediates
+        proj_deriv : path
+            Location of project derivatives, containing fmriprep
+            and fsl_denoise sub-directories
+        func_motion : list
+            Locations of timeseries.tsv files produced by fMRIPrep,
+            file names must follow BIDS convention
 
         Attributes
         ----------
-        func_motion
-        proj_deriv
-        out_dir
+        func_motion : list
+            Locations of timeseries.tsv files produced by fMRIPrep
+        proj_deriv : path
+            Location of project derivatives, containing fmriprep
+            and fsl_denoise sub-directories
+        out_dir : path
+            Output directory for motion, censor files
+        out_str : str
+            Basic output file name
+
+        Raises
+        ------
+        TypeError
+            Improper parameter types
+        ValueError
+            Improper naming convention of motion timeseries file
 
         """
-        print("Making motion, censor files ...")
+        # Validate args
+        if not isinstance(func_motion, list):
+            raise TypeError("func_motion requires list type")
 
-        #
+        print("\nMaking motion, censor files ...")
+        try:
+            subj, sess, task, run, desc, suff = os.path.basename(
+                func_motion[0]
+            ).split("_")
+        except ValueError:
+            raise ValueError(
+                "BIDS file names required for items in func_motion: "
+                + "subject, session, task, run, description, and suffix.ext "
+                + "BIDS fields are required by afni.MotionCensor."
+            )
+        self.out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
         self.proj_deriv = proj_deriv
         self.func_motion = func_motion
-
-        #
         self.out_dir = os.path.join(subj_work, "motion_files")
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
-        subj, sess, task, run, desc, suff = os.path.basename(
-            func_motion[0]
-        ).split("_")
-        self.out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
 
-        self.labels_deriv = [
-            "trans_x_derivative1",
-            "trans_y_derivative1",
-            "trans_z_derivative1",
-            "rot_x_derivative1",
-            "rot_y_derivative1",
-            "rot_z_derivative1",
-        ]
+    def _write_df(self, df_out, name):
+        """Write dataframe to output location.
 
-    def mean_motion(self):
-        """Title.
+        Special output formatting for AFNI compatibility.
 
-        Desc.
+        Parameters
+        ----------
+        df_out : pd.DataFrame
+            A dataframe of motion or censor info
+        name : str
+            Identifier, will be written
+            to BIDS description field
+
+        Returns
+        -------
+        path
+            Location of output dataframe
 
         """
+        out_path = os.path.join(
+            self.out_dir, self.out_str.replace("confounds", name)
+        )
+        df_out.to_csv(
+            out_path,
+            sep="\t",
+            index=False,
+            header=False,
+            float_format="%.6f",
+        )
+        return out_path
+
+    def mean_motion(self):
+        """Make file for mean motion events.
+
+        References the [trans|rot]_[x|y|z] columns
+        to get all 6 dof.
+
+        Returns
+        -------
+        path
+            Location of mean motion file
+
+        """
+        print("\tMaking mean motion file")
+
+        # Set column identifiers
         labels_mean = [
             "trans_x",
             "trans_y",
@@ -1166,97 +1263,257 @@ class MotionCensor:
             "rot_z",
         ]
 
+        # Extract relevant columns for each run
         mean_cat = []
         for mot_path in self.func_motion:
             df = pd.read_csv(mot_path, sep="\t")
             df_mean = df[labels_mean]
+            df_mean = df_mean.round(6)
+            mean_cat.append(df_mean)
 
-    # start empty lists to append
-    mean_cat = []
-    deriv_cat = []
-    censor_cat = []
-    censor_inv = []
+        # Combine runs, write out
+        df_mean_all = pd.concat(mean_cat, ignore_index=True)
+        mean_out = self._write_df(df_mean_all, "mean")
+        return mean_out
 
-    #
-    for mot_path in func_motion:
-        df_all = pd.read_csv(mot_path, sep="\t")
+    def deriv_motion(self):
+        """Make file for derivative motion events.
+
+        References the [trans|rot]_[x|y|z]_deriv1 columns
+        to get all 6 dof.
+
+        Returns
+        -------
+        path
+            Location of derivative motion file
+
+        """
+        print("\tMaking derivative motion file")
+
+        # Set column identifiers
+        labels_deriv = [
+            "trans_x_derivative1",
+            "trans_y_derivative1",
+            "trans_z_derivative1",
+            "rot_x_derivative1",
+            "rot_y_derivative1",
+            "rot_z_derivative1",
+        ]
+
+        # Extract relevant columns for each run
+        deriv_cat = []
+        for mot_path in self.func_motion:
+            df = pd.read_csv(mot_path, sep="\t")
+            df_drv = df[labels_deriv]
+            df_drv = df_drv.fillna(0)
+            df_drv = df_drv.round(6)
+            deriv_cat.append(df_drv)
+
+        # Combine runs, write out
+        df_deriv_all = pd.concat(deriv_cat, ignore_index=True)
+        deriv_out = self._write_df(df_deriv_all, "deriv")
+        return deriv_out
+
+    def censor_volumes(self):
+        """Make censor files.
+
+        Generate AFNI-styled censor files, and also
+        make inverted censor files to use as an inlusion
+        mask. Volumes preceding motion events are
+        censored.
+
+        Attributes
+        ----------
+        df_censor : pd.DataFrame
+            Row = volume
+            Value = binary censor due to motion
+
+        Returns
+        -------
+        tuple
+            [0] = location of censor file
+            [1] = location of inverted censor file
+
+        """
+        print("\tMaking censor and inverted censor files")
+
+        # Setup and read-in data for runs
+        censor_cat = []
+        censor_inv = []
+        for mot_path in self.func_motion:
+            df = pd.read_csv(mot_path, sep="\t")
+
+            # Combine motion events into new "sum" column
+            df_cen = df.filter(regex="motion_outlier")
+            df_cen["sum"] = df_cen.iloc[:, :].sum(1)
+            df_cen = df_cen.astype(int)
+
+            # Invert binary censor for regular AFNI censoring
+            df_cen = df_cen.replace({0: 1, 1: 0})
+
+            # Exclude volume preceding motion event
+            zero_pos = df_cen.index[df_cen["sum"] == 0].tolist()
+            zero_fill = [x - 1 for x in zero_pos]
+            if -1 in zero_fill:
+                zero_fill.remove(-1)
+            df_cen.loc[zero_fill, "sum"] = 0
+            censor_cat.append(df_cen)
+
+            # Reinvert updated regression matrix for
+            # inclusion mask.
+            df_inv = df_cen.replace({0: 1, 1: 0})
+            censor_inv.append(df_inv)
+
+        # Combine run info, write out
+        df_cen = pd.concat(censor_cat, ignore_index=True)
+        censor_out = self._write_df(df_cen, "censor")
+        df_cen_inv = pd.concat(censor_inv, ignore_index=True)
+        censor_inv = self._write_df(df_cen_inv, "censorInv")
+        self.df_censor = df_cen
+        return (censor_out, censor_inv)
+
+    def count_motion(self):
+        """Quantify missing volumes due to motion.
+
+        Calculate number and proportion of volumes that
+        necessitate censoring. Save info to JSON file.
+
+        Returns
+        -------
+        path
+            Location of censored info file
+
+        Notes
+        -----
+        -   Requires self.df_censor, will trigger method.
+        -   Writes totals to self.out_dir/info_censored_volumes.json
+
+        """
+        print("\tCounting censored volumes")
+
+        # Check for required attribute, trigger
+        if not hasattr(self, "df_censor"):
+            self.censor_volumes()
+
+        # Quick calculations
+        num_vol = self.df_censor["sum"].sum()
+        num_tot = len(self.df_censor)
+        cen_dict = {
+            "total_volumes": int(num_tot),
+            "included_volumes": int(num_vol),
+            "proportion_excluded": round(1 - (num_vol / num_tot), 3),
+        }
+
+        # Write out and return
+        out_path = os.path.join(self.out_dir, "info_censored_volumes.json")
+        with open(out_path, "w") as jfile:
+            json.dump(cen_dict, jfile)
+        return out_path
+
+
+class WriteDecon:
+    """Title.
+
+    Desc.
+
+    """
+
+    def __init__(self, subj, sess, subj_work, sess_func, sess_anat, sess_tfs):
+        """Title.
+
+        Desc.
+
+        """
+        self.subj = subj
+        self.sess = sess
+        self.subj_work = subj_work
+        self.func_dict = sess_func
+        self.anat_dict = sess_anat
+        self.tf_dict = sess_tfs
+
+    def _build_censor_ts(self):
+        """Title.
+
+        Desc.
+
+        """
+        pass
+
+    def _build_behavior(self, basis_func):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        basis_func : str
+            [dur_mod | ind_mod | two_gam]
+
+        Raises
+        ------
+        ValueError
+
+        """
+        # Validate
+        valid_list = ["dur_mod", "ind_mod", "two_gam"]
+        if basis_func not in valid_list:
+            raise ValueError("Invalid basis_func parameter")
+        model_meth = getattr(self, f"_basis_{basis_func}")
+
+        c_beh = 2
+        model_beh = []
+        for tf_name, tf_path in self.tf_dict.items():
+            model_beh.append(model_meth(c_beh, tf_path))
+            model_beh.append(f"-stim_label {c_beh} {tf_name}")
+            c_beh += 1
+
+    def _basis_dur_mod(self, count_beh, tf_path):
+        """Title."""
+        return f"-stim_times_AM1 {count_beh} {tf_path} 'dmBLOCK(1)'"
+
+    def _basis_ind_mod(self, count_beh, tf_path):
+        """Title."""
+        return f"-stim_times_IM {count_beh} {tf_path} 'dmBLOCK(1)'"
+
+    def sanity_decon(self):
+        """Title.
+
+        Desc.
+
+        """
+        decon_name = "decon_sanity"
+
+        # motion
+        reg_motion_mean = self.func_dict["func-mean"]
+        reg_motion_deriv = self.func_dict["func-deriv"]
+
+        # convolve inverted censor with HRF
+        reg_censor = self._build_censor_ts()
 
         #
-        df_mean = df_all[mean_labels].copy()
-        df_mean = df_mean.round(6)
-        mean_cat.append(df_mean)
+        epi_preproc = " ".join(self.func_dict["func-scaled"])
+        reg_events = self._build_behavior("dur_mod")
+        num_events = 1 + len(self.sess_tfs.keys())
 
-        #
-        df_drv = df_all[drv_labels].copy()
-        df_drv = df_drv.fillna(0)
-        df_drv = df_drv.round(6)
-        deriv_cat.append(df_drv)
-
-        # Make motion censor file -- sum columns,
-        # invert binary, exclude preceding volume.
-        df_cen = df_all.filter(regex="motion_outlier")
-        df_cen["sum"] = df_cen.iloc[:, :].sum(1)
-        df_cen = df_cen.astype(int)
-        df_cen = df_cen.replace({0: 1, 1: 0})
-        zero_pos = df_cen.index[df_cen["sum"] == 0].tolist()
-        zero_fill = [x - 1 for x in zero_pos]
-        if -1 in zero_fill:
-            zero_fill.remove(-1)
-        df_cen.loc[zero_fill, "sum"] = 0
-        censor_cat.append(df_cen)
-
-        # Reinvert updated regression matrix
-        df_inv = df_cen.replace({0: 1, 1: 0})
-        censor_inv.append(df_inv)
-
-    #
-    subj, sess, task, run, desc, suff = os.path.basename(func_motion[0]).split(
-        "_"
-    )
-    out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
-
-    #
-    df_mean_all = pd.concat(mean_cat, ignore_index=True)
-    mean_out = os.path.join(out_dir, out_str.replace("confounds", "mean"))
-    df_mean_all.to_csv(
-        mean_out,
-        sep="\t",
-        index=False,
-        header=False,
-        float_format="%.6f",
-    )
-
-    #
-    df_deriv_all = pd.concat(deriv_cat, ignore_index=True)
-    deriv_out = os.path.join(out_dir, out_str.replace("confounds", "deriv"))
-    df_deriv_all.to_csv(
-        deriv_out,
-        sep="\t",
-        index=False,
-        header=False,
-        float_format="%.6f",
-    )
-
-    df_censor_all = pd.concat(censor_cat, ignore_index=True)
-    censor_out = os.path.join(out_dir, out_str.replace("confounds", "censor"))
-    df_censor_all.to_csv(
-        censor_out,
-        sep="\t",
-        index=False,
-        header=False,
-        float_format="%.6f",
-    )
-
-    df_censor_inv = pd.concat(censor_inv, ignore_index=True)
-    censor_inv_out = os.path.join(
-        out_dir, out_str.replace("confounds", "censorInv")
-    )
-    df_censor_inv.to_csv(
-        censor_inv_out,
-        sep="\t",
-        index=False,
-        header=False,
-        float_format="%.6f",
-    )
-
-    #
+        # write decon command
+        decon_cmd = [
+            "3dDeconvolve",
+            "-x1D_stop",
+            "-GOFORIT",
+            f"-input {epi_preproc}",
+            f"-ortvec {reg_motion_mean} mot_mean",
+            f"-ortvec {reg_motion_deriv} mot_deriv",
+            "-polort A",
+            "-float",
+            "-local_times",
+            f"-num_stimts {num_events}",
+            reg_censor,
+            reg_events,
+            "-jobs 1",
+            f"-x1D {self.subj_work}/X.{decon_name}.xmat.1D",
+            f"-xjpeg {self.subj_work}/X.{decon_name}.jpg",
+            f"-x1D_uncensored {self.subj_work}/X.{decon_name}.jpg",
+            f"-bucket {self.subj_work}/{decon_name}_stats",
+            f"-cbucket {self.subj_work}/{decon_name}_cbucket",
+            f"-errts {self.subj_work}/{decon_name}_errts",
+        ]
