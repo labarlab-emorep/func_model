@@ -1091,3 +1091,172 @@ def scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
     # Double-check correct order of files
     func_scaled.sort()
     return func_scaled
+
+
+class MotionCensor:
+    """Title.
+
+    Desc.
+
+
+    Notes
+    -----
+    As runs do not have an equal number of volumes, motion/censor files
+    for each run are concatenated into a single file rather than
+    managing zero padding.
+
+    Writes 1D files - AFNI reads tsv as containing a header!
+
+    """
+
+    def __init__(self, subj_work, proj_deriv, func_motion):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        subj_work
+        proj_deriv
+        func_motion
+
+        Attributes
+        ----------
+        func_motion
+        proj_deriv
+        out_dir
+
+        """
+        print("Making motion, censor files ...")
+
+        #
+        self.proj_deriv = proj_deriv
+        self.func_motion = func_motion
+
+        #
+        self.out_dir = os.path.join(subj_work, "motion_files")
+        if not os.path.exists(self.out_dir):
+            os.makedirs(self.out_dir)
+        subj, sess, task, run, desc, suff = os.path.basename(
+            func_motion[0]
+        ).split("_")
+        self.out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
+
+        self.labels_deriv = [
+            "trans_x_derivative1",
+            "trans_y_derivative1",
+            "trans_z_derivative1",
+            "rot_x_derivative1",
+            "rot_y_derivative1",
+            "rot_z_derivative1",
+        ]
+
+    def mean_motion(self):
+        """Title.
+
+        Desc.
+
+        """
+        labels_mean = [
+            "trans_x",
+            "trans_y",
+            "trans_z",
+            "rot_x",
+            "rot_y",
+            "rot_z",
+        ]
+
+        mean_cat = []
+        for mot_path in self.func_motion:
+            df = pd.read_csv(mot_path, sep="\t")
+            df_mean = df[labels_mean]
+
+    # start empty lists to append
+    mean_cat = []
+    deriv_cat = []
+    censor_cat = []
+    censor_inv = []
+
+    #
+    for mot_path in func_motion:
+        df_all = pd.read_csv(mot_path, sep="\t")
+
+        #
+        df_mean = df_all[mean_labels].copy()
+        df_mean = df_mean.round(6)
+        mean_cat.append(df_mean)
+
+        #
+        df_drv = df_all[drv_labels].copy()
+        df_drv = df_drv.fillna(0)
+        df_drv = df_drv.round(6)
+        deriv_cat.append(df_drv)
+
+        # Make motion censor file -- sum columns,
+        # invert binary, exclude preceding volume.
+        df_cen = df_all.filter(regex="motion_outlier")
+        df_cen["sum"] = df_cen.iloc[:, :].sum(1)
+        df_cen = df_cen.astype(int)
+        df_cen = df_cen.replace({0: 1, 1: 0})
+        zero_pos = df_cen.index[df_cen["sum"] == 0].tolist()
+        zero_fill = [x - 1 for x in zero_pos]
+        if -1 in zero_fill:
+            zero_fill.remove(-1)
+        df_cen.loc[zero_fill, "sum"] = 0
+        censor_cat.append(df_cen)
+
+        # Reinvert updated regression matrix
+        df_inv = df_cen.replace({0: 1, 1: 0})
+        censor_inv.append(df_inv)
+
+    #
+    subj, sess, task, run, desc, suff = os.path.basename(func_motion[0]).split(
+        "_"
+    )
+    out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
+
+    #
+    df_mean_all = pd.concat(mean_cat, ignore_index=True)
+    mean_out = os.path.join(out_dir, out_str.replace("confounds", "mean"))
+    df_mean_all.to_csv(
+        mean_out,
+        sep="\t",
+        index=False,
+        header=False,
+        float_format="%.6f",
+    )
+
+    #
+    df_deriv_all = pd.concat(deriv_cat, ignore_index=True)
+    deriv_out = os.path.join(out_dir, out_str.replace("confounds", "deriv"))
+    df_deriv_all.to_csv(
+        deriv_out,
+        sep="\t",
+        index=False,
+        header=False,
+        float_format="%.6f",
+    )
+
+    df_censor_all = pd.concat(censor_cat, ignore_index=True)
+    censor_out = os.path.join(out_dir, out_str.replace("confounds", "censor"))
+    df_censor_all.to_csv(
+        censor_out,
+        sep="\t",
+        index=False,
+        header=False,
+        float_format="%.6f",
+    )
+
+    df_censor_inv = pd.concat(censor_inv, ignore_index=True)
+    censor_inv_out = os.path.join(
+        out_dir, out_str.replace("confounds", "censorInv")
+    )
+    df_censor_inv.to_csv(
+        censor_inv_out,
+        sep="\t",
+        index=False,
+        header=False,
+        float_format="%.6f",
+    )
+
+    #
