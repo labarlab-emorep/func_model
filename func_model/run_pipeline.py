@@ -135,13 +135,13 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
     )
     run_files = [
         x
-        for x in glob.glob(f"{subj_deriv_fsl}/*tfiltAROMAMasked_bold.nii.gz")
+        for x in glob.glob(f"{subj_deriv_fsl}/*tfiltMasked_bold.nii.gz")
         if not fnmatch.fnmatch(x, "*task-rest*")
     ]
     run_files.sort()
     if not run_files:
         raise FileNotFoundError(
-            "Expected to find fsl_denoise files *tfiltAROMAMasked_bold.nii.gz"
+            "Expected to find fsl_denoise files *tfiltMasked_bold.nii.gz"
         )
 
     if len(run_files) != len(mot_files):
@@ -167,7 +167,19 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
     anat_dict = make_masks.anat_dict
     del make_masks
 
+    # smooth
+    smooth_epi = afni.smooth_epi(
+        subj_work, proj_deriv, func_dict["func-preproc"], sing_afni
+    )
+
     # scale
+    func_dict["func-scaled"] = afni.scale_epi(
+        subj_work,
+        proj_deriv,
+        anat_dict["mask-minimum"],
+        smooth_epi,
+        sing_afni,
+    )
 
     # make afni-style motion files
     return (func_dict, anat_dict)

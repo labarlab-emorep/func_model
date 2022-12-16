@@ -118,6 +118,8 @@ class TimingFiles:
             Insufficient number of sess_events
 
         """
+        print("\nInitializing TimingFiles")
+
         # Check arguments
         task_valid = ["movies", "scenarios"]
         if task not in task_valid:
@@ -268,7 +270,7 @@ class TimingFiles:
         Timing files written to self.subj_tf_dir
 
         """
-        print("Making timing files for common events")
+        print("\tMaking timing files for common events")
 
         # Validate marry argument
         if not isinstance(marry, bool):
@@ -372,7 +374,7 @@ class TimingFiles:
         Timing files written to self.subj_tf_dir
 
         """
-        print("Making timing files for selection trials")
+        print("\tMaking timing files for selection trials")
 
         # Validate marry argument
         if not isinstance(marry, bool):
@@ -465,7 +467,7 @@ class TimingFiles:
         Timing files written to self.subj_tf_dir
 
         """
-        print("Making timing files for session-specific trials")
+        print("\tMaking timing files for session-specific trials")
 
         # Validate bool args
         if not isinstance(emo_query, bool):
@@ -636,6 +638,7 @@ class MakeMasks:
             Location of AFNI singularity file
 
         """
+        print("\nInitializing MakeMasks")
         self.subj = subj
         self.sess = sess
         self.subj_work = subj_work
@@ -674,7 +677,7 @@ class MakeMasks:
             ["mask-intersect"] = /path/to/intersection/mask
 
         """
-        print("Making intersection mask")
+        print("\tMaking intersection mask")
 
         # Validate arguments
         if not isinstance(c_frac, float):
@@ -787,12 +790,12 @@ class MakeMasks:
         # Validate args
         if not isinstance(thresh, float):
             raise TypeError("thresh must be float type")
-        if float < 0.01 or float > 0.99:
+        if thresh < 0.01 or thresh > 0.99:
             raise ValueError("thresh must be between 0.01 and 0.99")
 
         # Make CSF and WM masks
         for tiss in ["CS", "WM"]:
-            print(f"Making eroded tissue mask : {tiss}")
+            print(f"\tMaking eroded tissue mask : {tiss}")
 
             # Setup final path
             out_tiss = os.path.join(
@@ -852,7 +855,7 @@ class MakeMasks:
             ["mask-minimum"] = /path/to/map/of/minimum/epi/signal
 
         """
-        print("Making minimum value mask")
+        print("\tMaking minimum value mask")
 
         # Setup file path
         out_path = (
@@ -939,3 +942,152 @@ class MakeMasks:
 
         # Update attribute with path to minimum mask
         self.anat_dict["mask-minimum"] = out_path
+
+
+def smooth_epi(
+    subj_work,
+    proj_deriv,
+    func_preproc,
+    sing_afni,
+    blur_size=3,
+):
+    """Spatially smooth EPI files.
+
+    Parameters
+    ----------
+    subj_work : path
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    func_preproc : list
+        Locations of preprocessed EPI files
+    sing_afni : path
+        Location of AFNI singularity file
+    blur_size : int, optional
+        Size (mm) of smoothing kernel
+
+    Returns
+    -------
+    list
+        Paths to scaled EPI files
+
+    """
+    print("\nSmoothing EPI files ...")
+
+    # Start return list, smooth each epi file
+    func_smooth = []
+    for epi_path in func_preproc:
+
+        # Setup output names, paths
+        epi_preproc = os.path.basename(epi_path)
+        desc_preproc = epi_preproc.split("desc-")[1].split("_")[0]
+        epi_smooth = epi_preproc.replace(desc_preproc, "smoothed")
+        out_path = os.path.join(subj_work, epi_smooth)
+        if not os.path.exists(out_path):
+
+            # Smooth data
+            print(f"\tStarting smoothing of {epi_path}")
+            bash_list = [
+                "singularity run",
+                "--cleanenv",
+                f"--bind {proj_deriv}:{proj_deriv}",
+                f"--bind {subj_work}:{subj_work}",
+                f"--bind {subj_work}:/opt/home",
+                sing_afni,
+                "3dmerge",
+                f"-1blur_fwhm {blur_size}",
+                "-doall",
+                f"-prefix {out_path}",
+                epi_path,
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
+
+        # Update return list
+        func_smooth.append(out_path)
+
+    # Double-check correct order of files
+    func_smooth.sort()
+    return func_smooth
+
+
+def scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
+    """Scale EPI timeseries.
+
+    Parameters
+    ----------
+    subj_work : path
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    mask_min : path
+        Location of minimum-value mask, output of
+        afni.MakeMasks.minimum
+    func_preproc : list
+        Locations of preprocessed EPI files
+    sing_afni : path
+        Location of AFNI singularity file
+
+    Returns
+    -------
+    list
+        Paths to scaled EPI files
+
+    """
+    print("\nScaling EPI files ...")
+
+    # Start return list, scale each epi file supplied
+    func_scaled = []
+    for epi_path in func_preproc:
+
+        # Setup output names
+        epi_preproc = os.path.basename(epi_path)
+        desc_preproc = epi_preproc.split("desc-")[1].split("_")[0]
+        epi_tstat = "tmp_" + epi_preproc.replace(desc_preproc, "tstat")
+        out_tstat = os.path.join(subj_work, epi_tstat)
+        epi_scale = epi_preproc.replace(desc_preproc, "scaled")
+        out_path = os.path.join(subj_work, epi_scale)
+        if not os.path.exists(out_path):
+            print(f"\tStarting scaling of {epi_path}")
+
+            # Determine mean values
+            bash_list = [
+                "singularity run",
+                "--cleanenv",
+                f"--bind {proj_deriv}:{proj_deriv}",
+                f"--bind {subj_work}:{subj_work}",
+                f"--bind {subj_work}:/opt/home",
+                sing_afni,
+                "3dTstat",
+                f"-prefix {out_tstat}",
+                epi_path,
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
+
+            # Scale values
+            bash_list = [
+                "singularity run",
+                "--cleanenv",
+                f"--bind {proj_deriv}:{proj_deriv}",
+                f"--bind {subj_work}:{subj_work}",
+                f"--bind {subj_work}:/opt/home",
+                sing_afni,
+                "3dcalc",
+                f"-a {epi_path}",
+                f"-b {out_tstat}",
+                f"-c {mask_min}",
+                "-expr 'c * min(200, a/b*100)*step(a)*step(b)'",
+                f"-prefix {out_path}",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_path, "Scale run")
+
+        # Update return list
+        func_scaled.append(out_path)
+
+    # Double-check correct order of files
+    func_scaled.sort()
+    return func_scaled
