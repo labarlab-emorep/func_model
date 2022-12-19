@@ -55,8 +55,8 @@ def pipeline_afni(
     write_decon = afni.WriteDecon(
         subj,
         sess,
-        proj_deriv,
         subj_work,
+        proj_deriv,
         sess_func,
         sess_anat,
         sess_tfs,

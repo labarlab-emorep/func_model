@@ -621,6 +621,8 @@ class MakeMasks:
         BIDS session identifier
     sing_afni : path
         Location of AFNI singularity file
+    sing_prep : list
+        First part of subprocess call for AFNI singularity
     subj : str
         BIDS subject identifier
     subj_work : path
@@ -669,6 +671,11 @@ class MakeMasks:
             preprocessed functional files.
         sing_afni : path
             Location of AFNI singularity file
+
+        Attributes
+        ----------
+        sing_prep : list
+            First part of subprocess call for AFNI singularity
 
         """
         print("\nInitializing MakeMasks")
@@ -1402,16 +1409,42 @@ class WriteDecon:
         self,
         subj,
         sess,
-        proj_deriv,
         subj_work,
+        proj_deriv,
         sess_func,
         sess_anat,
         sess_tfs,
         sing_afni,
     ):
-        """Title.
+        """Initialize object.
 
-        Desc.
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        subj_work : path
+            Location of working directory for intermediates
+        proj_deriv : path
+            Location of project derivatives, containing fmriprep
+            and fsl_denoise sub-directories
+        sess_func : dict
+            Contains reference names (key) and paths (value) to
+            preprocessed functional files
+        sess_anat : dict
+            Contains reference names (key) and paths (value) to
+            preprocessed anatomical files
+        sess_tfs : dict
+            Contains reference names (key) and paths (value) to
+            session AFNI-style timing files
+        sing_afni : path
+            Location of AFNI singularity file
+
+        Attributes
+        ----------
+        afni_prep : list
+            First part of subprocess call for AFNI singularity
 
         """
         print("\nInitializing WriteDecon")
@@ -1424,7 +1457,7 @@ class WriteDecon:
         self.tf_dict = sess_tfs
         self.sing_afni = sing_afni
 
-        #
+        # Start afni singularity call
         self.afni_prep = _prepend_afni_sing(
             self.proj_deriv, self.subj_work, self.sing_afni
         )
@@ -1443,44 +1476,50 @@ class WriteDecon:
         )
         out_path = os.path.join(self.subj_work, out_name)
 
+        # find total length of scan in seconds
+        sess_info = self._get_sess_info()
+
+        # ideal HRF - boxcar
+        len_tr = sess_info["len_tr"]
+        bash_list = [
+            "3dDeconvolve",
+            "-polort -1",
+            f"-nodata 10 {len_tr}",
+            "-num_stimts 1",
+            f"-stim_times 1 1D:0 'BLOCK({len_tr}, 1)'",
+            f"-x1D {self.subj_work}/Classic_HRF.1D",
+            "-x1D_stop",
+        ]
+        bash_cmd = " ".join(self.afni_prep + bash_list)
+        _ = submit.submit_subprocess(
+            bash_cmd, f"{self.subj_work}/Classic_HRF.1D", "Classic HRF"
+        )
+
+        # convolve HRF with censor file
+        bash_list = [
+            "waver",
+            f"-FILE {len_tr} {self.subj_work}/Classic_HRF.1D",
+            "-peak 1",
+            f"-input {self.func_dict['func-inv']}",
+            f"-numout {sess_info['sum_vol']}",
+            f"> {self.subj_work}/tmp_waver.1D",
+        ]
+        bash_cmd = " ".join(self.afni_prep + bash_list)
+        _ = submit.submit_subprocess(
+            bash_cmd, f"{self.subj_work}/tmp_waver.1D", "Censor TS temp"
+        )
+
+        #
+        bash_list = [
+            f"tail -n {sess_info['sum_vol']}",
+            f"{self.subj_work}/tmp_waver.1D",
+            f"> {out_path}",
+        ]
+        bash_cmd = " ".join(bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_path, "Censor TS")
+
         #
         count_beh += 1
-        if not os.path.exists(out_path):
-
-            # find total length of scan in seconds
-            sess_info = self._get_sess_info()
-
-            # ideal HRF - boxcar
-            len_tr = sess_info["len_tr"]
-            bash_list = [
-                "3dDeconvolve",
-                "-polort -1",
-                f"-nodata 10 {len_tr}",
-                "-num_stimts 1",
-                f"-stim_times 1 1D:0 'BLOCK({len_tr}, 1)'",
-                f"-x1D {self.subj_work}/Classic_HRF.1D",
-                "-x1D_stop",
-            ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
-            # bash_cmd = " ".join(bash_list)
-            _ = submit.submit_subprocess(
-                bash_cmd, f"{self.subj_work}/Classic_HRF.1D", "Classic HRF"
-            )
-
-            # convolve HRF with censor file
-            bash_list = [
-                "waver",
-                f"-FILE {len_tr} {self.subj_work}/Classic_HRF.1D",
-                "-peak 1",
-                f"-input {self.func_dict['func-inv']}",
-                f"-numout {sess_info['sum_vol']}",
-                f"> {out_path}",
-            ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
-            # bash_cmd = " ".join(bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_path, "Censor TS")
-
-        #
         reg_censor_list = [
             f"-stim_file {count_beh} {out_path}",
             f"-stim_base {count_beh}",
@@ -1493,9 +1532,13 @@ class WriteDecon:
     def _get_sess_info(self):
         """Title."""
         #
-        bash_list = ["3dinfo", f"-tr {self.func_dict['func-scaled'][0]}"]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
-        # bash_cmd = f"3dinfo -tr {self.func_dict['func-scaled'][0]}"
+        bash_list = [
+            "fslhd",
+            self.func_dict["func-scaled"][0],
+            "| grep pixdim4",
+            "| awk '{print $2}'",
+        ]
+        bash_cmd = " ".join(bash_list)
 
         #
         h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
@@ -1508,9 +1551,14 @@ class WriteDecon:
         num_vol = []
         for epi_file in self.func_dict["func-scaled"]:
             # for epi_file in self.func_dict["func-scaled"]:
-            bash_list = ["3dinfo", f"-ntimes {epi_file}"]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
-            # bash_cmd = f"3dinfo -ntimes {epi_file}"
+            bash_list = [
+                "fslhd",
+                self.func_dict["func-scaled"][0],
+                "| grep dim4",
+                "| head -n 1",
+                "| awk '{print $2}'",
+            ]
+            bash_cmd = " ".join(bash_list)
 
             #
             h_sp = subprocess.Popen(
@@ -1588,6 +1636,9 @@ class WriteDecon:
 
         Attributes
         ----------
+        basis_func
+        decon_name
+        decon_cmd
 
         """
         # Validate
@@ -1632,7 +1683,6 @@ class WriteDecon:
             f"-errts {self.subj_work}/{decon_name}_errts",
         ]
         self.decon_cmd = " ".join(self.afni_prep + decon_list)
-        # self.decon_cmd = " ".join(decon_list)
 
         #
         decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
@@ -1650,19 +1700,16 @@ class WriteDecon:
             raise AttributeError(
                 "No decon_cmd detected, try WriteDecon.write_decon_sanity."
             )
-
-        print("\tRunning 3dDeconvolve command ...")
-        out_file = f"{self.decon_name}_stats.REML_cmd"
-        out_path = os.path.join(self.subj_work, out_file)
-        if not os.path.exists(out_path):
-            _, _ = submit.submit_sbatch(
-                self.decon_cmd, f"dcn{self.subj[6:]}", log_dir
+        if not hasattr(self, "decon_name"):
+            raise AttributeError(
+                "No decon_name detected, try WriteDecon.write_decon_sanity."
             )
 
-            # h_sp = subprocess.Popen(
-            #     self.decon_cmd, shell=True, stdout=subprocess.PIPE
-            # )
-            # h_out, h_err = h_sp.communicate()
-            # h_sp.wait()
-
+        print("\tRunning 3dDeconvolve command ...")
+        out_path = os.path.join(
+            self.subj_work, f"{self.decon_name}_stats.REML_cmd"
+        )
+        _, _ = submit.submit_sbatch(
+            self.decon_cmd, f"dcn{self.subj[6:]}", log_dir, mem_gig=10
+        )
         return out_path
