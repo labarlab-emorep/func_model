@@ -1344,8 +1344,8 @@ class MotionCensor:
             df = pd.read_csv(mot_path, sep="\t")
 
             # Combine motion events into new "sum" column
-            df_cen = df.filter(regex="motion_outlier")
-            df_cen["sum"] = df_cen.iloc[:, :].sum(1)
+            df_cen = df.filter(regex="motion_outlier").copy()
+            df_cen["sum"] = df_cen.sum(axis=1)
             df_cen = df_cen.astype(int)
 
             # Invert binary censor for regular AFNI censoring
@@ -1493,7 +1493,7 @@ class WriteDecon:
         #
         epi_preproc = " ".join(self.func_dict["func-scaled"])
         reg_events = self._build_behavior("dur_mod")
-        num_events = 1 + len(self.sess_tfs.keys())
+        num_events = 1 + len(self.tf_dict.keys())
 
         # write decon command
         decon_cmd = [
@@ -1517,3 +1517,4 @@ class WriteDecon:
             f"-cbucket {self.subj_work}/{decon_name}_cbucket",
             f"-errts {self.subj_work}/{decon_name}_errts",
         ]
+        return decon_cmd

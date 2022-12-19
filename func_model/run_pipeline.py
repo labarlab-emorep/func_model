@@ -66,7 +66,7 @@ def afni_sanity_tfs(subj, sess, subj_work, subj_sess_raw):
     # Setup output dict
     sess_tfs = {}
     for tf_path in tf_all:
-        h_key = os.basename(tf_path).split("desc-")[1].split("_")[0]
+        h_key = os.path.basename(tf_path).split("desc-")[1].split("_")[0]
         sess_tfs[h_key] = tf_path
 
     return sess_tfs
@@ -119,9 +119,9 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
             "mask-probGM": /path/to/probabilistic/gm/label
             "mask-probWM": /path/to/probabilistic/WM/label
             "mask-int": /path/to/epi-anat/intersection/mask
-            "mask-min": /path/to/minimum/value/mask
             "mask-WMe": /path/to/eroded/wm/mask
             "mask-CSe": /path/to/eroded/csf/mask
+            "mask-min": /path/to/minimum/value/mask
 
     Raises
     ------
@@ -220,7 +220,7 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
     func_dict["func-scaled"] = afni.scale_epi(
         subj_work,
         proj_deriv,
-        anat_dict["mask-minimum"],
+        anat_dict["mask-min"],
         smooth_epi,
         sing_afni,
     )

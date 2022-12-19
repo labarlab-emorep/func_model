@@ -2,6 +2,7 @@
 # %%
 import os
 from func_model import run_pipeline
+from func_model import afni
 
 
 # %%
@@ -51,6 +52,9 @@ def pipeline_afni(
     )
 
     # Generate deconvolution matrics
+    write_decon = afni.WriteDecon(
+        subj, sess, subj_work, sess_func, sess_anat, sess_tfs
+    )
 
     # Run REML
 
