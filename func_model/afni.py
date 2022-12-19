@@ -1,9 +1,41 @@
 """Methods for AFNI."""
 import os
 import json
+import subprocess
 import pandas as pd
 import numpy as np
 from func_model import submit
+
+
+def _prepend_afni_sing(proj_deriv, subj_work, sing_afni):
+    """Supply singularity call for AFNI.
+
+    Setup singularity call for AFNI in DCC EmoRep environment, used
+    for prepending AFNI subprocess calls.
+
+    Parameters
+    ----------
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    subj_work : path
+        Location of working directory for intermediates
+    sing_afni : path
+        Location of AFNI singularity file
+
+    Returns
+    -------
+    list
+
+    """
+    return [
+        "singularity run",
+        "--cleanenv",
+        f"--bind {proj_deriv}:{proj_deriv}",
+        f"--bind {subj_work}:{subj_work}",
+        f"--bind {subj_work}:/opt/home",
+        sing_afni,
+    ]
 
 
 class TimingFiles:
@@ -648,6 +680,11 @@ class MakeMasks:
         self.func_dict = func_dict
         self.sing_afni = sing_afni
 
+        # Set singularity call
+        self.sing_prep = _prepend_afni_sing(
+            self.proj_deriv, self.subj_work, self.sing_afni
+        )
+
     def intersect(self, c_frac=0.5, nbr_type="NN2", n_nbr=17):
         """Create an func-anat intersection mask.
 
@@ -708,12 +745,6 @@ class MakeMasks:
                 h_out = os.path.join(self.subj_work, h_name)
                 if not os.path.exists(h_out):
                     bash_list = [
-                        "singularity run",
-                        "--cleanenv",
-                        f"--bind {self.proj_deriv}:{self.proj_deriv}",
-                        f"--bind {self.subj_work}:{self.subj_work}",
-                        f"--bind {self.subj_work}:/opt/home",
-                        self.sing_afni,
                         "3dAutomask",
                         f"-clfrac {c_frac}",
                         f"-{nbr_type}",
@@ -721,7 +752,7 @@ class MakeMasks:
                         f"-prefix {h_out}",
                         run_file,
                     ]
-                    bash_cmd = " ".join(bash_list)
+                    bash_cmd = " ".join(self.sing_prep + bash_list)
                     _ = submit.submit_subprocess(bash_cmd, h_out, "Automask")
                 auto_list.append(h_out)
 
@@ -729,35 +760,23 @@ class MakeMasks:
             union_out = os.path.join(self.subj_work, "tmp_union.nii.gz")
             if not os.path.exists(union_out):
                 bash_list = [
-                    "singularity run",
-                    "--cleanenv",
-                    f"--bind {self.proj_deriv}:{self.proj_deriv}",
-                    f"--bind {self.subj_work}:{self.subj_work}",
-                    f"--bind {self.subj_work}:/opt/home",
-                    self.sing_afni,
                     "3dmask_tool",
                     f"-inputs {' '.join(auto_list)}",
                     "-union",
                     f"-prefix {union_out}",
                 ]
-                bash_cmd = " ".join(bash_list)
+                bash_cmd = " ".join(self.sing_prep + bash_list)
                 _ = submit.submit_subprocess(bash_cmd, union_out, "Union")
 
             # Make anat-func intersection mask from the union and
             # fmriprep brain mask.
             bash_list = [
-                "singularity run",
-                "--cleanenv",
-                f"--bind {self.proj_deriv}:{self.proj_deriv}",
-                f"--bind {self.subj_work}:{self.subj_work}",
-                f"--bind {self.subj_work}:/opt/home",
-                self.sing_afni,
                 "3dmask_tool",
                 f"-input {union_out} {self.anat_dict['mask-brain']}",
                 "-inter",
                 f"-prefix {out_path}",
             ]
-            bash_cmd = " ".join(bash_list)
+            bash_cmd = " ".join(self.sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_path, "Intersect")
         return out_path
 
@@ -822,17 +841,12 @@ class MakeMasks:
 
                 # Eroded tissue mask
                 bash_list = [
-                    "singularity run",
-                    "--cleanenv",
-                    f"--bind {self.subj_work}:{self.subj_work}",
-                    f"--bind {self.subj_work}:/opt/home",
-                    self.sing_afni,
                     "3dmask_tool",
                     f"-input {bin_path}",
                     "-dilate_input -1",
                     f"-prefix {out_tiss}",
                 ]
-                bash_cmd = " ".join(bash_list)
+                bash_cmd = " ".join(self.sing_prep + bash_list)
                 _ = submit.submit_subprocess(
                     bash_cmd, bin_path, f"Erode {tiss}"
                 )
@@ -873,36 +887,25 @@ class MakeMasks:
                 h_name_bin = "tmp_bin_" + os.path.basename(run_file)
                 h_out_bin = os.path.join(self.subj_work, h_name_bin)
                 bash_list = [
-                    "singularity run",
-                    "--cleanenv",
-                    f"--bind {self.proj_deriv}:{self.proj_deriv}",
-                    f"--bind {self.subj_work}:{self.subj_work}",
-                    f"--bind {self.subj_work}:/opt/home",
-                    self.sing_afni,
                     "3dcalc",
                     "-overwrite",
                     f"-a {run_file}",
                     "-expr 1",
                     f"-prefix {h_out_bin}",
                 ]
-                bash_cmd = " ".join(bash_list)
+                bash_cmd = " ".join(self.sing_prep + bash_list)
                 _ = submit.submit_subprocess(bash_cmd, h_out_bin, "Binary EPI")
 
                 # Make a mask for >min values
                 h_name_min = "tmp_min_" + os.path.basename(run_file)
                 h_out_min = os.path.join(self.subj_work, h_name_min)
                 bash_list = [
-                    "singularity run",
-                    "--cleanenv",
-                    f"--bind {self.subj_work}:{self.subj_work}",
-                    f"--bind {self.subj_work}:/opt/home",
-                    self.sing_afni,
                     "3dTstat",
                     "-min",
                     f"-prefix {h_out_min}",
                     h_out_bin,
                 ]
-                bash_cmd = " ".join(bash_list)
+                bash_cmd = " ".join(self.sing_prep + bash_list)
                 min_list.append(
                     submit.submit_subprocess(
                         bash_cmd, h_out_min, "Minimum EPI"
@@ -913,32 +916,22 @@ class MakeMasks:
             h_name_mean = f"tmp_{self.subj}_{self.sess}_desc-mean_mask.nii.gz"
             h_out_mean = os.path.join(self.subj_work, h_name_mean)
             bash_list = [
-                "singularity run",
-                "--cleanenv",
-                f"--bind {self.subj_work}:{self.subj_work}",
-                f"--bind {self.subj_work}:/opt/home",
-                self.sing_afni,
                 "3dMean",
                 "-datum short",
                 f"-prefix {h_out_mean}",
                 f"{' '.join(min_list)}",
             ]
-            bash_cmd = " ".join(bash_list)
+            bash_cmd = " ".join(self.sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, h_out_mean, "Mean EPI")
 
             # Generate mask of non-zero voxels
             bash_list = [
-                "singularity run",
-                "--cleanenv",
-                f"--bind {self.subj_work}:{self.subj_work}",
-                f"--bind {self.subj_work}:/opt/home",
-                self.sing_afni,
                 "3dcalc",
                 f"-a {h_out_mean}",
                 "-expr 'step(a-0.999)'",
                 f"-prefix {out_path}",
             ]
-            bash_cmd = " ".join(bash_list)
+            bash_cmd = " ".join(self.sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_path, "MinVal EPI")
         return out_path
 
@@ -998,19 +991,14 @@ def smooth_epi(
             # Smooth data
             print(f"\tStarting smoothing of {epi_path}")
             bash_list = [
-                "singularity run",
-                "--cleanenv",
-                f"--bind {proj_deriv}:{proj_deriv}",
-                f"--bind {subj_work}:{subj_work}",
-                f"--bind {subj_work}:/opt/home",
-                sing_afni,
                 "3dmerge",
                 f"-1blur_fwhm {blur_size}",
                 "-doall",
                 f"-prefix {out_path}",
                 epi_path,
             ]
-            bash_cmd = " ".join(bash_list)
+            sing_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+            bash_cmd = " ".join(sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
 
         # Update return list
@@ -1071,27 +1059,16 @@ def scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
 
             # Determine mean values
             bash_list = [
-                "singularity run",
-                "--cleanenv",
-                f"--bind {proj_deriv}:{proj_deriv}",
-                f"--bind {subj_work}:{subj_work}",
-                f"--bind {subj_work}:/opt/home",
-                sing_afni,
                 "3dTstat",
                 f"-prefix {out_tstat}",
                 epi_path,
             ]
-            bash_cmd = " ".join(bash_list)
+            sing_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+            bash_cmd = " ".join(sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
 
             # Scale values
             bash_list = [
-                "singularity run",
-                "--cleanenv",
-                f"--bind {proj_deriv}:{proj_deriv}",
-                f"--bind {subj_work}:{subj_work}",
-                f"--bind {subj_work}:/opt/home",
-                sing_afni,
                 "3dcalc",
                 f"-a {epi_path}",
                 f"-b {out_tstat}",
@@ -1099,7 +1076,7 @@ def scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
                 "-expr 'c * min(200, a/b*100)*step(a)*step(b)'",
                 f"-prefix {out_path}",
             ]
-            bash_cmd = " ".join(bash_list)
+            bash_cmd = " ".join(sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_path, "Scale run")
 
         # Update return list
@@ -1190,7 +1167,7 @@ class MotionCensor:
         if not isinstance(func_motion, list):
             raise TypeError("func_motion requires list type")
 
-        print("\nMaking motion, censor files ...")
+        print("\nInitializing MotionCensor")
         try:
             subj, sess, task, run, desc, suff = os.path.basename(
                 func_motion[0]
@@ -1208,7 +1185,7 @@ class MotionCensor:
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
 
-    def _write_df(self, df_out, name):
+    def _write_df(self, df_out, name, col_names=None):
         """Write dataframe to output location.
 
         Special output formatting for AFNI compatibility.
@@ -1220,6 +1197,8 @@ class MotionCensor:
         name : str
             Identifier, will be written
             to BIDS description field
+        col_names : list, optional
+            Select columns to write out
 
         Returns
         -------
@@ -1236,6 +1215,7 @@ class MotionCensor:
             index=False,
             header=False,
             float_format="%.6f",
+            columns=col_names,
         )
         return out_path
 
@@ -1366,9 +1346,9 @@ class MotionCensor:
 
         # Combine run info, write out
         df_cen = pd.concat(censor_cat, ignore_index=True)
-        censor_out = self._write_df(df_cen, "censor")
+        censor_out = self._write_df(df_cen, "censor", ["sum"])
         df_cen_inv = pd.concat(censor_inv, ignore_index=True)
-        censor_inv = self._write_df(df_cen_inv, "censorInv")
+        censor_inv = self._write_df(df_cen_inv, "censorInv", ["sum"])
         self.df_censor = df_cen
         return (censor_out, censor_inv)
 
@@ -1418,85 +1398,219 @@ class WriteDecon:
 
     """
 
-    def __init__(self, subj, sess, subj_work, sess_func, sess_anat, sess_tfs):
+    def __init__(
+        self,
+        subj,
+        sess,
+        proj_deriv,
+        subj_work,
+        sess_func,
+        sess_anat,
+        sess_tfs,
+        sing_afni,
+    ):
         """Title.
 
         Desc.
 
         """
+        print("\nInitializing WriteDecon")
         self.subj = subj
         self.sess = sess
+        self.proj_deriv = proj_deriv
         self.subj_work = subj_work
         self.func_dict = sess_func
         self.anat_dict = sess_anat
         self.tf_dict = sess_tfs
+        self.sing_afni = sing_afni
 
-    def _build_censor_ts(self):
+        #
+        self.afni_prep = _prepend_afni_sing(
+            self.proj_deriv, self.subj_work, self.sing_afni
+        )
+
+    def _build_censor_ts(self, count_beh):
         """Title.
 
         Desc.
 
         """
-        pass
+        print("\t\tBuilding censor waveform ...")
 
-    def _build_behavior(self, basis_func):
+        #
+        out_name = os.path.basename(self.func_dict["func-inv"]).replace(
+            "Inv_timeseries", "_HRF"
+        )
+        out_path = os.path.join(self.subj_work, out_name)
+
+        #
+        count_beh += 1
+        if not os.path.exists(out_path):
+
+            # find total length of scan in seconds
+            sess_info = self._get_sess_info()
+
+            # ideal HRF - boxcar
+            len_tr = sess_info["len_tr"]
+            bash_list = [
+                "3dDeconvolve",
+                "-polort -1",
+                f"-nodata 10 {len_tr}",
+                "-num_stimts 1",
+                f"-stim_times 1 1D:0 'BLOCK({len_tr}, 1)'",
+                f"-x1D {self.subj_work}/Classic_HRF.1D",
+                "-x1D_stop",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            # bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(
+                bash_cmd, f"{self.subj_work}/Classic_HRF.1D", "Classic HRF"
+            )
+
+            # convolve HRF with censor file
+            bash_list = [
+                "waver",
+                f"-FILE {len_tr} {self.subj_work}/Classic_HRF.1D",
+                "-peak 1",
+                f"-input {self.func_dict['func-inv']}",
+                f"-numout {sess_info['sum_vol']}",
+                f"> {out_path}",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            # bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_path, "Censor TS")
+
+        #
+        reg_censor_list = [
+            f"-stim_file {count_beh} {out_path}",
+            f"-stim_base {count_beh}",
+            f"-stim_label {count_beh} mot_cens",
+        ]
+        reg_censor = " ".join(reg_censor_list)
+
+        return (reg_censor, count_beh)
+
+    def _get_sess_info(self):
+        """Title."""
+        #
+        bash_list = ["3dinfo", f"-tr {self.func_dict['func-scaled'][0]}"]
+        bash_cmd = " ".join(self.afni_prep + bash_list)
+        # bash_cmd = f"3dinfo -tr {self.func_dict['func-scaled'][0]}"
+
+        #
+        h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+        h_out, h_err = h_sp.communicate()
+        h_sp.wait()
+        len_tr = float(h_out.decode("utf-8").strip())
+
+        #
+        run_len = []
+        num_vol = []
+        for epi_file in self.func_dict["func-scaled"]:
+            # for epi_file in self.func_dict["func-scaled"]:
+            bash_list = ["3dinfo", f"-ntimes {epi_file}"]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            # bash_cmd = f"3dinfo -ntimes {epi_file}"
+
+            #
+            h_sp = subprocess.Popen(
+                bash_cmd, shell=True, stdout=subprocess.PIPE
+            )
+            h_out, h_err = h_sp.communicate()
+            h_sp.wait()
+
+            #
+            h_vol = int(h_out.decode("utf-8").strip())
+            run_len.append(str(h_vol * len_tr))
+            num_vol.append(h_vol)
+
+        #
+        sum_vol = sum(num_vol)
+        return {
+            "len_tr": len_tr,
+            "run_len": run_len,
+            "run_vol": num_vol,
+            "sum_vol": sum_vol,
+        }
+
+    def _build_behavior(self, count_beh):
         """Title.
 
         Desc.
 
         Parameters
         ----------
-        basis_func : str
-            [dur_mod | ind_mod | two_gam]
+
+
+        Returns
+        -------
 
         Raises
         ------
         ValueError
 
         """
-        # Validate
-        valid_list = ["dur_mod", "ind_mod", "two_gam"]
-        if basis_func not in valid_list:
-            raise ValueError("Invalid basis_func parameter")
-        model_meth = getattr(self, f"_basis_{basis_func}")
 
-        c_beh = 2
+        def _beh_dur_mod(count_beh, tf_path):
+            """Title."""
+            return f"-stim_times_AM1 {count_beh} {tf_path} 'dmBLOCK(1)'"
+
+        def _beh_ind_mod(count_beh, tf_path):
+            """Title."""
+            return f"-stim_times_IM {count_beh} {tf_path} 'dmBLOCK(1)'"
+
+        #
+        print("\t\tBuilding behavior regressors ...")
+        model_meth = {"dur_mod": _beh_dur_mod, "ind_mod": _beh_ind_mod}
+
+        #
         model_beh = []
         for tf_name, tf_path in self.tf_dict.items():
-            model_beh.append(model_meth(c_beh, tf_path))
-            model_beh.append(f"-stim_label {c_beh} {tf_name}")
-            c_beh += 1
+            count_beh += 1
+            model_beh.append(model_meth[self.basis_func](count_beh, tf_path))
+            model_beh.append(f"-stim_label {count_beh} {tf_name}")
 
-    def _basis_dur_mod(self, count_beh, tf_path):
-        """Title."""
-        return f"-stim_times_AM1 {count_beh} {tf_path} 'dmBLOCK(1)'"
+        #
+        reg_events = " ".join(model_beh)
+        return (reg_events, count_beh)
 
-    def _basis_ind_mod(self, count_beh, tf_path):
-        """Title."""
-        return f"-stim_times_IM {count_beh} {tf_path} 'dmBLOCK(1)'"
-
-    def sanity_decon(self):
+    def write_decon_sanity(
+        self, basis_func="dur_mod", decon_name="decon_sanity"
+    ):
         """Title.
 
         Desc.
 
-        """
-        decon_name = "decon_sanity"
+        Parameters
+        ----------
+        basis_func : str, optional
+            [dur_mod | ind_mod | two_gam]
 
-        # motion
+        Attributes
+        ----------
+
+        """
+        # Validate
+        valid_list = ["dur_mod", "ind_mod", "two_gam"]
+        if basis_func not in valid_list:
+            raise ValueError("Invalid basis_func parameter")
+
+        print("\tBuilding 3dDeconvolve command ...")
+        self.basis_func = basis_func
+        self.decon_name = decon_name
+
+        #
+        epi_preproc = " ".join(self.func_dict["func-scaled"])
         reg_motion_mean = self.func_dict["func-mean"]
         reg_motion_deriv = self.func_dict["func-deriv"]
 
         # convolve inverted censor with HRF
-        reg_censor = self._build_censor_ts()
-
-        #
-        epi_preproc = " ".join(self.func_dict["func-scaled"])
-        reg_events = self._build_behavior("dur_mod")
-        num_events = 1 + len(self.tf_dict.keys())
+        count_beh = 0
+        reg_censor, count_beh = self._build_censor_ts(count_beh)
+        reg_events, count_beh = self._build_behavior(count_beh)
 
         # write decon command
-        decon_cmd = [
+        decon_list = [
             "3dDeconvolve",
             "-x1D_stop",
             "-GOFORIT",
@@ -1506,7 +1620,7 @@ class WriteDecon:
             "-polort A",
             "-float",
             "-local_times",
-            f"-num_stimts {num_events}",
+            f"-num_stimts {count_beh}",
             reg_censor,
             reg_events,
             "-jobs 1",
@@ -1517,4 +1631,38 @@ class WriteDecon:
             f"-cbucket {self.subj_work}/{decon_name}_cbucket",
             f"-errts {self.subj_work}/{decon_name}_errts",
         ]
-        return decon_cmd
+        self.decon_cmd = " ".join(self.afni_prep + decon_list)
+        # self.decon_cmd = " ".join(decon_list)
+
+        #
+        decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
+        with open(decon_script, "w") as script:
+            script.write(self.decon_cmd)
+
+    def generate_decon_sanity(self, log_dir):
+        """Title.
+
+        Desc.
+
+        """
+        # Check for required attribute, trigger
+        if not hasattr(self, "decon_cmd"):
+            raise AttributeError(
+                "No decon_cmd detected, try WriteDecon.write_decon_sanity."
+            )
+
+        print("\tRunning 3dDeconvolve command ...")
+        out_file = f"{self.decon_name}_stats.REML_cmd"
+        out_path = os.path.join(self.subj_work, out_file)
+        if not os.path.exists(out_path):
+            _, _ = submit.submit_sbatch(
+                self.decon_cmd, f"dcn{self.subj[6:]}", log_dir
+            )
+
+            # h_sp = subprocess.Popen(
+            #     self.decon_cmd, shell=True, stdout=subprocess.PIPE
+            # )
+            # h_out, h_err = h_sp.communicate()
+            # h_sp.wait()
+
+        return out_path

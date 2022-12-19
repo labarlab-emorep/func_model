@@ -174,18 +174,31 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
         )
 
     # Find preprocessed EPI files
-    subj_deriv_fsl = os.path.join(
-        proj_deriv, f"pre_processing/fsl_denoise/{subj}/{sess}/func"
-    )
+    # subj_deriv_fsl = os.path.join(
+    #     proj_deriv, f"pre_processing/fsl_denoise/{subj}/{sess}/func"
+    # )
+    # run_files = [
+    #     x
+    #     for x in glob.glob(f"{subj_deriv_fsl}/*tfiltMasked_bold.nii.gz")
+    #     if not fnmatch.fnmatch(x, "*task-rest*")
+    # ]
+    # run_files.sort()
+    # if not run_files:
+    #     raise FileNotFoundError(
+    #         "Expected to find fsl_denoise files *tfiltMasked_bold.nii.gz"
+    #     )
+
+    # Find preprocessed EPI files
+    subj_func_fp = os.path.join(subj_deriv_fp, sess, "func")
     run_files = [
         x
-        for x in glob.glob(f"{subj_deriv_fsl}/*tfiltMasked_bold.nii.gz")
+        for x in glob.glob(f"{subj_func_fp}/*_res-2_desc-preproc_bold.nii.gz")
         if not fnmatch.fnmatch(x, "*task-rest*")
     ]
     run_files.sort()
     if not run_files:
         raise FileNotFoundError(
-            "Expected to find fsl_denoise files *tfiltMasked_bold.nii.gz"
+            "Expected to find fmriprep files *res-2_desc-preproc_bold.nii.gz"
         )
 
     # Check that each preprocessed file has a motion file
