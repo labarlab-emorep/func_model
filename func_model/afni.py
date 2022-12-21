@@ -1399,9 +1399,68 @@ class MotionCensor:
 
 
 class WriteDecon:
-    """Title.
+    """Write an AFNI 3dDeconvolve command.
 
-    Desc.
+    Write 3dDeconvolve and then execute it to generate
+    matrices and 3dREMLfit script.
+
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    subj_work : path
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    sess_func : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed functional files
+    sess_anat : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed anatomical files
+    sess_tfs : dict
+        Contains reference names (key) and paths (value) to
+        session AFNI-style timing files
+    sing_afni : path
+        Location of AFNI singularity file
+
+    Attributes
+    ----------
+    afni_prep : list
+        First part of subprocess call for AFNI singularity
+    anat_dict : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed anatomical files
+    basis_func : str
+        [dur_mod | ind_mod | two_gam]
+        Desired basis function for behaviors in 3dDeconvolve
+    decon_cmd : str
+        Generated 3dDeconvolve command
+    decon_name : str
+        Prefix for output deconvolve files
+    func_dict : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed functional files
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    sing_afni : path
+        Location of AFNI singularity file
+    subj : str
+        BIDS subject identifier
+    subj_work : path
+        Location of working directory for intermediates
+    tf_dict : dict
+        Contains reference names (key) and paths (value) to
+        session AFNI-style timing files
+
+    Methods
+    -------
+    write_decon_sanity(decon_name: str = "decon_sanity")
+        Write a 3dDeconvolve command for sanity checks
+    generate_reml(log_dir: path)
+        Execute 3dDeconvolve to generate 3dREMLfit command
 
     """
 
@@ -1422,8 +1481,6 @@ class WriteDecon:
         ----------
         subj : str
             BIDS subject identifier
-        sess : str
-            BIDS session identifier
         subj_work : path
             Location of working directory for intermediates
         proj_deriv : path
@@ -1445,11 +1502,13 @@ class WriteDecon:
         ----------
         afni_prep : list
             First part of subprocess call for AFNI singularity
+        basis_func : str
+            [dur_mod | ind_mod | two_gam]
+            Desired basis function for behaviors in 3dDeconvolve
 
         """
         print("\nInitializing WriteDecon")
         self.subj = subj
-        self.sess = sess
         self.proj_deriv = proj_deriv
         self.subj_work = subj_work
         self.func_dict = sess_func
@@ -1457,29 +1516,52 @@ class WriteDecon:
         self.tf_dict = sess_tfs
         self.sing_afni = sing_afni
 
-        # Start afni singularity call
+        # Set basis function, start singulartiy call
+        self.basis_func = "dur_mod"
         self.afni_prep = _prepend_afni_sing(
             self.proj_deriv, self.subj_work, self.sing_afni
         )
 
     def _build_censor_ts(self, count_beh):
-        """Title.
+        """Make a censor regressor argument.
 
-        Desc.
+        Build a classic HRF and convolve it with the censor vector
+        to simulate change in BOLD from motion. This is done instead
+        of removing the motion volumes in order to keep a
+        continuous timeseries.
+
+        Parameters
+        ----------
+        count_beh : int
+            On-going count to fill 3dDeconvolve -num_stimts
+
+        Returns
+        -------
+        tuple
+            [0] = censor regressor for 3dDeconvolve
+            [1] = count
+
+        Raises
+        ------
+        KeyError
+            func_dict missing func-inv key
 
         """
-        print("\t\tBuilding censor waveform ...")
+        # Validate reqs
+        if "func-inv" not in self.func_dict:
+            raise KeyError("Expected func-inv key in func_dict")
 
-        #
+        # Setup output path and name
+        print("\t\tBuilding censor waveform ...")
         out_name = os.path.basename(self.func_dict["func-inv"]).replace(
             "Inv_timeseries", "_HRF"
         )
         out_path = os.path.join(self.subj_work, out_name)
 
-        # find total length of scan in seconds
+        # Get session info, for TR length, number of volumes
         sess_info = self._get_sess_info()
 
-        # ideal HRF - boxcar
+        # Generate classic HRF
         len_tr = sess_info["len_tr"]
         bash_list = [
             "3dDeconvolve",
@@ -1495,7 +1577,8 @@ class WriteDecon:
             bash_cmd, f"{self.subj_work}/Classic_HRF.1D", "Classic HRF"
         )
 
-        # convolve HRF with censor file
+        # Convolve HRF with censor file
+        waver_out = os.path.join(self.subj_work, "tmp_waver.1D")
         bash_list = [
             "waver",
             f"-FILE {len_tr} {self.subj_work}/Classic_HRF.1D",
@@ -1505,20 +1588,13 @@ class WriteDecon:
             f"> {self.subj_work}/tmp_waver.1D",
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
-        _ = submit.submit_subprocess(
-            bash_cmd, f"{self.subj_work}/tmp_waver.1D", "Censor TS temp"
-        )
+        _ = submit.submit_subprocess(bash_cmd, waver_out, "Censor TS temp")
 
-        #
-        bash_list = [
-            f"tail -n {sess_info['sum_vol']}",
-            f"{self.subj_work}/tmp_waver.1D",
-            f"> {out_path}",
-        ]
-        bash_cmd = " ".join(bash_list)
+        # Manage talkative singularity
+        bash_cmd = f"tail -n {sess_info['sum_vol']} {waver_out} > {out_path}"
         _ = submit.submit_subprocess(bash_cmd, out_path, "Censor TS")
 
-        #
+        # Make baseline regressor argument
         count_beh += 1
         reg_censor_list = [
             f"-stim_file {count_beh} {out_path}",
@@ -1530,49 +1606,65 @@ class WriteDecon:
         return (reg_censor, count_beh)
 
     def _get_sess_info(self):
-        """Title."""
-        #
-        bash_list = [
-            "fslhd",
-            self.func_dict["func-scaled"][0],
-            "| grep pixdim4",
-            "| awk '{print $2}'",
-        ]
-        bash_cmd = " ".join(bash_list)
+        """Return dict of TR, volume info.
 
-        #
+        Returns
+        -------
+        dict
+
+        Raises
+        ------
+        KeyError
+            Missing func-scaled key in func_dict
+        ValueError
+            No value in func_dict[func-scaled]
+
+        """
+        # Check for EPI data
+        if "func-scaled" not in self.func_dict:
+            raise KeyError("Expected func-scaled key in func_dict")
+        if len(self.func_dict["func-scaled"]) < 1:
+            raise ValueError(
+                "Expected at least one value in func_dict[func-scaled]"
+            )
+
+        # Find TR length
+        bash_cmd = f"""
+            fslhd \
+                {self.func_dict["func-scaled"][0]} | \
+                grep 'pixdim4' | \
+                awk '{{print $2}}
+        """
         h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
         h_out, h_err = h_sp.communicate()
         h_sp.wait()
         len_tr = float(h_out.decode("utf-8").strip())
 
-        #
+        # Get number of volumes and length (seconds) of each run
         run_len = []
         num_vol = []
         for epi_file in self.func_dict["func-scaled"]:
-            # for epi_file in self.func_dict["func-scaled"]:
-            bash_list = [
-                "fslhd",
-                self.func_dict["func-scaled"][0],
-                "| grep dim4",
-                "| head -n 1",
-                "| awk '{print $2}'",
-            ]
-            bash_cmd = " ".join(bash_list)
 
-            #
+            # Extract number of volumes
+            bash_cmd = f"""
+                fslhd \
+                    {self.func_dict["func-scaled"][0]} | \
+                    grep dim4 | \
+                    head -n 1 | \
+                    awk '{{print $2}}
+            """
             h_sp = subprocess.Popen(
                 bash_cmd, shell=True, stdout=subprocess.PIPE
             )
             h_out, h_err = h_sp.communicate()
             h_sp.wait()
 
-            #
+            # Interpret, get number of volumes and run length
             h_vol = int(h_out.decode("utf-8").strip())
             run_len.append(str(h_vol * len_tr))
             num_vol.append(h_vol)
 
-        #
+        # Find total number of volumes
         sum_vol = sum(num_vol)
         return {
             "len_tr": len_tr,
@@ -1582,80 +1674,95 @@ class WriteDecon:
         }
 
     def _build_behavior(self, count_beh):
-        """Title.
+        """Build a behavior regressor argument
 
-        Desc.
+        Build a 3dDeconvolve behavior regressor accounting
+        for desired basis function.
 
         Parameters
         ----------
-
+        count_beh : int
+            On-going count to fill 3dDeconvolve -num_stimts
 
         Returns
         -------
+        tuple
+            [0] = behavior regressor for 3dDeconvolve
+            [1] = count
 
         Raises
         ------
         ValueError
+            Unsupported basis function
 
         """
+        # Validate
+        if self.basis_func == "two_gam":
+            return ValueError("Basis function two_gam not currently supported")
 
+        # Set inner functions for building different basis functions
         def _beh_dur_mod(count_beh, tf_path):
-            """Title."""
             return f"-stim_times_AM1 {count_beh} {tf_path} 'dmBLOCK(1)'"
 
         def _beh_ind_mod(count_beh, tf_path):
-            """Title."""
             return f"-stim_times_IM {count_beh} {tf_path} 'dmBLOCK(1)'"
 
-        #
-        print("\t\tBuilding behavior regressors ...")
+        # Map self.basis_func value to inner functions
         model_meth = {"dur_mod": _beh_dur_mod, "ind_mod": _beh_ind_mod}
 
-        #
+        # Build regressor for each behavior
+        print("\t\tBuilding behavior regressors ...")
         model_beh = []
         for tf_name, tf_path in self.tf_dict.items():
             count_beh += 1
             model_beh.append(model_meth[self.basis_func](count_beh, tf_path))
             model_beh.append(f"-stim_label {count_beh} {tf_name}")
 
-        #
+        # Combine into string for 3dDeconvolve parameter
         reg_events = " ".join(model_beh)
         return (reg_events, count_beh)
 
-    def write_decon_sanity(
-        self, basis_func="dur_mod", decon_name="decon_sanity"
-    ):
-        """Title.
+    def write_decon_sanity(self, decon_name="decon_sanity"):
+        """Write an AFNI 3dDeconvolve command for sanity checking.
 
-        Desc.
+        Build 3dDeconvolve command with minimal support for different
+        basis functions.
 
         Parameters
         ----------
-        basis_func : str, optional
-            [dur_mod | ind_mod | two_gam]
+        decon_name : str, optional
+            Prefix for output deconvolve files
 
         Attributes
         ----------
-        basis_func
-        decon_name
-        decon_cmd
+        decon_name : str
+            Prefix for output deconvolve files
+        decon_cmd : str
+            Generated 3dDeconvolve command
+
+        Raises
+        ------
+        ValueError
+            Unsupported basis_func value
 
         """
         # Validate
         valid_list = ["dur_mod", "ind_mod", "two_gam"]
-        if basis_func not in valid_list:
+        if self.basis_func not in valid_list:
             raise ValueError("Invalid basis_func parameter")
 
-        print("\tBuilding 3dDeconvolve command ...")
-        self.basis_func = basis_func
-        self.decon_name = decon_name
+        for key in ["func-scaled", "func-mean", "func-deriv"]:
+            if key not in self.func_dict:
+                raise KeyError(f"Expected {key} key in func_dict")
 
-        #
+        # Set variables and paths
+        print("\tBuilding 3dDeconvolve command ...")
+        self.decon_name = decon_name
         epi_preproc = " ".join(self.func_dict["func-scaled"])
         reg_motion_mean = self.func_dict["func-mean"]
         reg_motion_deriv = self.func_dict["func-deriv"]
 
-        # convolve inverted censor with HRF
+        # Start counter for num_stimts, build regressors
         count_beh = 0
         reg_censor, count_beh = self._build_censor_ts(count_beh)
         reg_events, count_beh = self._build_behavior(count_beh)
@@ -1689,13 +1796,32 @@ class WriteDecon:
         with open(decon_script, "w") as script:
             script.write(self.decon_cmd)
 
-    def generate_decon_sanity(self, log_dir):
-        """Title.
+    def generate_reml(self, log_dir):
+        """Generate matrices and 3dREMLfit command.
 
-        Desc.
+        Run the 3dDeconvolve command to generate the 3dREMLfit
+        command and required input.
+
+        Parameters
+        ----------
+        log_dir : path
+            Output location for logs
+
+        Returns
+        -------
+        path
+            Location of 3dREMLfit script
+
+        Raises
+        ------
+        AttributeError
+            Missing decon_cmd
+            Missing decon_name
+        ValueError
+            Output 3dREMLfit script unexpected length
 
         """
-        # Check for required attribute, trigger
+        # Check for required attributes
         if not hasattr(self, "decon_cmd"):
             raise AttributeError(
                 "No decon_cmd detected, try WriteDecon.write_decon_sanity."
@@ -1717,7 +1843,7 @@ class WriteDecon:
 
         # Check generated file length
         with open(out_path, "r") as rf:
-            for line_count, line_info in enumerate(rf):
+            for line_count, _ in enumerate(rf):
                 pass
         if line_count + 1 != 7:
             raise ValueError(f"Expected 7 lines in {out_path}")

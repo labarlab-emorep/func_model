@@ -54,7 +54,6 @@ def pipeline_afni(
     # Generate deconvolution matrics, REML command
     write_decon = afni.WriteDecon(
         subj,
-        sess,
         subj_work,
         proj_deriv,
         sess_func,
@@ -63,7 +62,7 @@ def pipeline_afni(
         sing_afni,
     )
     write_decon.write_decon_sanity()
-    reml_path = write_decon.generate_decon_sanity(log_dir)
+    reml_path = write_decon.generate_reml(log_dir)
 
     # Run REML
     sess_func["func-decon"] = afni.RunDecon(
