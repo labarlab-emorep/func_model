@@ -6,26 +6,31 @@ import textwrap
 
 
 def submit_subprocess(bash_cmd, chk_path, job_name):
-    """Title.
+    """Submit bash command as subprocess.
 
-    Desc.
+    Check for output file after submission, print stdout
+    and stderr if output file is not found.
 
     Parameters
     ----------
-    bash_cmd
-    chk_path
-    job_name
+    bash_cmd : str
+        Bash command
+    chk_path : path
+        Location of generated file
+    job_name : str
+        Identifier for error messages
 
     Returns
     -------
     path
+        Location of generated file
 
     Raises
     ------
     FileNotFoundError
+        Expected output file not detected
 
     """
-    # Run command and check for output
     h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
     h_out, h_err = h_sp.communicate()
     h_sp.wait()
@@ -81,6 +86,7 @@ def submit_sbatch(
     -----
     Avoid using double quotes in <bash_cmd> (particularly relevant
     with AFNI) to avoid conflict with --wrap syntax.
+
     """
     sbatch_cmd = f"""
         sbatch \
@@ -103,46 +109,37 @@ def submit_sbatch(
 
 
 def schedule_afni(
-    subj,
-    sess,
-    proj_rawdata,
-    proj_deriv,
-    work_deriv,
-    sing_afni,
-    log_dir,
+    subj, sess, proj_rawdata, proj_deriv, work_deriv, sing_afni, log_dir,
 ):
     """Write and schedule pipeline.
 
     Generate a python script that controls preprocessing. Submit
-    the work on schedule resources.
+    the work on schedule resources. Writes parent script to:
+        log_dir/run_model-afni_subj_sess.py
 
     Parameters
     ----------
-
     subj : str
         BIDS subject identifier
     sess : str
-
+        BIDS session identifier
+    proj_rawdata : path
+        Location of BIDS-organized project rawdata
     proj_deriv : path
-        Location of project derivatives, e.g.
-        /hpc/group/labarlab/EmoRep_BIDS/derivatives
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
     work_deriv : path
-        Location of work derivatives, e.g.
-        /work/foo/EmoRep_BIDS/derivatives
-    sing_afni : path, str
-        Location of afni singularity iamge
+        Parent location for writing pipeline intermediates
+    sing_afni : path
+        Location of AFNI singularity file
     log_dir : path
-        Location for writing logs
+        Output location for log files and scripts
 
     Returns
     -------
     tuple
         [0] subprocess stdout
         [1] subprocess stderr
-
-    Notes
-    -----
-
 
     """
     # Setup software derivatives dirs, for working
@@ -154,6 +151,8 @@ def schedule_afni(
     proj_afni = os.path.join(proj_deriv, "model_afni")
     if not os.path.exists(proj_afni):
         os.makedirs(proj_afni)
+
+    # TODO add job name e.g. sanity to trigger different workflows
 
     # Write parent python script
     sbatch_cmd = f"""\
@@ -168,7 +167,7 @@ def schedule_afni(
         import sys
         from func_model import workflow
 
-        workflow.pipeline_afni(
+        _, _, _ = workflow.pipeline_afni(
             "{subj}",
             "{sess}",
             "{proj_rawdata}",
@@ -183,10 +182,10 @@ def schedule_afni(
     py_script = f"{log_dir}/run_model-afni_{subj}_{sess}.py"
     with open(py_script, "w") as ps:
         ps.write(sbatch_cmd)
+
+    # Execute script
     h_sp = subprocess.Popen(
-        f"sbatch {py_script}",
-        shell=True,
-        stdout=subprocess.PIPE,
+        f"sbatch {py_script}", shell=True, stdout=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj}")
