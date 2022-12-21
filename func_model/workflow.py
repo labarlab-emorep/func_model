@@ -66,6 +66,16 @@ def pipeline_afni(
     reml_path = write_decon.generate_decon_sanity(log_dir)
 
     # Run REML
+    sess_func["func-decon"] = afni.RunDecon(
+        subj,
+        subj_work,
+        proj_deriv,
+        reml_path,
+        sess_anat,
+        sess_func,
+        sing_afni,
+        log_dir,
+    )
 
 
 def pipeline_fsl():

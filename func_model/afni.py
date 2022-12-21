@@ -825,8 +825,7 @@ class MakeMasks:
 
             # Setup final path
             out_tiss = os.path.join(
-                self.subj_work,
-                f"{self.subj}_label-{tiss}e_mask.nii.gz",
+                self.subj_work, f"{self.subj}_label-{tiss}e_mask.nii.gz",
             )
             if not os.path.exists(out_tiss):
 
@@ -944,11 +943,7 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work,
-    proj_deriv,
-    func_preproc,
-    sing_afni,
-    blur_size=3,
+    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1705,6 +1700,7 @@ class WriteDecon:
                 "No decon_name detected, try WriteDecon.write_decon_sanity."
             )
 
+        # Execute decon_cmd
         print("\tRunning 3dDeconvolve command ...")
         out_path = os.path.join(
             self.subj_work, f"{self.decon_name}_stats.REML_cmd"
@@ -1712,4 +1708,155 @@ class WriteDecon:
         _, _ = submit.submit_sbatch(
             self.decon_cmd, f"dcn{self.subj[6:]}", log_dir, mem_gig=10
         )
+
+        # Check generated file length
+        with open(out_path, "r") as rf:
+            for line_count, line_info in enumerate(rf):
+                pass
+        if line_count + 1 != 7:
+            raise ValueError(f"Expected 7 lines in {out_path}")
+        return out_path
+
+
+class RunDecon:
+    """Title.
+
+    Desc.
+
+    """
+
+    def __init__(
+        self,
+        subj,
+        subj_work,
+        proj_deriv,
+        reml_path,
+        sess_anat,
+        sess_func,
+        sing_afni,
+        log_dir,
+    ):
+        """Title.
+
+        Desc.
+
+        """
+        #
+        self.subj = subj
+        self.subj_work = subj_work
+        self.reml_path = reml_path
+        self.sess_anat = sess_anat
+        self.sess_func = sess_func
+        self.sing_afni = sing_afni
+        self.log_dir = log_dir
+
+        #
+        self.afni_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+        self.exec_reml()
+
+    def _make_nuiss(self):
+        """Title.
+
+        Desc.
+
+        """
+        # Validate
+        if "mask-WMe" not in self.sess_anat:
+            raise KeyError("Expected mask-WMe key in sess_anat")
+        if "func-scaled" not in self.sess_func:
+            raise KeyError("Expected func-scaled key in sess_func")
+
+        #
+        h_name = os.path.basename(self.sess_anat["mask-WMe"])
+        out_path = os.path.join(
+            self.subj_work, h_name.replace("label-WMe", "desc-nuiss")
+        )
+        if not os.path.exists(out_path):
+
+            #
+            out_tcat = os.path.join(self.subj_work, "tmp_tcat_all-runs.nii.gz")
+            bash_list = [
+                "3dTcat",
+                f"-prefix {out_tcat}",
+                " ".join(self.sess_func["func-scaled"]),
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_tcat, "Tcat runs")
+
+            #
+            out_erode = os.path.join(
+                self.subj_work, "tmp_eroded_all-runs.nii.gz"
+            )
+            bash_list = [
+                "3dcalc",
+                f"-a {out_tcat}",
+                f"-b {self.sess_anat['mask-WMe']}",
+                "-expr 'a*bool(b)'",
+                "-datum float",
+                f"-prefix {out_erode}",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_erode, "Erode")
+
+            #
+            bash_list = [
+                "3dmerge",
+                "-1blur_fwhm 20",
+                "-doall",
+                f"-prefix {out_path}",
+                out_erode,
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_erode, "Erode")
+
+        return out_path
+
+    def exec_reml(self):
+        """Title.
+
+        Desc.
+
+        """
+        #
+        out_path = self.reml_path.replace(".REML_cmd", "_REML+tlrc.HEAD")
+        if os.path.exists(out_path):
+            return out_path
+
+        # Extract reml command from generated reml_path
+        tail_path = os.path.join(self.subj_work, "decon_reml.txt")
+        bash_cmd = f"tail -n 5 {self.reml_path} > {tail_path}"
+        _ = submit.submit_subprocess(bash_cmd, tail_path, "Tail")
+
+        # Split reml command into lines, remove formatting
+        with open(tail_path, "r", encoding="UTF-8") as tf:
+            line_list = [line.rstrip() for line in tf]
+        line_list = [x.replace("\\", "") for x in line_list]
+
+        # Convert reml command into list
+        reml_list = []
+        for line_info in line_list:
+            for word in line_info.split():
+                reml_list.append(word)
+
+        # Remove trailing tcsh syntax
+        idx_verb = reml_list.index("-verb")
+        reml_list = reml_list[: idx_verb + 1]
+
+        # Check the converting from file to list worked
+        if reml_list[0] != "3dREMLfit":
+            raise ValueError(
+                "An issue occurred when converting "
+                + f"contents of {self.reml_path} to a list"
+            )
+
+        # Make nuissance file, add to reml command
+        nuiss_path = self._make_nuiss()
+        reml_list.append(f"-dsort {nuiss_path}")
+        reml_list.append("-GOFORIT")
+
+        #
+        bash_cmd = " ".join(self.afni_prep, reml_list)
+        _, _ = submit.submit_sbatch(bash_cmd, f"{self.subj[6:]}", self.log_dir)
+        if not os.path.exists(out_path):
+            raise FileNotFoundError(f"Expected to find {out_path}")
         return out_path

@@ -231,11 +231,7 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
         subj_work, proj_deriv, func_dict["func-preproc"], sing_afni
     )
     func_dict["func-scaled"] = afni.scale_epi(
-        subj_work,
-        proj_deriv,
-        anat_dict["mask-min"],
-        smooth_epi,
-        sing_afni,
+        subj_work, proj_deriv, anat_dict["mask-min"], smooth_epi, sing_afni,
     )
 
     # Make AFNI-style motion and censor files
