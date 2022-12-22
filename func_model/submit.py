@@ -109,7 +109,13 @@ def submit_sbatch(
 
 
 def schedule_afni(
-    subj, sess, proj_rawdata, proj_deriv, work_deriv, sing_afni, log_dir,
+    subj,
+    sess,
+    proj_rawdata,
+    proj_deriv,
+    work_deriv,
+    sing_afni,
+    log_dir,
 ):
     """Write and schedule pipeline.
 
@@ -160,7 +166,7 @@ def schedule_afni(
 
         #SBATCH --job-name=p{subj[4:]}
         #SBATCH --output={log_dir}/par{subj[4:]}.txt
-        #SBATCH --time=10:00:00
+        #SBATCH --time=20:00:00
         #SBATCH --mem=8000
 
         import os
@@ -185,7 +191,9 @@ def schedule_afni(
 
     # Execute script
     h_sp = subprocess.Popen(
-        f"sbatch {py_script}", shell=True, stdout=subprocess.PIPE,
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj}")

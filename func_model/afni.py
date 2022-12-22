@@ -810,7 +810,8 @@ class MakeMasks:
 
             # Setup final path
             out_tiss = os.path.join(
-                self.subj_work, f"{self.subj}_label-{tiss}e_mask.nii.gz",
+                self.subj_work,
+                f"{self.subj}_label-{tiss}e_mask.nii.gz",
             )
             if not os.path.exists(out_tiss):
 
@@ -928,7 +929,11 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
+    subj_work,
+    proj_deriv,
+    func_preproc,
+    sing_afni,
+    blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1426,7 +1431,6 @@ class WriteDecon:
     def __init__(
         self,
         subj,
-        sess,
         subj_work,
         proj_deriv,
         sess_func,
@@ -1592,7 +1596,7 @@ class WriteDecon:
             fslhd \
                 {self.func_dict["func-scaled"][0]} | \
                 grep 'pixdim4' | \
-                awk '{{print $2}}
+                awk '{{print $2}}'
         """
         h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
         h_out, h_err = h_sp.communicate()
@@ -1610,7 +1614,7 @@ class WriteDecon:
                     {self.func_dict["func-scaled"][0]} | \
                     grep dim4 | \
                     head -n 1 | \
-                    awk '{{print $2}}
+                    awk '{{print $2}}'
             """
             h_sp = subprocess.Popen(
                 bash_cmd, shell=True, stdout=subprocess.PIPE
@@ -2045,7 +2049,7 @@ class RunDecon:
             bash_cmd,
             f"reml{self.subj[6:]}",
             self.log_dir,
-            num_hours=10,
+            num_hours=20,
             num_cpus=6,
             mem_gig=8,
         )
