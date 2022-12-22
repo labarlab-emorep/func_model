@@ -3,6 +3,7 @@ r"""Title.
 Examples
 --------
 model_afni -s sub-ER0009
+model_afni --model-name univ -s sub-ER0009 sub-ER0016
 
 """
 # %%
@@ -21,6 +22,18 @@ def _get_args():
     """Get and parse arguments."""
     parser = ArgumentParser(
         description=__doc__, formatter_class=RawTextHelpFormatter
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default="univ",
+        help=textwrap.dedent(
+            """\
+            [univ]
+            AFNI model name/type, for triggering different workflows
+            (default : %(default)s)
+            """
+        ),
     )
     parser.add_argument(
         "--proj-dir",
@@ -63,6 +76,7 @@ def main():
     args = _get_args().parse_args()
     subj_list = args.sub_list
     proj_dir = args.proj_dir
+    model_name = args.model_name
 
     # Setup group project directory, paths
     proj_deriv = os.path.join(proj_dir, "derivatives")
@@ -79,29 +93,23 @@ def main():
     #     work_deriv,
     #     f"logs/func_model-afni_{now_time.strftime('%y-%m-%d_%H:%M')}",
     # )
-    log_dir = os.path.join(
-        work_deriv,
-        "logs/func_model-afni_test",
-    )
+    log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    #
+    # Submit jobs for each participant, session
     for subj in subj_list:
         sess_list = [
             os.path.basename(x)
             for x in glob.glob(
-                f"{proj_deriv}/pre_processing/fsl_denoise/{subj}/ses-*"
+                f"{proj_deriv}/pre_processing/fmriprep/{subj}/ses-*"
             )
         ]
         if not sess_list:
-            print(
-                "No pre-processed sessions detected for" + f" {subj}, skipping"
-            )
+            print(f"No pre-processed sessions detected for {subj}, skipping")
             continue
 
-        #
-        for sess in sess_list[:1]:
+        for sess in sess_list:
             _, _ = submit.schedule_afni(
                 subj,
                 sess,
@@ -109,6 +117,7 @@ def main():
                 proj_deriv,
                 work_deriv,
                 sing_afni,
+                model_name,
                 log_dir,
             )
             time.sleep(3)

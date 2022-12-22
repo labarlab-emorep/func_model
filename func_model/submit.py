@@ -115,6 +115,7 @@ def schedule_afni(
     proj_deriv,
     work_deriv,
     sing_afni,
+    model_name,
     log_dir,
 ):
     """Write and schedule pipeline.
@@ -138,6 +139,9 @@ def schedule_afni(
         Parent location for writing pipeline intermediates
     sing_afni : path
         Location of AFNI singularity file
+    model_name : str
+        [univ]
+        Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
 
@@ -158,14 +162,12 @@ def schedule_afni(
     if not os.path.exists(proj_afni):
         os.makedirs(proj_afni)
 
-    # TODO add job name e.g. sanity to trigger different workflows
-
     # Write parent python script
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
 
-        #SBATCH --job-name=p{subj[4:]}
-        #SBATCH --output={log_dir}/par{subj[4:]}.txt
+        #SBATCH --job-name=p{subj[6:]}s{sess[-1]}
+        #SBATCH --output={log_dir}/par{subj[6:]}s{sess[-1]}.txt
         #SBATCH --time=20:00:00
         #SBATCH --mem=8000
 
@@ -180,6 +182,7 @@ def schedule_afni(
             "{proj_deriv}",
             "{work_deriv}",
             "{sing_afni}",
+            "{model_name}",
             "{log_dir}",
         )
 
@@ -196,5 +199,5 @@ def schedule_afni(
         stdout=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
-    print(f"{h_out.decode('utf-8')}\tfor {subj}")
+    print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")
     return (h_out, h_err)

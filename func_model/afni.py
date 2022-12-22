@@ -51,19 +51,12 @@ class TimingFiles:
         Combined events data into single dataframe
     events_run : list
         Run identifier extracted from event file name
-    sess : str
-        BIDS session identifier
     sess_events : list
         Paths to subject, session BIDS events files sorted
         by run number
-    subj : str
-        BIDS subject identifier
     subj_tf_dir : path
         Output location for writing subject, session
         timing files
-    task : str
-        [movies | scenarios]
-        Name of task
 
     Methods
     -------
@@ -92,7 +85,7 @@ class TimingFiles:
 
     """
 
-    def __init__(self, subj, sess, task, subj_work, sess_events):
+    def __init__(self, subj_work, sess_events):
         """Initialize object.
 
         Setup attributes, make timing file directory, and combine all
@@ -100,13 +93,6 @@ class TimingFiles:
 
         Parameters
         ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        task : str
-            [movies | scenarios]
-            Name of task
         subj_work : path
             Location of working directory for intermediates
         sess_events : list
@@ -115,19 +101,12 @@ class TimingFiles:
 
         Attributes
         ----------
-        sess : str
-            BIDS session identifier
         sess_events : list
             Paths to subject, session BIDS events files sorted
             by run number
-        subj : str
-            BIDS subject identifier
         subj_tf_dir : path
             Output location for writing subject, session
             timing files
-        task : str
-            [movies | scenarios]
-            Name of task
 
         Raises
         ------
@@ -139,18 +118,10 @@ class TimingFiles:
         print("\nInitializing TimingFiles")
 
         # Check arguments
-        task_valid = ["movies", "scenarios"]
-        if task not in task_valid:
-            raise ValueError(
-                f"Expected task names movies|scenarios, found {task}"
-            )
         if len(sess_events) < 1:
             raise ValueError("Cannot make timing files from 0 events.tsv")
 
         # Set attributes, make output location
-        self.subj = subj
-        self.sess = sess
-        self.task = task
         self.sess_events = sess_events
         self.subj_tf_dir = os.path.join(subj_work, "timing_files")
         if not os.path.exists(self.subj_tf_dir):
@@ -249,7 +220,7 @@ class TimingFiles:
         else:
             return [str(x) for x in onset]
 
-    def common_events(self, marry=True, common_name=None):
+    def common_events(self, subj, sess, task, marry=True, common_name=None):
         """Generate timing files for common events across both sessions.
 
         Make timing files for replay, judge, and wash events. Ouput timing
@@ -262,6 +233,13 @@ class TimingFiles:
 
         Parameters
         ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        task : str
+            [movies | scenarios]
+            Name of task
         marry : bool, optional
             Whether to generate timing file with AFNI-styled married
             onset:duration or just onset times.
@@ -282,6 +260,7 @@ class TimingFiles:
             Parameter for marry is not bool
         ValueError
             Parameter for common_name is not found in common_dict
+            Incorrect task name
 
         Notes
         -----
@@ -303,6 +282,11 @@ class TimingFiles:
             "wash": "comWas",
         }
 
+        # Validate task name
+        valid_task = ["movies", "scenarios"]
+        if task not in valid_task:
+            raise ValueError(f"Inappropriate task name specified : {task}")
+
         # Validate user input and generate new common_dict
         if common_name:
             valid_list = [x for x in common_dict.keys()]
@@ -322,8 +306,7 @@ class TimingFiles:
             # Make an empty file
             tf_path = os.path.join(
                 self.subj_tf_dir,
-                f"{self.subj}_{self.sess}_task-{self.task}_"
-                + f"desc-{tf_name}_events.1D",
+                f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
@@ -349,7 +332,7 @@ class TimingFiles:
                 out_list.append(tf_path)
         return out_list
 
-    def select_events(self, marry=True, select_name=None):
+    def select_events(self, subj, sess, task, marry=True, select_name=None):
         """Generate timing files for selection trials.
 
         Make timing files for trials where participant selects emotion
@@ -366,6 +349,13 @@ class TimingFiles:
 
         Parameters
         ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        task : str
+            [movies | scenarios]
+            Name of task
         marry : bool, optional
             Whether to generate timing file with AFNI-styled married
             onset:duration or just onset times.
@@ -406,6 +396,11 @@ class TimingFiles:
             "intensity": "selInt",
         }
 
+        # Validate task name
+        valid_task = ["movies", "scenarios"]
+        if task not in valid_task:
+            raise ValueError(f"Inappropriate task name specified : {task}")
+
         # Validate user input and generate new select_dict
         if select_name:
             valid_list = [x for x in select_dict.keys()]
@@ -425,8 +420,7 @@ class TimingFiles:
             # Make an empty file
             tf_path = os.path.join(
                 self.subj_tf_dir,
-                f"{self.subj}_{self.sess}_task-{self.task}_"
-                + f"desc-{tf_name}_events.1D",
+                f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
@@ -452,7 +446,9 @@ class TimingFiles:
                 out_list.append(tf_path)
         return out_list
 
-    def session_events(self, marry=True, emotion_name=None, emo_query=False):
+    def session_events(
+        self, subj, sess, task, marry=True, emotion_name=None, emo_query=False
+    ):
         """Generate timing files for session-specific stimulus trials.
 
         Make timing files for emotions presented during movies or scenarios.
@@ -464,6 +460,13 @@ class TimingFiles:
 
         Parameters
         ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        task : str
+            [movies | scenarios]
+            Name of task
         marry : bool, optional
             Whether to generate timing file with AFNI-styled married
             onset:duration or just onset times.
@@ -492,6 +495,11 @@ class TimingFiles:
             raise TypeError("Argument 'emo_query' is bool")
         if not isinstance(marry, bool):
             raise TypeError("Argument 'marry' is bool")
+
+        # Validate task name
+        valid_task = ["movies", "scenarios"]
+        if task not in valid_task:
+            raise ValueError(f"Inappropriate task name specified : {task}")
 
         # Set emotion types
         #   key = value in self.df_events["emotion"]
@@ -529,7 +537,7 @@ class TimingFiles:
         else:
 
             # Identify unique emotions in dataframe
-            trial_type_value = self.task[:-1]
+            trial_type_value = task[:-1]
             idx_sess = self.df_events.index[
                 self.df_events["trial_type"] == trial_type_value
             ].tolist()
@@ -547,13 +555,12 @@ class TimingFiles:
             # Determine timing file name, make an empty file
             tf_name = (
                 f"mov{sess_dict[emo]}"
-                if self.task == "movies"
+                if task == "movies"
                 else f"sce{sess_dict[emo]}"
             )
             tf_path = os.path.join(
                 self.subj_tf_dir,
-                f"{self.subj}_{self.sess}_task-{self.task}_"
-                + f"desc-{tf_name}_events.1D",
+                f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
@@ -1396,9 +1403,6 @@ class WriteDecon:
     anat_dict : dict
         Contains reference names (key) and paths (value) to
         preprocessed anatomical files
-    basis_func : str
-        [dur_mod | ind_mod | two_gam]
-        Desired basis function for behaviors in 3dDeconvolve
     decon_cmd : str
         Generated 3dDeconvolve command
     decon_name : str
@@ -1411,8 +1415,6 @@ class WriteDecon:
         and fsl_denoise sub-directories
     sing_afni : path
         Location of AFNI singularity file
-    subj : str
-        BIDS subject identifier
     subj_work : path
         Location of working directory for intermediates
     tf_dict : dict
@@ -1421,8 +1423,12 @@ class WriteDecon:
 
     Methods
     -------
-    write_decon_sanity(decon_name: str = "decon_sanity")
-        Write a 3dDeconvolve command for sanity checks
+    build_decon(model_name: str)
+        Trigger the appropriate method for the current pipeline, e.g.
+        build_decon(model_name="univ") causes the method "write_univ"
+        to be executed.
+    write_univ(basis_func: str = "dur_mod, decon_name: str = "decon_univ")
+        Write a univariate 3dDeconvolve command for sanity checks
     generate_reml(log_dir: path)
         Execute 3dDeconvolve to generate 3dREMLfit command
 
@@ -1430,7 +1436,6 @@ class WriteDecon:
 
     def __init__(
         self,
-        subj,
         subj_work,
         proj_deriv,
         sess_func,
@@ -1442,8 +1447,6 @@ class WriteDecon:
 
         Parameters
         ----------
-        subj : str
-            BIDS subject identifier
         subj_work : path
             Location of working directory for intermediates
         proj_deriv : path
@@ -1465,13 +1468,9 @@ class WriteDecon:
         ----------
         afni_prep : list
             First part of subprocess call for AFNI singularity
-        basis_func : str
-            [dur_mod | ind_mod | two_gam]
-            Desired basis function for behaviors in 3dDeconvolve
 
         """
         print("\nInitializing WriteDecon")
-        self.subj = subj
         self.proj_deriv = proj_deriv
         self.subj_work = subj_work
         self.func_dict = sess_func
@@ -1479,11 +1478,35 @@ class WriteDecon:
         self.tf_dict = sess_tfs
         self.sing_afni = sing_afni
 
-        # Set basis function, start singulartiy call
-        self.basis_func = "dur_mod"
+        # Start singulartiy call
         self.afni_prep = _prepend_afni_sing(
             self.proj_deriv, self.subj_work, self.sing_afni
         )
+
+    def build_decon(self, model_name):
+        """Trigger deconvolution method.
+
+        Use model_name to trigger the method the writes the
+        relevant 3dDeconvolve command for the current pipeline.
+
+        Parameters
+        ----------
+        model_name : str
+            [univ]
+            Desired AFNI model, triggers write methods
+
+        Raises
+        ------
+        ValueError
+            Unsupported model name
+
+        """
+        valid_names = ["univ"]
+        if model_name not in valid_names:
+            raise ValueError(f"Unsupported model name : {model_name}")
+
+        write_meth = getattr(self, f"write_{model_name}")
+        write_meth()
 
     def _build_censor_ts(self, count_beh):
         """Make a censor regressor argument.
@@ -1636,7 +1659,7 @@ class WriteDecon:
             "sum_vol": sum_vol,
         }
 
-    def _build_behavior(self, count_beh):
+    def _build_behavior(self, count_beh, basis_func):
         """Build a behavior regressor argument
 
         Build a 3dDeconvolve behavior regressor accounting
@@ -1646,6 +1669,9 @@ class WriteDecon:
         ----------
         count_beh : int
             On-going count to fill 3dDeconvolve -num_stimts
+        basis_func : str
+            [dur_mod | ind_mod]
+            Desired basis function for behaviors in 3dDeconvolve
 
         Returns
         -------
@@ -1660,17 +1686,18 @@ class WriteDecon:
 
         """
         # Validate
-        if self.basis_func == "two_gam":
+        if basis_func == "two_gam":
             return ValueError("Basis function two_gam not currently supported")
 
-        # Set inner functions for building different basis functions
+        # Set inner functions for building different basis functions,
+        # two_gam and tent are planned, ind_mod needs testing.
         def _beh_dur_mod(count_beh, tf_path):
             return f"-stim_times_AM1 {count_beh} {tf_path} 'dmBLOCK(1)'"
 
         def _beh_ind_mod(count_beh, tf_path):
             return f"-stim_times_IM {count_beh} {tf_path} 'dmBLOCK(1)'"
 
-        # Map self.basis_func value to inner functions
+        # Map basis_func value to inner functions
         model_meth = {"dur_mod": _beh_dur_mod, "ind_mod": _beh_ind_mod}
 
         # Build regressor for each behavior
@@ -1678,14 +1705,14 @@ class WriteDecon:
         model_beh = []
         for tf_name, tf_path in self.tf_dict.items():
             count_beh += 1
-            model_beh.append(model_meth[self.basis_func](count_beh, tf_path))
+            model_beh.append(model_meth[basis_func](count_beh, tf_path))
             model_beh.append(f"-stim_label {count_beh} {tf_name}")
 
         # Combine into string for 3dDeconvolve parameter
         reg_events = " ".join(model_beh)
         return (reg_events, count_beh)
 
-    def write_decon_sanity(self, decon_name="decon_sanity"):
+    def write_univ(self, basis_func="dur_mod", decon_name="decon_univ"):
         """Write an AFNI 3dDeconvolve command for sanity checking.
 
         Build 3dDeconvolve command with minimal support for different
@@ -1693,6 +1720,9 @@ class WriteDecon:
 
         Parameters
         ----------
+        basis_func : str, optional
+            [dur_mod | ind_mod | two_gam]
+            Desired basis function for behaviors in 3dDeconvolve
         decon_name : str, optional
             Prefix for output deconvolve files
 
@@ -1711,7 +1741,7 @@ class WriteDecon:
         """
         # Validate
         valid_list = ["dur_mod", "ind_mod", "two_gam"]
-        if self.basis_func not in valid_list:
+        if basis_func not in valid_list:
             raise ValueError("Invalid basis_func parameter")
 
         for key in ["func-scaled", "func-mean", "func-deriv"]:
@@ -1728,7 +1758,7 @@ class WriteDecon:
         # Start counter for num_stimts, build regressors
         count_beh = 0
         reg_censor, count_beh = self._build_censor_ts(count_beh)
-        reg_events, count_beh = self._build_behavior(count_beh)
+        reg_events, count_beh = self._build_behavior(count_beh, basis_func)
 
         # write decon command
         decon_list = [
@@ -1759,7 +1789,7 @@ class WriteDecon:
         with open(decon_script, "w") as script:
             script.write(self.decon_cmd)
 
-    def generate_reml(self, log_dir):
+    def generate_reml(self, subj, sess, log_dir):
         """Generate matrices and 3dREMLfit command.
 
         Run the 3dDeconvolve command to generate the 3dREMLfit
@@ -1767,6 +1797,10 @@ class WriteDecon:
 
         Parameters
         ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
         log_dir : path
             Output location for logs
 
@@ -1787,11 +1821,11 @@ class WriteDecon:
         # Check for required attributes
         if not hasattr(self, "decon_cmd"):
             raise AttributeError(
-                "No decon_cmd detected, try WriteDecon.write_decon_sanity."
+                "No decon_cmd detected, try WriteDecon.write_univ."
             )
         if not hasattr(self, "decon_name"):
             raise AttributeError(
-                "No decon_name detected, try WriteDecon.write_decon_sanity."
+                "No decon_name detected, try WriteDecon.write_univ."
             )
 
         # Execute decon_cmd
@@ -1801,7 +1835,10 @@ class WriteDecon:
         )
         if not os.path.exists(out_path):
             _, _ = submit.submit_sbatch(
-                self.decon_cmd, f"dcn{self.subj[6:]}", log_dir, mem_gig=10
+                self.decon_cmd,
+                f"dcn{subj[6:]}s{sess[-1]}",
+                log_dir,
+                mem_gig=10,
             )
 
         # Check generated file length
@@ -1850,7 +1887,6 @@ class RunDecon:
 
     def __init__(
         self,
-        subj,
         subj_work,
         proj_deriv,
         reml_path,
@@ -1863,8 +1899,6 @@ class RunDecon:
 
         Parameters
         ----------
-        subj : str
-            BIDS subject identifier
         subj_work : path
             Location of working directory for intermediates
         proj_deriv : path
@@ -1893,7 +1927,6 @@ class RunDecon:
         print("\nInitializing RunDecon")
 
         # Capture parameters
-        self.subj = subj
         self.subj_work = subj_work
         self.reml_path = reml_path
         self.sess_anat = sess_anat
@@ -1903,7 +1936,6 @@ class RunDecon:
 
         # Set attributes, trigger reml execution
         self.afni_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
-        self.exec_reml()
 
     def _make_nuiss(self):
         """Make noise estimation file.
@@ -1976,12 +2008,19 @@ class RunDecon:
 
         return out_path
 
-    def exec_reml(self):
+    def exec_reml(self, subj, sess):
         """Exectue 3dREMLfit command.
 
         Setup for and exectue 3dREMLfit command generated
         by 3dDeconvolve. Writes reml command to:
             <subj_work>/decon_reml.sh
+
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identfier
+        sess : str
+            BIDS session identifier
 
         Returns
         -------
@@ -2047,7 +2086,7 @@ class RunDecon:
 
         _, _ = submit.submit_sbatch(
             bash_cmd,
-            f"reml{self.subj[6:]}",
+            f"rml{subj[6:]}s{sess[-1]}",
             self.log_dir,
             num_hours=20,
             num_cpus=6,

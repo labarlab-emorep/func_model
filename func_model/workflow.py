@@ -7,7 +7,14 @@ from func_model import afni
 
 # %%
 def pipeline_afni(
-    subj, sess, proj_rawdata, proj_deriv, work_deriv, sing_afni, log_dir
+    subj,
+    sess,
+    proj_rawdata,
+    proj_deriv,
+    work_deriv,
+    sing_afni,
+    model_name,
+    log_dir,
 ):
     """Conduct AFNI-based deconvolution for sanity checking.
 
@@ -30,6 +37,9 @@ def pipeline_afni(
         Parent location for writing pipeline intermediates
     sing_afni : path
         Location of AFNI singularity file
+    model_name : str
+        [univ]
+        Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
 
@@ -40,7 +50,17 @@ def pipeline_afni(
         [1] = dictionary of anat files
         [2] = dictionary of func files
 
+    Raises
+    ------
+    ValueError
+        Model name/type not supported
+
     """
+    # Validate
+    valid_names = ["univ"]
+    if model_name not in valid_names:
+        raise ValueError(f"Unsupported model name : {model_name}")
+
     # Check that session exists for participant
     subj_sess_raw = os.path.join(proj_rawdata, subj, sess)
     if not os.path.exists(subj_sess_raw):
@@ -51,28 +71,32 @@ def pipeline_afni(
     if not os.path.exists(subj_work):
         os.makedirs(subj_work)
 
-    # TODO update to trigger methods from model name e.g. sanity
-
     # Extra pre-processing steps
-    sess_func, sess_anat = run_pipeline.afni_sanity_preproc(
+    sess_func, sess_anat = run_pipeline.afni_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni
     )
 
-    # Generate timing files
-    sess_tfs = run_pipeline.afni_sanity_tfs(
-        subj, sess, subj_work, subj_sess_raw
+    # Generate timing files - find appropriate pipeline for model_name
+    pipe_mod = __import__(
+        "func_model.run_pipeline", fromlist=[f"afni_{model_name}_tfs"]
     )
+    tf_pipe = getattr(pipe_mod, f"afni_{model_name}_tfs")
+    sess_tfs = tf_pipe(subj, sess, subj_work, subj_sess_raw)
 
     # Generate deconvolution matrics, REML command
     write_decon = afni.WriteDecon(
-        subj, subj_work, proj_deriv, sess_func, sess_anat, sess_tfs, sing_afni,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sess_tfs,
+        sing_afni,
     )
-    write_decon.write_decon_sanity()
-    reml_path = write_decon.generate_reml(log_dir)
+    write_decon.build_decon(model_name)
+    reml_path = write_decon.generate_reml(subj, sess, log_dir)
 
     # Run REML
-    sess_func["func-decon"] = afni.RunDecon(
-        subj,
+    make_reml = afni.RunDecon(
         subj_work,
         proj_deriv,
         reml_path,
@@ -81,7 +105,7 @@ def pipeline_afni(
         sing_afni,
         log_dir,
     )
-
+    sess_func["func-decon"] = make_reml.exec_reml(subj, sess)
     return (sess_tfs, sess_anat, sess_func)
 
 

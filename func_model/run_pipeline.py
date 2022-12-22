@@ -7,7 +7,7 @@ from func_model import afni
 
 
 # %%
-def afni_sanity_tfs(subj, sess, subj_work, subj_sess_raw):
+def afni_univ_tfs(subj, sess, subj_work, subj_sess_raw):
     """Make timing files for sanity check.
 
     Generate a set of AFNI-styled timing files in order to
@@ -57,10 +57,10 @@ def afni_sanity_tfs(subj, sess, subj_work, subj_sess_raw):
         raise ValueError(f"Expected task names movies|scenarios, found {task}")
 
     # Generate timing files
-    make_tf = afni.TimingFiles(subj, sess, task, subj_work, sess_events)
-    tf_com = make_tf.common_events()
-    tf_sess = make_tf.session_events()
-    tf_sel = make_tf.select_events()
+    make_tf = afni.TimingFiles(subj_work, sess_events)
+    tf_com = make_tf.common_events(subj, sess, task)
+    tf_sess = make_tf.session_events(subj, sess, task)
+    tf_sel = make_tf.select_events(subj, sess, task)
     tf_all = tf_com + tf_sess + tf_sel
 
     # Setup output dict
@@ -73,8 +73,8 @@ def afni_sanity_tfs(subj, sess, subj_work, subj_sess_raw):
 
 
 # %%
-def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
-    """Conduct extra preprocessing for AFNI sanity check.
+def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
+    """Conduct extra preprocessing for AFNI.
 
     Identify required files from fMRIPrep and FSL, then conduct
     extra preprocessing to ready for AFNI deconvolution. The
@@ -231,7 +231,11 @@ def afni_sanity_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
         subj_work, proj_deriv, func_dict["func-preproc"], sing_afni
     )
     func_dict["func-scaled"] = afni.scale_epi(
-        subj_work, proj_deriv, anat_dict["mask-min"], smooth_epi, sing_afni,
+        subj_work,
+        proj_deriv,
+        anat_dict["mask-min"],
+        smooth_epi,
+        sing_afni,
     )
 
     # Make AFNI-style motion and censor files
