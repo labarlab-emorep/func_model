@@ -730,53 +730,54 @@ class MakeMasks:
         if n_nbr < 6 or n_nbr > 26:
             raise ValueError("n_nbr must be between 6 and 26")
 
-        # Setup output path
+        # Setup output path, avoid repeating work
         out_path = (
             f"{self.subj_work}/{self.subj}_"
             + f"{self.sess}_desc-intersect_mask.nii.gz"
         )
-        if not os.path.exists(out_path):
+        if os.path.exists(out_path):
+            return out_path
 
-            # Make binary masks for each preprocessed func file
-            auto_list = []
-            for run_file in self.func_dict["func-preproc"]:
-                h_name = "tmp_autoMask_" + os.path.basename(run_file)
-                h_out = os.path.join(self.subj_work, h_name)
-                if not os.path.exists(h_out):
-                    bash_list = [
-                        "3dAutomask",
-                        f"-clfrac {c_frac}",
-                        f"-{nbr_type}",
-                        f"-nbhrs {n_nbr}",
-                        f"-prefix {h_out}",
-                        run_file,
-                    ]
-                    bash_cmd = " ".join(self.sing_prep + bash_list)
-                    _ = submit.submit_subprocess(bash_cmd, h_out, "Automask")
-                auto_list.append(h_out)
-
-            # Generate a union mask from the preprocessed masks
-            union_out = os.path.join(self.subj_work, "tmp_union.nii.gz")
-            if not os.path.exists(union_out):
+        # Make binary masks for each preprocessed func file
+        auto_list = []
+        for run_file in self.func_dict["func-preproc"]:
+            h_name = "tmp_autoMask_" + os.path.basename(run_file)
+            h_out = os.path.join(self.subj_work, h_name)
+            if not os.path.exists(h_out):
                 bash_list = [
-                    "3dmask_tool",
-                    f"-inputs {' '.join(auto_list)}",
-                    "-union",
-                    f"-prefix {union_out}",
+                    "3dAutomask",
+                    f"-clfrac {c_frac}",
+                    f"-{nbr_type}",
+                    f"-nbhrs {n_nbr}",
+                    f"-prefix {h_out}",
+                    run_file,
                 ]
                 bash_cmd = " ".join(self.sing_prep + bash_list)
-                _ = submit.submit_subprocess(bash_cmd, union_out, "Union")
+                _ = submit.submit_subprocess(bash_cmd, h_out, "Automask")
+            auto_list.append(h_out)
 
-            # Make anat-func intersection mask from the union and
-            # fmriprep brain mask.
+        # Generate a union mask from the preprocessed masks
+        union_out = os.path.join(self.subj_work, "tmp_union.nii.gz")
+        if not os.path.exists(union_out):
             bash_list = [
                 "3dmask_tool",
-                f"-input {union_out} {self.anat_dict['mask-brain']}",
-                "-inter",
-                f"-prefix {out_path}",
+                f"-inputs {' '.join(auto_list)}",
+                "-union",
+                f"-prefix {union_out}",
             ]
             bash_cmd = " ".join(self.sing_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_path, "Intersect")
+            _ = submit.submit_subprocess(bash_cmd, union_out, "Union")
+
+        # Make anat-func intersection mask from the union and
+        # fmriprep brain mask.
+        bash_list = [
+            "3dmask_tool",
+            f"-input {union_out} {self.anat_dict['mask-brain']}",
+            "-inter",
+            f"-prefix {out_path}",
+        ]
+        bash_cmd = " ".join(self.sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_path, "Intersect")
         return out_path
 
     def tissue(self, thresh=0.5):
@@ -815,40 +816,37 @@ class MakeMasks:
         for tiss in out_dict.keys():
             print(f"\tMaking eroded tissue mask : {tiss}")
 
-            # Setup final path
+            # Setup final path, avoid repeating work
             out_tiss = os.path.join(
-                self.subj_work,
-                f"{self.subj}_label-{tiss}e_mask.nii.gz",
+                self.subj_work, f"{self.subj}_label-{tiss}e_mask.nii.gz",
             )
-            if not os.path.exists(out_tiss):
+            if os.path.exists(out_tiss):
+                out_dict[tiss] = tiss
+                continue
 
-                # Binarize probabilistic tissue mask
-                in_path = self.anat_dict[f"mask-prob{tiss}"]
-                bin_path = os.path.join(
-                    self.subj_work, f"tmp_{tiss}_bin.nii.gz"
-                )
-                bash_list = [
-                    "c3d",
-                    in_path,
-                    f"-thresh {thresh} 1 1 0",
-                    f"-o {bin_path}",
-                ]
-                bash_cmd = " ".join(bash_list)
-                _ = submit.submit_subprocess(
-                    bash_cmd, bin_path, f"Binarize {tiss}"
-                )
+            # Binarize probabilistic tissue mask
+            in_path = self.anat_dict[f"mask-prob{tiss}"]
+            bin_path = os.path.join(self.subj_work, f"tmp_{tiss}_bin.nii.gz")
+            bash_list = [
+                "c3d",
+                in_path,
+                f"-thresh {thresh} 1 1 0",
+                f"-o {bin_path}",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(
+                bash_cmd, bin_path, f"Binarize {tiss}"
+            )
 
-                # Eroded tissue mask
-                bash_list = [
-                    "3dmask_tool",
-                    f"-input {bin_path}",
-                    "-dilate_input -1",
-                    f"-prefix {out_tiss}",
-                ]
-                bash_cmd = " ".join(self.sing_prep + bash_list)
-                _ = submit.submit_subprocess(
-                    bash_cmd, bin_path, f"Erode {tiss}"
-                )
+            # Eroded tissue mask
+            bash_list = [
+                "3dmask_tool",
+                f"-input {bin_path}",
+                "-dilate_input -1",
+                f"-prefix {out_tiss}",
+            ]
+            bash_cmd = " ".join(self.sing_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, bin_path, f"Erode {tiss}")
 
             # Add path to eroded tissue mask
             out_dict[tiss] = out_tiss
@@ -871,76 +869,71 @@ class MakeMasks:
         """
         print("\tMaking minimum value mask")
 
-        # Setup file path
+        # Setup file path, avoid repeating work
         out_path = (
             f"{self.subj_work}/{self.subj}_"
             + f"{self.sess}_desc-minval_mask.nii.gz"
         )
-        if not os.path.exists(out_path):
+        if os.path.exists(out_path):
+            return out_path
 
-            # Make minimum value mask for each run
-            min_list = []
-            for run_file in self.func_dict["func-preproc"]:
+        # Make minimum value mask for each run
+        min_list = []
+        for run_file in self.func_dict["func-preproc"]:
 
-                # Mask epi voxels that have some data
-                h_name_bin = "tmp_bin_" + os.path.basename(run_file)
-                h_out_bin = os.path.join(self.subj_work, h_name_bin)
-                bash_list = [
-                    "3dcalc",
-                    "-overwrite",
-                    f"-a {run_file}",
-                    "-expr 1",
-                    f"-prefix {h_out_bin}",
-                ]
-                bash_cmd = " ".join(self.sing_prep + bash_list)
-                _ = submit.submit_subprocess(bash_cmd, h_out_bin, "Binary EPI")
-
-                # Make a mask for >min values
-                h_name_min = "tmp_min_" + os.path.basename(run_file)
-                h_out_min = os.path.join(self.subj_work, h_name_min)
-                bash_list = [
-                    "3dTstat",
-                    "-min",
-                    f"-prefix {h_out_min}",
-                    h_out_bin,
-                ]
-                bash_cmd = " ".join(self.sing_prep + bash_list)
-                min_list.append(
-                    submit.submit_subprocess(
-                        bash_cmd, h_out_min, "Minimum EPI"
-                    )
-                )
-
-            # Average the minimum masks across runs
-            h_name_mean = f"tmp_{self.subj}_{self.sess}_desc-mean_mask.nii.gz"
-            h_out_mean = os.path.join(self.subj_work, h_name_mean)
-            bash_list = [
-                "3dMean",
-                "-datum short",
-                f"-prefix {h_out_mean}",
-                f"{' '.join(min_list)}",
-            ]
-            bash_cmd = " ".join(self.sing_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, h_out_mean, "Mean EPI")
-
-            # Generate mask of non-zero voxels
+            # Mask epi voxels that have some data
+            h_name_bin = "tmp_bin_" + os.path.basename(run_file)
+            h_out_bin = os.path.join(self.subj_work, h_name_bin)
             bash_list = [
                 "3dcalc",
-                f"-a {h_out_mean}",
-                "-expr 'step(a-0.999)'",
-                f"-prefix {out_path}",
+                "-overwrite",
+                f"-a {run_file}",
+                "-expr 1",
+                f"-prefix {h_out_bin}",
             ]
             bash_cmd = " ".join(self.sing_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_path, "MinVal EPI")
+            _ = submit.submit_subprocess(bash_cmd, h_out_bin, "Binary EPI")
+
+            # Make a mask for >min values
+            h_name_min = "tmp_min_" + os.path.basename(run_file)
+            h_out_min = os.path.join(self.subj_work, h_name_min)
+            bash_list = [
+                "3dTstat",
+                "-min",
+                f"-prefix {h_out_min}",
+                h_out_bin,
+            ]
+            bash_cmd = " ".join(self.sing_prep + bash_list)
+            min_list.append(
+                submit.submit_subprocess(bash_cmd, h_out_min, "Minimum EPI")
+            )
+
+        # Average the minimum masks across runs
+        h_name_mean = f"tmp_{self.subj}_{self.sess}_desc-mean_mask.nii.gz"
+        h_out_mean = os.path.join(self.subj_work, h_name_mean)
+        bash_list = [
+            "3dMean",
+            "-datum short",
+            f"-prefix {h_out_mean}",
+            f"{' '.join(min_list)}",
+        ]
+        bash_cmd = " ".join(self.sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, h_out_mean, "Mean EPI")
+
+        # Generate mask of non-zero voxels
+        bash_list = [
+            "3dcalc",
+            f"-a {h_out_mean}",
+            "-expr 'step(a-0.999)'",
+            f"-prefix {out_path}",
+        ]
+        bash_cmd = " ".join(self.sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_path, "MinVal EPI")
         return out_path
 
 
 def smooth_epi(
-    subj_work,
-    proj_deriv,
-    func_preproc,
-    sing_afni,
-    blur_size=3,
+    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -980,25 +973,27 @@ def smooth_epi(
     func_smooth = []
     for epi_path in func_preproc:
 
-        # Setup output names, paths
+        # Setup output names/paths, avoid repeating work
         epi_preproc = os.path.basename(epi_path)
         desc_preproc = epi_preproc.split("desc-")[1].split("_")[0]
         epi_smooth = epi_preproc.replace(desc_preproc, "smoothed")
         out_path = os.path.join(subj_work, epi_smooth)
-        if not os.path.exists(out_path):
+        if os.path.exists(out_path):
+            func_smooth.append(out_path)
+            continue
 
-            # Smooth data
-            print(f"\tStarting smoothing of {epi_path}")
-            bash_list = [
-                "3dmerge",
-                f"-1blur_fwhm {blur_size}",
-                "-doall",
-                f"-prefix {out_path}",
-                epi_path,
-            ]
-            sing_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
-            bash_cmd = " ".join(sing_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
+        # Smooth data
+        print(f"\tStarting smoothing of {epi_path}")
+        bash_list = [
+            "3dmerge",
+            f"-1blur_fwhm {blur_size}",
+            "-doall",
+            f"-prefix {out_path}",
+            epi_path,
+        ]
+        sing_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+        bash_cmd = " ".join(sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
 
         # Update return list
         func_smooth.append(out_path)
@@ -1046,37 +1041,39 @@ def scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
     func_scaled = []
     for epi_path in func_preproc:
 
-        # Setup output names
+        # Setup output names, avoid repeating work
         epi_preproc = os.path.basename(epi_path)
         desc_preproc = epi_preproc.split("desc-")[1].split("_")[0]
         epi_tstat = "tmp_" + epi_preproc.replace(desc_preproc, "tstat")
         out_tstat = os.path.join(subj_work, epi_tstat)
         epi_scale = epi_preproc.replace(desc_preproc, "scaled")
         out_path = os.path.join(subj_work, epi_scale)
-        if not os.path.exists(out_path):
-            print(f"\tStarting scaling of {epi_path}")
+        if os.path.exists(out_path):
+            func_scaled.append(out_path)
+            continue
 
-            # Determine mean values
-            bash_list = [
-                "3dTstat",
-                f"-prefix {out_tstat}",
-                epi_path,
-            ]
-            sing_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
-            bash_cmd = " ".join(sing_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
+        # Determine mean values
+        print(f"\tStarting scaling of {epi_path}")
+        bash_list = [
+            "3dTstat",
+            f"-prefix {out_tstat}",
+            epi_path,
+        ]
+        sing_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+        bash_cmd = " ".join(sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
 
-            # Scale values
-            bash_list = [
-                "3dcalc",
-                f"-a {epi_path}",
-                f"-b {out_tstat}",
-                f"-c {mask_min}",
-                "-expr 'c * min(200, a/b*100)*step(a)*step(b)'",
-                f"-prefix {out_path}",
-            ]
-            bash_cmd = " ".join(sing_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_path, "Scale run")
+        # Scale values
+        bash_list = [
+            "3dcalc",
+            f"-a {epi_path}",
+            f"-b {out_tstat}",
+            f"-c {mask_min}",
+            "-expr 'c * min(200, a/b*100)*step(a)*step(b)'",
+            f"-prefix {out_path}",
+        ]
+        bash_cmd = " ".join(sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_path, "Scale run")
 
         # Update return list
         func_scaled.append(out_path)
@@ -1435,13 +1432,7 @@ class WriteDecon:
     """
 
     def __init__(
-        self,
-        subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-        sess_tfs,
-        sing_afni,
+        self, subj_work, proj_deriv, sess_func, sess_anat, sess_tfs, sing_afni,
     ):
         """Initialize object.
 
@@ -1828,18 +1819,18 @@ class WriteDecon:
                 "No decon_name detected, try WriteDecon.write_univ."
             )
 
-        # Execute decon_cmd
+        # Setup output file, avoid repeating work
         print("\tRunning 3dDeconvolve command ...")
         out_path = os.path.join(
             self.subj_work, f"{self.decon_name}_stats.REML_cmd"
         )
-        if not os.path.exists(out_path):
-            _, _ = submit.submit_sbatch(
-                self.decon_cmd,
-                f"dcn{subj[6:]}s{sess[-1]}",
-                log_dir,
-                mem_gig=10,
-            )
+        if os.path.exists(out_path):
+            return out_path
+
+        # Execute decon_cmd
+        _, _ = submit.submit_sbatch(
+            self.decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
+        )
 
         # Check generated file length
         with open(out_path, "r") as rf:
@@ -1963,48 +1954,47 @@ class RunDecon:
         if "func-scaled" not in self.sess_func:
             raise KeyError("Expected func-scaled key in sess_func")
 
-        # Setup output location and name
+        # Setup output location and name, avoid repeating work
         h_name = os.path.basename(self.sess_anat["mask-WMe"])
         out_path = os.path.join(
             self.subj_work, h_name.replace("label-WMe", "desc-nuiss")
         )
         if not os.path.exists(out_path):
+            return out_path
 
-            # Concatenate EPI runs
-            out_tcat = os.path.join(self.subj_work, "tmp_tcat_all-runs.nii.gz")
-            bash_list = [
-                "3dTcat",
-                f"-prefix {out_tcat}",
-                " ".join(self.sess_func["func-scaled"]),
-            ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_tcat, "Tcat runs")
+        # Concatenate EPI runs
+        out_tcat = os.path.join(self.subj_work, "tmp_tcat_all-runs.nii.gz")
+        bash_list = [
+            "3dTcat",
+            f"-prefix {out_tcat}",
+            " ".join(self.sess_func["func-scaled"]),
+        ]
+        bash_cmd = " ".join(self.afni_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_tcat, "Tcat runs")
 
-            # Make eroded mask in EPI time
-            out_erode = os.path.join(
-                self.subj_work, "tmp_eroded_all-runs.nii.gz"
-            )
-            bash_list = [
-                "3dcalc",
-                f"-a {out_tcat}",
-                f"-b {self.sess_anat['mask-WMe']}",
-                "-expr 'a*bool(b)'",
-                "-datum float",
-                f"-prefix {out_erode}",
-            ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_erode, "Erode")
+        # Make eroded mask in EPI time
+        out_erode = os.path.join(self.subj_work, "tmp_eroded_all-runs.nii.gz")
+        bash_list = [
+            "3dcalc",
+            f"-a {out_tcat}",
+            f"-b {self.sess_anat['mask-WMe']}",
+            "-expr 'a*bool(b)'",
+            "-datum float",
+            f"-prefix {out_erode}",
+        ]
+        bash_cmd = " ".join(self.afni_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_erode, "Erode")
 
-            # Generate blurred WM file
-            bash_list = [
-                "3dmerge",
-                "-1blur_fwhm 20",
-                "-doall",
-                f"-prefix {out_path}",
-                out_erode,
-            ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_erode, "Erode")
+        # Generate blurred WM file
+        bash_list = [
+            "3dmerge",
+            "-1blur_fwhm 20",
+            "-doall",
+            f"-prefix {out_path}",
+            out_erode,
+        ]
+        bash_cmd = " ".join(self.afni_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_erode, "Erode")
 
         return out_path
 
