@@ -85,12 +85,7 @@ def pipeline_afni(
 
     # Generate deconvolution matrics, REML command
     write_decon = afni.WriteDecon(
-        subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-        sess_tfs,
-        sing_afni,
+        subj_work, proj_deriv, sess_func, sess_anat, sess_tfs, sing_afni,
     )
     write_decon.build_decon(model_name)
     reml_path = write_decon.generate_reml(subj, sess, log_dir)
@@ -105,8 +100,14 @@ def pipeline_afni(
         sing_afni,
         log_dir,
     )
-    sess_func["func-decon"] = make_reml.exec_reml(subj, sess)
-    return (sess_tfs, sess_anat, sess_func)
+    sess_func["func-decon"] = make_reml.exec_reml(subj, sess, model_name)
+
+    # Clean
+    wf_done = afni.move_final(
+        subj, sess, proj_deriv, subj_work, sess_anat, model_name
+    )
+    if wf_done:
+        return (sess_tfs, sess_anat, sess_func)
 
 
 def pipeline_fsl():

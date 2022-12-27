@@ -1,6 +1,8 @@
 """Methods for AFNI."""
 import os
 import json
+import glob
+import shutil
 import subprocess
 import pandas as pd
 import numpy as np
@@ -818,7 +820,8 @@ class MakeMasks:
 
             # Setup final path, avoid repeating work
             out_tiss = os.path.join(
-                self.subj_work, f"{self.subj}_label-{tiss}e_mask.nii.gz",
+                self.subj_work,
+                f"{self.subj}_{self.sess}_label-{tiss}e_mask.nii.gz",
             )
             if os.path.exists(out_tiss):
                 out_dict[tiss] = tiss
@@ -1528,50 +1531,54 @@ class WriteDecon:
         if "func-inv" not in self.func_dict:
             raise KeyError("Expected func-inv key in func_dict")
 
-        # Setup output path and name
-        print("\t\tBuilding censor waveform ...")
+        # Make censor waveform
         out_name = os.path.basename(self.func_dict["func-inv"]).replace(
             "Inv_timeseries", "_HRF"
         )
-        out_path = os.path.join(self.subj_work, out_name)
+        out_path = os.path.join(self.subj_work, "motion_files", out_name)
+        if not os.path.exists(out_path):
+            print("\t\tBuilding censor waveform ...")
 
-        # Get session info, for TR length, number of volumes
-        sess_info = self._get_sess_info()
+            # Get session info, for TR length, number of volumes
+            sess_info = self._get_sess_info()
 
-        # Generate classic HRF
-        len_tr = sess_info["len_tr"]
-        bash_list = [
-            "3dDeconvolve",
-            "-polort -1",
-            f"-nodata 10 {len_tr}",
-            "-num_stimts 1",
-            f"-stim_times 1 1D:0 'BLOCK({len_tr}, 1)'",
-            f"-x1D {self.subj_work}/Classic_HRF.1D",
-            "-x1D_stop",
-        ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
-        _ = submit.submit_subprocess(
-            bash_cmd, f"{self.subj_work}/Classic_HRF.1D", "Classic HRF"
-        )
+            # Generate classic HRF
+            len_tr = sess_info["len_tr"]
+            bash_list = [
+                "3dDeconvolve",
+                "-polort -1",
+                f"-nodata 10 {len_tr}",
+                "-num_stimts 1",
+                f"-stim_times 1 1D:0 'BLOCK({len_tr}, 1)'",
+                f"-x1D {self.subj_work}/Classic_HRF.1D",
+                "-x1D_stop",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(
+                bash_cmd, f"{self.subj_work}/Classic_HRF.1D", "Classic HRF"
+            )
 
-        # Convolve HRF with censor file
-        waver_out = os.path.join(self.subj_work, "tmp_waver.1D")
-        bash_list = [
-            "waver",
-            f"-FILE {len_tr} {self.subj_work}/Classic_HRF.1D",
-            "-peak 1",
-            f"-input {self.func_dict['func-inv']}",
-            f"-numout {sess_info['sum_vol']}",
-            f"> {self.subj_work}/tmp_waver.1D",
-        ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
-        _ = submit.submit_subprocess(bash_cmd, waver_out, "Censor TS temp")
+            # Convolve HRF with censor file
+            waver_out = os.path.join(self.subj_work, "tmp_waver.1D")
+            bash_list = [
+                "waver",
+                f"-FILE {len_tr} {self.subj_work}/Classic_HRF.1D",
+                "-peak 1",
+                f"-input {self.func_dict['func-inv']}",
+                f"-numout {sess_info['sum_vol']}",
+                f"> {self.subj_work}/tmp_waver.1D",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, waver_out, "Censor TS temp")
 
-        # Manage talkative singularity
-        bash_cmd = f"tail -n {sess_info['sum_vol']} {waver_out} > {out_path}"
-        _ = submit.submit_subprocess(bash_cmd, out_path, "Censor TS")
+            # Manage talkative singularity
+            bash_cmd = (
+                f"tail -n {sess_info['sum_vol']} {waver_out} > {out_path}"
+            )
+            _ = submit.submit_subprocess(bash_cmd, out_path, "Censor TS")
 
         # Make baseline regressor argument
+        print("\t\tWriting censor base ...")
         count_beh += 1
         reg_censor_list = [
             f"-stim_file {count_beh} {out_path}",
@@ -1998,7 +2005,7 @@ class RunDecon:
 
         return out_path
 
-    def exec_reml(self, subj, sess):
+    def exec_reml(self, subj, sess, model_name):
         """Exectue 3dREMLfit command.
 
         Setup for and exectue 3dREMLfit command generated
@@ -2011,6 +2018,9 @@ class RunDecon:
             BIDS subject identfier
         sess : str
             BIDS session identifier
+        model_name : str
+            [univ]
+            Desired AFNI model, triggers write methods
 
         Returns
         -------
@@ -2023,6 +2033,11 @@ class RunDecon:
             Converting reml_path content to list failed
 
         """
+        # Validate model name
+        valid_names = ["univ"]
+        if model_name not in valid_names:
+            raise ValueError(f"Unsupported model name : {model_name}")
+
         # Set final path name (anticipate AFNI output)
         out_path = self.reml_path.replace(".REML_cmd", "_REML+tlrc.HEAD")
         if os.path.exists(out_path):
@@ -2070,7 +2085,9 @@ class RunDecon:
         print("\tRunning 3dREMLfit")
 
         bash_cmd = " ".join(self.afni_prep + reml_list)
-        reml_script = os.path.join(self.subj_work, "decon_reml.sh")
+        reml_script = os.path.join(
+            self.subj_work, f"decon_{model_name}_reml.sh"
+        )
         with open(reml_script, "w") as script:
             script.write(bash_cmd)
 
@@ -2085,3 +2102,78 @@ class RunDecon:
         if not os.path.exists(out_path):
             raise FileNotFoundError(f"Expected to find {out_path}")
         return out_path
+
+
+def move_final(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
+    """Save certain files and delete intermediates.
+
+    Copy decon, motion, timing, eroded WM mask, and intersection mask
+    files to the group location on the DCC. Then clean up the
+    session intermediates.
+
+    Files saved to:
+        <proj_deriv>/model_afni/<subj>/<sess>/func
+
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    proj_deriv : path
+        Location of project derivatives, "model_afni sub-directory
+        will be destination of saved files.
+    subj_work : path
+        Location of working directory for intermediates
+    sess_anat : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed anatomical files
+    model_name : str
+        [univ]
+        Desired AFNI model, triggers write methods
+
+    Returns
+    -------
+    bool
+        Whether all work was completed
+
+    Raises
+    ------
+    FileNotFoundError
+        Failure to detect decon files in subj_work
+        Failure to detect desired files in proj_deriv location
+
+    """
+    # Setup save location in group directory
+    subj_final = os.path.join(proj_deriv, "model_afni", subj, sess, "func")
+    if not os.path.exists(subj_final):
+        os.makedirs(subj_final)
+
+    # Find, specify files/directories for saving
+    subj_motion = os.path.join(subj_work, "motion_files")
+    subj_timing = os.path.join(subj_work, "timing_files")
+    save_list = glob.glob(f"{subj_work}/*decon_{model_name}*")
+    if save_list:
+        save_list.append(sess_anat["mask-WMe"])
+        save_list.append(sess_anat["mask-int"])
+        save_list.append(subj_motion)
+        save_list.append(subj_timing)
+    else:
+        raise FileNotFoundError(
+            f"Missing decon_{model_name} files in {subj_work}"
+        )
+
+    # Copy desired files to group location
+    for h_save in save_list:
+        bash_cmd = f"cp -r {h_save} {subj_final}"
+        h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+        _ = h_sp.communicate()
+        h_sp.wait()
+        chk_save = os.path.join(subj_final, h_save)
+        if not os.path.exists(chk_save):
+            raise FileNotFoundError(f"Expected to find {chk_save}")
+
+    # Clean up - remove session directory in case
+    # other session is still running.
+    shutil.rmtree(os.path.dirname(subj_work))
+    return True

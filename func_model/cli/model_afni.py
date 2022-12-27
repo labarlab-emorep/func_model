@@ -1,4 +1,12 @@
-r"""Title.
+r"""Conduct AFNI-based models.
+
+Utilizing output of fMRIPrep, construct needed files for deconvolution. Write
+the 3dDeconvolve script, and use it to generate the matrices and 3dREMLfit
+script. Execute 3dREMLfit, and save output files to group location.
+
+Option --model-name is used to trigger different workflows. It is planned to
+support generating different timing files and 3dDeconvolve commands based
+on the value of this option, but only "--model-name univ" is currently built.
 
 Examples
 --------
@@ -17,7 +25,7 @@ from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model import submit
 
 
-# %%fnma
+# %%
 def _get_args():
     """Get and parse arguments."""
     parser = ArgumentParser(
@@ -89,11 +97,11 @@ def main():
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", user_name, "EmoRep")
     now_time = datetime.now()
-    # log_dir = os.path.join(
-    #     work_deriv,
-    #     f"logs/func_model-afni_{now_time.strftime('%y-%m-%d_%H:%M')}",
-    # )
-    log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
+    log_dir = os.path.join(
+        work_deriv,
+        f"logs/func_model-afni_{now_time.strftime('%y-%m-%d_%H:%M')}",
+    )
+    # log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
