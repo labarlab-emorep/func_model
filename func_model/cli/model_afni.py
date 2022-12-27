@@ -13,7 +13,7 @@ on the value of this option, but only "--model-name univ" is currently built.
 Examples
 --------
 model_afni -s sub-ER0009
-model_afni --model-name univ -s sub-ER0009 sub-ER0016
+model_afni --model-name indiv -s sub-ER0009 sub-ER0016
 
 """
 # %%
@@ -25,6 +25,7 @@ import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model import submit
+from func_model import afni
 
 
 # %%
@@ -39,7 +40,7 @@ def _get_args():
         default="univ",
         help=textwrap.dedent(
             """\
-            [univ]
+            [univ | indiv]
             AFNI model name/type, for triggering different workflows
             (default : %(default)s)
             """
@@ -87,6 +88,12 @@ def main():
     subj_list = args.sub_list
     proj_dir = args.proj_dir
     model_name = args.model_name
+
+    # Check model_name
+    model_valid = afni.valid_models(model_name)
+    if not model_valid:
+        print(f"Unsupported model name : {model_name}")
+        sys.exit(1)
 
     # Setup group project directory, paths
     proj_deriv = os.path.join(proj_dir, "derivatives")

@@ -38,7 +38,7 @@ def pipeline_afni(
     sing_afni : path
         Location of AFNI singularity file
     model_name : str
-        [univ]
+        [univ | indiv]
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -57,8 +57,8 @@ def pipeline_afni(
 
     """
     # Validate
-    valid_names = ["univ"]
-    if model_name not in valid_names:
+    model_valid = afni.valid_models(model_name)
+    if not model_valid:
         raise ValueError(f"Unsupported model name : {model_name}")
 
     # Check that session exists for participant

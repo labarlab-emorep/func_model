@@ -40,6 +40,25 @@ def _prepend_afni_sing(proj_deriv, subj_work, sing_afni):
     ]
 
 
+def valid_models(model_name):
+    """Return bool of whether model_name is supported.
+
+    Parameters
+    ----------
+    model_name : str
+        [univ | indiv]
+        Desired AFNI model, for triggering different workflows
+
+    Returns
+    -------
+    bool
+
+    """
+    valid_list = ["univ", "indiv"]
+    model_valid = True if model_name in valid_list else False
+    return model_valid
+
+
 class TimingFiles:
     """Create timing files for various types of EmoRep events.
 
@@ -936,11 +955,7 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work,
-    proj_deriv,
-    func_preproc,
-    sing_afni,
-    blur_size=3,
+    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1433,19 +1448,16 @@ class WriteDecon:
         to be executed.
     write_univ(basis_func: str = "dur_mod, decon_name: str = "decon_univ")
         Write a univariate 3dDeconvolve command for sanity checks
+    write_indiv()
+        Write a univariate, individual modulated 3dDeconvolve command
+        for sanity checks
     generate_reml(log_dir: path)
         Execute 3dDeconvolve to generate 3dREMLfit command
 
     """
 
     def __init__(
-        self,
-        subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-        sess_tfs,
-        sing_afni,
+        self, subj_work, proj_deriv, sess_func, sess_anat, sess_tfs, sing_afni,
     ):
         """Initialize object.
 
@@ -1496,7 +1508,7 @@ class WriteDecon:
         Parameters
         ----------
         model_name : str
-            [univ]
+            [univ | indiv]
             Desired AFNI model, triggers write methods
 
         Raises
@@ -1505,10 +1517,12 @@ class WriteDecon:
             Unsupported model name
 
         """
-        valid_names = ["univ"]
-        if model_name not in valid_names:
+        # Validate model name
+        model_valid = valid_models(model_name)
+        if not model_valid:
             raise ValueError(f"Unsupported model name : {model_name}")
 
+        # Find, trigger appropriate method
         write_meth = getattr(self, f"write_{model_name}")
         write_meth()
 
@@ -1721,7 +1735,7 @@ class WriteDecon:
         return (reg_events, count_beh)
 
     def write_univ(self, basis_func="dur_mod", decon_name="decon_univ"):
-        """Write an AFNI 3dDeconvolve command for sanity checking.
+        """Write an AFNI 3dDeconvolve command for univariate checking.
 
         Build 3dDeconvolve command with minimal support for different
         basis functions.
@@ -1797,6 +1811,16 @@ class WriteDecon:
         with open(decon_script, "w") as script:
             script.write(self.decon_cmd)
 
+    def write_indiv(self):
+        """Write an AFNI 3dDeconvolve command for individual mod checking.
+
+        The "indiv" approach requires the same files and workflow as "univ",
+        the only difference is in the basis function (and file name). So,
+        use the class method write_univ with different parameters.
+
+        """
+        self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
+
     def generate_reml(self, subj, sess, log_dir):
         """Generate matrices and 3dREMLfit command.
 
@@ -1846,10 +1870,7 @@ class WriteDecon:
 
         # Execute decon_cmd
         _, _ = submit.submit_sbatch(
-            self.decon_cmd,
-            f"dcn{subj[6:]}s{sess[-1]}",
-            log_dir,
-            mem_gig=10,
+            self.decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
         )
 
         # Check generated file length
