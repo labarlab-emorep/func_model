@@ -1,8 +1,10 @@
-r"""Conduct AFNI-based models.
+r"""Conduct AFNI-based models of EPI run files.
 
 Utilizing output of fMRIPrep, construct needed files for deconvolution. Write
 the 3dDeconvolve script, and use it to generate the matrices and 3dREMLfit
 script. Execute 3dREMLfit, and save output files to group location.
+A workflow is submitted for each session found in subject's fmriprep
+directory.
 
 Option --model-name is used to trigger different workflows. It is planned to
 support generating different timing files and 3dDeconvolve commands based
@@ -99,7 +101,7 @@ def main():
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,
-        f"logs/func_model-afni_{now_time.strftime('%y-%m-%d_%H:%M')}",
+        f"logs/func_model-afni_{now_time.strftime('%Y-%m-%d_%H:%M')}",
     )
     # log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
     if not os.path.exists(log_dir):

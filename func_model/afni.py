@@ -824,7 +824,7 @@ class MakeMasks:
                 f"{self.subj}_{self.sess}_label-{tiss}e_mask.nii.gz",
             )
             if os.path.exists(out_tiss):
-                out_dict[tiss] = tiss
+                out_dict[tiss] = out_tiss
                 continue
 
             # Binarize probabilistic tissue mask
@@ -936,7 +936,11 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
+    subj_work,
+    proj_deriv,
+    func_preproc,
+    sing_afni,
+    blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1435,7 +1439,13 @@ class WriteDecon:
     """
 
     def __init__(
-        self, subj_work, proj_deriv, sess_func, sess_anat, sess_tfs, sing_afni,
+        self,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sess_tfs,
+        sing_afni,
     ):
         """Initialize object.
 
@@ -1836,7 +1846,10 @@ class WriteDecon:
 
         # Execute decon_cmd
         _, _ = submit.submit_sbatch(
-            self.decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
+            self.decon_cmd,
+            f"dcn{subj[6:]}s{sess[-1]}",
+            log_dir,
+            mem_gig=10,
         )
 
         # Check generated file length
@@ -1966,7 +1979,7 @@ class RunDecon:
         out_path = os.path.join(
             self.subj_work, h_name.replace("label-WMe", "desc-nuiss")
         )
-        if not os.path.exists(out_path):
+        if os.path.exists(out_path):
             return out_path
 
         # Concatenate EPI runs
@@ -2001,7 +2014,7 @@ class RunDecon:
             out_erode,
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
-        _ = submit.submit_subprocess(bash_cmd, out_erode, "Erode")
+        _ = submit.submit_subprocess(bash_cmd, out_path, "Nuiss")
 
         return out_path
 
