@@ -955,7 +955,11 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
+    subj_work,
+    proj_deriv,
+    func_preproc,
+    sing_afni,
+    blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1457,7 +1461,13 @@ class WriteDecon:
     """
 
     def __init__(
-        self, subj_work, proj_deriv, sess_func, sess_anat, sess_tfs, sing_afni,
+        self,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sess_tfs,
+        sing_afni,
     ):
         """Initialize object.
 
@@ -1870,7 +1880,10 @@ class WriteDecon:
 
         # Execute decon_cmd
         _, _ = submit.submit_sbatch(
-            self.decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
+            self.decon_cmd,
+            f"dcn{subj[6:]}s{sess[-1]}",
+            log_dir,
+            mem_gig=10,
         )
 
         # Check generated file length
@@ -2053,7 +2066,7 @@ class RunDecon:
         sess : str
             BIDS session identifier
         model_name : str
-            [univ]
+            [univ | indiv]
             Desired AFNI model, triggers write methods
 
         Returns
@@ -2068,8 +2081,8 @@ class RunDecon:
 
         """
         # Validate model name
-        valid_names = ["univ"]
-        if model_name not in valid_names:
+        model_valid = valid_models(model_name)
+        if not model_valid:
             raise ValueError(f"Unsupported model name : {model_name}")
 
         # Set final path name (anticipate AFNI output)
@@ -2163,7 +2176,7 @@ def move_final(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
         Contains reference names (key) and paths (value) to
         preprocessed anatomical files
     model_name : str
-        [univ]
+        [univ | indiv]
         Desired AFNI model, triggers write methods
 
     Returns
