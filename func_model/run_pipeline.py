@@ -268,9 +268,7 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
     )
     func_dict["func-mean"] = make_motion.mean_motion()
     func_dict["func-deriv"] = make_motion.deriv_motion()
-    mot_cens, mot_cens_inv = make_motion.censor_volumes()
-    func_dict["func-cens"] = mot_cens
-    func_dict["func-inv"] = mot_cens_inv
+    func_dict["func-cens"] = make_motion.censor_volumes()
     _ = make_motion.count_motion()
 
     return (func_dict, anat_dict)

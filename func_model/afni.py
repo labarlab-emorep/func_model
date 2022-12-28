@@ -956,11 +956,7 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work,
-    proj_deriv,
-    func_preproc,
-    sing_afni,
-    blur_size=3,
+    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1320,10 +1316,8 @@ class MotionCensor:
     def censor_volumes(self):
         """Make censor files.
 
-        Generate AFNI-styled censor files, and also
-        make inverted censor files to use as an inlusion
-        mask. Volumes preceding motion events are
-        censored.
+        Generate AFNI-styled censor files. Volumes preceding
+        motion events are censored.
 
         Attributes
         ----------
@@ -1333,16 +1327,14 @@ class MotionCensor:
 
         Returns
         -------
-        tuple
-            [0] = location of censor file
-            [1] = location of inverted censor file
+        path
+            location of censor file
 
         """
         print("\tMaking censor and inverted censor files")
 
         # Setup and read-in data for runs
         censor_cat = []
-        censor_inv = []
         for mot_path in self.func_motion:
             df = pd.read_csv(mot_path, sep="\t")
 
@@ -1362,18 +1354,11 @@ class MotionCensor:
             df_cen.loc[zero_fill, "sum"] = 0
             censor_cat.append(df_cen)
 
-            # Reinvert updated regression matrix for
-            # inclusion mask.
-            df_inv = df_cen.replace({0: 1, 1: 0})
-            censor_inv.append(df_inv)
-
         # Combine run info, write out
         df_cen = pd.concat(censor_cat, ignore_index=True)
         censor_out = self._write_df(df_cen, "censor", ["sum"])
-        df_cen_inv = pd.concat(censor_inv, ignore_index=True)
-        censor_inv = self._write_df(df_cen_inv, "censorInv", ["sum"])
         self.df_censor = df_cen
-        return (censor_out, censor_inv)
+        return censor_out
 
     def count_motion(self):
         """Quantify missing volumes due to motion.
@@ -1462,13 +1447,7 @@ class WriteDecon:
     """
 
     def __init__(
-        self,
-        subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-        sess_tfs,
-        sing_afni,
+        self, subj_work, proj_deriv, sess_func, sess_anat, sess_tfs, sing_afni,
     ):
         """Initialize object.
 
@@ -1537,161 +1516,6 @@ class WriteDecon:
         write_meth = getattr(self, f"write_{model_name}")
         write_meth()
 
-    def _build_censor_ts(self, count_beh):
-        """Make a censor regressor argument.
-
-        Build a classic HRF and convolve it with the censor vector
-        to simulate change in BOLD from motion. This is done instead
-        of removing the motion volumes in order to keep a
-        continuous timeseries.
-
-        Parameters
-        ----------
-        count_beh : int
-            On-going count to fill 3dDeconvolve -num_stimts
-
-        Returns
-        -------
-        tuple
-            [0] = censor regressor for 3dDeconvolve
-            [1] = count
-
-        Raises
-        ------
-        KeyError
-            func_dict missing func-inv key
-
-        """
-        # Validate reqs
-        if "func-inv" not in self.func_dict:
-            raise KeyError("Expected func-inv key in func_dict")
-
-        # Make censor waveform
-        out_name = os.path.basename(self.func_dict["func-inv"]).replace(
-            "Inv_timeseries", "_HRF"
-        )
-        out_path = os.path.join(self.subj_work, "motion_files", out_name)
-        if not os.path.exists(out_path):
-            print("\t\tBuilding censor waveform ...")
-
-            # Get session info, for TR length, number of volumes
-            sess_info = self._get_sess_info()
-
-            # Generate classic HRF
-            len_tr = sess_info["len_tr"]
-            bash_list = [
-                "3dDeconvolve",
-                "-polort -1",
-                f"-nodata 10 {len_tr}",
-                "-num_stimts 1",
-                f"-stim_times 1 1D:0 'BLOCK({len_tr}, 1)'",
-                f"-x1D {self.subj_work}/Classic_HRF.1D",
-                "-x1D_stop",
-            ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
-            _ = submit.submit_subprocess(
-                bash_cmd, f"{self.subj_work}/Classic_HRF.1D", "Classic HRF"
-            )
-
-            # Convolve HRF with censor file
-            waver_out = os.path.join(self.subj_work, "tmp_waver.1D")
-            bash_list = [
-                "waver",
-                f"-FILE {len_tr} {self.subj_work}/Classic_HRF.1D",
-                "-peak 1",
-                f"-input {self.func_dict['func-inv']}",
-                f"-numout {sess_info['sum_vol']}",
-                f"> {self.subj_work}/tmp_waver.1D",
-            ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, waver_out, "Censor TS temp")
-
-            # Manage talkative singularity
-            bash_cmd = (
-                f"tail -n {sess_info['sum_vol']} {waver_out} > {out_path}"
-            )
-            _ = submit.submit_subprocess(bash_cmd, out_path, "Censor TS")
-
-        # Make baseline regressor argument
-        print("\t\tWriting censor base ...")
-        count_beh += 1
-        reg_censor_list = [
-            f"-stim_file {count_beh} {out_path}",
-            f"-stim_base {count_beh}",
-            f"-stim_label {count_beh} mot_cens",
-        ]
-        reg_censor = " ".join(reg_censor_list)
-
-        return (reg_censor, count_beh)
-
-    def _get_sess_info(self):
-        """Return dict of TR, volume info.
-
-        Returns
-        -------
-        dict
-
-        Raises
-        ------
-        KeyError
-            Missing func-scaled key in func_dict
-        ValueError
-            No value in func_dict[func-scaled]
-
-        """
-        # Check for EPI data
-        if "func-scaled" not in self.func_dict:
-            raise KeyError("Expected func-scaled key in func_dict")
-        if len(self.func_dict["func-scaled"]) < 1:
-            raise ValueError(
-                "Expected at least one value in func_dict[func-scaled]"
-            )
-
-        # Find TR length
-        bash_cmd = f"""
-            fslhd \
-                {self.func_dict["func-scaled"][0]} | \
-                grep 'pixdim4' | \
-                awk '{{print $2}}'
-        """
-        h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
-        h_out, h_err = h_sp.communicate()
-        h_sp.wait()
-        len_tr = float(h_out.decode("utf-8").strip())
-
-        # Get number of volumes and length (seconds) of each run
-        run_len = []
-        num_vol = []
-        for epi_file in self.func_dict["func-scaled"]:
-
-            # Extract number of volumes
-            bash_cmd = f"""
-                fslhd \
-                    {self.func_dict["func-scaled"][0]} | \
-                    grep dim4 | \
-                    head -n 1 | \
-                    awk '{{print $2}}'
-            """
-            h_sp = subprocess.Popen(
-                bash_cmd, shell=True, stdout=subprocess.PIPE
-            )
-            h_out, h_err = h_sp.communicate()
-            h_sp.wait()
-
-            # Interpret, get number of volumes and run length
-            h_vol = int(h_out.decode("utf-8").strip())
-            run_len.append(str(h_vol * len_tr))
-            num_vol.append(h_vol)
-
-        # Find total number of volumes
-        sum_vol = sum(num_vol)
-        return {
-            "len_tr": len_tr,
-            "run_len": run_len,
-            "run_vol": num_vol,
-            "sum_vol": sum_vol,
-        }
-
     def _build_behavior(self, count_beh, basis_func):
         """Build a behavior regressor argument
 
@@ -1754,7 +1578,7 @@ class WriteDecon:
         Parameters
         ----------
         basis_func : str, optional
-            [dur_mod | ind_mod | two_gam]
+            [dur_mod | ind_mod]
             Desired basis function for behaviors in 3dDeconvolve
         decon_name : str, optional
             Prefix for output deconvolve files
@@ -1773,7 +1597,7 @@ class WriteDecon:
 
         """
         # Validate
-        valid_list = ["dur_mod", "ind_mod", "two_gam"]
+        valid_list = ["dur_mod", "ind_mod"]
         if basis_func not in valid_list:
             raise ValueError("Invalid basis_func parameter")
 
@@ -1781,18 +1605,17 @@ class WriteDecon:
             if key not in self.func_dict:
                 raise KeyError(f"Expected {key} key in func_dict")
 
-        # Set variables and paths
+        # Determine input variables for 3dDeconvolve
         print("\tBuilding 3dDeconvolve command ...")
         self.decon_name = decon_name
         epi_preproc = " ".join(self.func_dict["func-scaled"])
         reg_motion_mean = self.func_dict["func-mean"]
         reg_motion_deriv = self.func_dict["func-deriv"]
+        motion_censor = self.func_dict["func-cens"]
         mask_int = self.anat_dict["mask-int"]
 
-        # Start counter for num_stimts, build regressors
-        count_beh = 0
-        reg_censor, count_beh = self._build_censor_ts(count_beh)
-        reg_events, count_beh = self._build_behavior(count_beh, basis_func)
+        # Build behavior regressors, get stimts count
+        reg_events, count_beh = self._build_behavior(0, basis_func)
 
         # write decon command
         decon_list = [
@@ -1801,13 +1624,13 @@ class WriteDecon:
             "-GOFORIT",
             f"-mask {mask_int}",
             f"-input {epi_preproc}",
+            f"-censor {motion_censor}",
             f"-ortvec {reg_motion_mean} mot_mean",
             f"-ortvec {reg_motion_deriv} mot_deriv",
             "-polort A",
             "-float",
             "-local_times",
             f"-num_stimts {count_beh}",
-            reg_censor,
             reg_events,
             "-jobs 1",
             f"-x1D {self.subj_work}/X.{decon_name}.xmat.1D",
@@ -1883,10 +1706,7 @@ class WriteDecon:
 
         # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
-            self.decon_cmd,
-            f"dcn{subj[6:]}s{sess[-1]}",
-            log_dir,
-            mem_gig=10,
+            self.decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
         )
         if not os.path.exists(out_path):
             time.sleep(300)
