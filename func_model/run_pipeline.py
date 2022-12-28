@@ -264,7 +264,7 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
 
     # Make AFNI-style motion and censor files
     make_motion = afni.MotionCensor(
-        subj_work, proj_deriv, func_dict["func-motion"]
+        subj_work, proj_deriv, func_dict["func-motion"], sing_afni
     )
     func_dict["func-mean"] = make_motion.mean_motion()
     func_dict["func-deriv"] = make_motion.deriv_motion()

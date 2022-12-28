@@ -956,7 +956,11 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
+    subj_work,
+    proj_deriv,
+    func_preproc,
+    sing_afni,
+    blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1123,6 +1127,12 @@ class MotionCensor:
         Output directory for motion, censor files
     out_str : str
         Basic output file name
+    sing_afni : path
+        Location of AFNI singularity file
+    sing_prep : list
+        First part of subprocess call for AFNI singularity
+    subj_work : path
+        Location of working directory for intermediates
 
     Methods
     -------
@@ -1145,7 +1155,7 @@ class MotionCensor:
 
     """
 
-    def __init__(self, subj_work, proj_deriv, func_motion):
+    def __init__(self, subj_work, proj_deriv, func_motion, sing_afni):
         """Setup for making motion, censor files.
 
         Set attributes, make output directory, setup basic
@@ -1161,18 +1171,17 @@ class MotionCensor:
         func_motion : list
             Locations of timeseries.tsv files produced by fMRIPrep,
             file names must follow BIDS convention
+        sing_afni : path
+            Location of AFNI singularity file
 
         Attributes
         ----------
-        func_motion : list
-            Locations of timeseries.tsv files produced by fMRIPrep
-        proj_deriv : path
-            Location of project derivatives, containing fmriprep
-            and fsl_denoise sub-directories
         out_dir : path
             Output directory for motion, censor files
         out_str : str
             Basic output file name
+        sing_prep : list
+            First part of subprocess call for AFNI singularity
 
         Raises
         ------
@@ -1200,9 +1209,15 @@ class MotionCensor:
         self.out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
         self.proj_deriv = proj_deriv
         self.func_motion = func_motion
+        self.subj_work = subj_work
+        self.sing_afni = sing_afni
         self.out_dir = os.path.join(subj_work, "motion_files")
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
+
+        self.sing_prep = _prepend_afni_sing(
+            self.proj_deriv, self.subj_work, self.sing_afni
+        )
 
     def _write_df(self, df_out, name, col_names=None):
         """Write dataframe to output location.
@@ -1244,6 +1259,11 @@ class MotionCensor:
         References the [trans|rot]_[x|y|z] columns
         to get all 6 dof.
 
+        Attributes
+        ----------
+        mean_path : path
+            Location of mean motion file
+
         Returns
         -------
         path
@@ -1273,6 +1293,7 @@ class MotionCensor:
         # Combine runs, write out
         df_mean_all = pd.concat(mean_cat, ignore_index=True)
         mean_out = self._write_df(df_mean_all, "mean")
+        self.mean_path = mean_out
         return mean_out
 
     def deriv_motion(self):
@@ -1313,11 +1334,16 @@ class MotionCensor:
         deriv_out = self._write_df(df_deriv_all, "deriv")
         return deriv_out
 
-    def censor_volumes(self):
+    def censor_volumes(self, thresh=0.3):
         """Make censor files.
 
-        Generate AFNI-styled censor files. Volumes preceding
-        motion events are censored.
+        Generate AFNI-styled censor files. Converts fMRIPrep rotation
+        values (radians) into millimeters.
+
+        Parameters
+        ----------
+        thresh : float
+            Min/Max rotation value (mm)
 
         Attributes
         ----------
@@ -1330,35 +1356,38 @@ class MotionCensor:
         path
             location of censor file
 
+        Notes
+        -----
+        -   Requires self.mean_path, will trigger method.
+
         """
-        print("\tMaking censor and inverted censor files")
+        # Check for required attribute, trigger
+        if not hasattr(self, "mean_path"):
+            self.mean_motion()
 
-        # Setup and read-in data for runs
-        censor_cat = []
-        for mot_path in self.func_motion:
-            df = pd.read_csv(mot_path, sep="\t")
+        # Setup output path, avoid repeating work
+        out_path = os.path.join(
+            self.out_dir, self.out_str.replace("confounds", "censor")
+        )
+        if os.path.exists(out_path):
+            self.df_censor = pd.read_csv(out_path, header=None)
+            return out_path
 
-            # Combine motion events into new "sum" column
-            df_cen = df.filter(regex="motion_outlier").copy()
-            df_cen["sum"] = df_cen.sum(axis=1)
-            df_cen = df_cen.astype(int)
-
-            # Invert binary censor for regular AFNI censoring
-            df_cen = df_cen.replace({0: 1, 1: 0})
-
-            # Exclude volume preceding motion event
-            zero_pos = df_cen.index[df_cen["sum"] == 0].tolist()
-            zero_fill = [x - 1 for x in zero_pos]
-            if -1 in zero_fill:
-                zero_fill.remove(-1)
-            df_cen.loc[zero_fill, "sum"] = 0
-            censor_cat.append(df_cen)
-
-        # Combine run info, write out
-        df_cen = pd.concat(censor_cat, ignore_index=True)
-        censor_out = self._write_df(df_cen, "censor", ["sum"])
-        self.df_censor = df_cen
-        return censor_out
+        # Find significant motion events
+        print("\tMaking censor file")
+        bash_list = [
+            "1d_tool.py",
+            f"-infile {self.mean_path}",
+            "-derivative",
+            "-collapse_cols weighted_enorm",
+            "-weight_vec 1 1 1 57.3 57.3 57.3",
+            f"-moderate_mask -{thresh} {thresh}",
+            f"-write_censor {out_path}",
+        ]
+        bash_cmd = " ".join(self.sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_path, "Censor")
+        self.df_censor = pd.read_csv(out_path, header=None)
+        return out_path
 
     def count_motion(self):
         """Quantify missing volumes due to motion.
@@ -1384,7 +1413,7 @@ class MotionCensor:
             self.censor_volumes()
 
         # Quick calculations
-        num_vol = self.df_censor["sum"].sum()
+        num_vol = self.df_censor[0].sum()
         num_tot = len(self.df_censor)
         cen_dict = {
             "total_volumes": int(num_tot),
@@ -1447,7 +1476,13 @@ class WriteDecon:
     """
 
     def __init__(
-        self, subj_work, proj_deriv, sess_func, sess_anat, sess_tfs, sing_afni,
+        self,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sess_tfs,
+        sing_afni,
     ):
         """Initialize object.
 
@@ -1706,7 +1741,10 @@ class WriteDecon:
 
         # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
-            self.decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
+            self.decon_cmd,
+            f"dcn{subj[6:]}s{sess[-1]}",
+            log_dir,
+            mem_gig=10,
         )
         if not os.path.exists(out_path):
             time.sleep(300)
