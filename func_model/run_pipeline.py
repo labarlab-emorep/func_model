@@ -8,7 +8,7 @@ from func_model import afni
 
 # %%
 def afni_univ_tfs(subj, sess, subj_work, subj_sess_raw):
-    """Make timing files for sanity check.
+    """Make timing files for univariate sanity check.
 
     Generate a set of AFNI-styled timing files in order to
     check the design and manipulation.
@@ -72,7 +72,35 @@ def afni_univ_tfs(subj, sess, subj_work, subj_sess_raw):
     return sess_tfs
 
 
-# %%
+def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
+    """Make timing files for sanity check modeling individual events.
+
+    This "indiv" approach requires the same timing files as "univ", so wrap
+    the afni_univ_tfs method and return that output.
+
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    subj_work : path
+        Location of working directory for generating intermediate files
+    subj_sess_raw : path
+        Location of participant's session rawdata, used to find
+        BIDS event files
+
+    Returns
+    -------
+    dict
+        key = event name
+        value = path to timing file
+
+    """
+    sess_tfs = afni_univ_tfs(subj, sess, subj_work, subj_sess_raw)
+    return sess_tfs
+
+
 def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
     """Conduct extra preprocessing for AFNI.
 
@@ -231,11 +259,7 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
         subj_work, proj_deriv, func_dict["func-preproc"], sing_afni
     )
     func_dict["func-scaled"] = afni.scale_epi(
-        subj_work,
-        proj_deriv,
-        anat_dict["mask-min"],
-        smooth_epi,
-        sing_afni,
+        subj_work, proj_deriv, anat_dict["mask-min"], smooth_epi, sing_afni,
     )
 
     # Make AFNI-style motion and censor files

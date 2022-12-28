@@ -163,12 +163,13 @@ def schedule_afni(
         os.makedirs(proj_afni)
 
     # Write parent python script
+    wall_time = 40 if model_name == "indiv" else 20
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
 
         #SBATCH --job-name=p{subj[6:]}s{sess[-1]}
         #SBATCH --output={log_dir}/par{subj[6:]}s{sess[-1]}.txt
-        #SBATCH --time=20:00:00
+        #SBATCH --time={wall_time}:00:00
         #SBATCH --mem=8000
 
         import os

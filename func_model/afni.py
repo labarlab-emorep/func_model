@@ -3,6 +3,7 @@ import os
 import json
 import glob
 import shutil
+import time
 import subprocess
 import pandas as pd
 import numpy as np
@@ -38,6 +39,25 @@ def _prepend_afni_sing(proj_deriv, subj_work, sing_afni):
         f"--bind {subj_work}:/opt/home",
         sing_afni,
     ]
+
+
+def valid_models(model_name):
+    """Return bool of whether model_name is supported.
+
+    Parameters
+    ----------
+    model_name : str
+        [univ | indiv]
+        Desired AFNI model, for triggering different workflows
+
+    Returns
+    -------
+    bool
+
+    """
+    valid_list = ["univ", "indiv"]
+    model_valid = True if model_name in valid_list else False
+    return model_valid
 
 
 class TimingFiles:
@@ -1433,6 +1453,9 @@ class WriteDecon:
         to be executed.
     write_univ(basis_func: str = "dur_mod, decon_name: str = "decon_univ")
         Write a univariate 3dDeconvolve command for sanity checks
+    write_indiv()
+        Write a univariate, individual modulated 3dDeconvolve command
+        for sanity checks
     generate_reml(log_dir: path)
         Execute 3dDeconvolve to generate 3dREMLfit command
 
@@ -1496,8 +1519,8 @@ class WriteDecon:
         Parameters
         ----------
         model_name : str
-            [univ]
-            Desired AFNI model, triggers write methods
+            [univ | indiv]
+            Desired AFNI model, triggers right methods
 
         Raises
         ------
@@ -1505,10 +1528,12 @@ class WriteDecon:
             Unsupported model name
 
         """
-        valid_names = ["univ"]
-        if model_name not in valid_names:
+        # Validate model name
+        model_valid = valid_models(model_name)
+        if not model_valid:
             raise ValueError(f"Unsupported model name : {model_name}")
 
+        # Find, trigger appropriate method
         write_meth = getattr(self, f"write_{model_name}")
         write_meth()
 
@@ -1721,7 +1746,7 @@ class WriteDecon:
         return (reg_events, count_beh)
 
     def write_univ(self, basis_func="dur_mod", decon_name="decon_univ"):
-        """Write an AFNI 3dDeconvolve command for sanity checking.
+        """Write an AFNI 3dDeconvolve command for univariate checking.
 
         Build 3dDeconvolve command with minimal support for different
         basis functions.
@@ -1762,6 +1787,7 @@ class WriteDecon:
         epi_preproc = " ".join(self.func_dict["func-scaled"])
         reg_motion_mean = self.func_dict["func-mean"]
         reg_motion_deriv = self.func_dict["func-deriv"]
+        mask_int = self.anat_dict["mask-int"]
 
         # Start counter for num_stimts, build regressors
         count_beh = 0
@@ -1773,6 +1799,7 @@ class WriteDecon:
             "3dDeconvolve",
             "-x1D_stop",
             "-GOFORIT",
+            f"-mask {mask_int}",
             f"-input {epi_preproc}",
             f"-ortvec {reg_motion_mean} mot_mean",
             f"-ortvec {reg_motion_deriv} mot_deriv",
@@ -1796,6 +1823,16 @@ class WriteDecon:
         decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
             script.write(self.decon_cmd)
+
+    def write_indiv(self):
+        """Write an AFNI 3dDeconvolve command for individual mod checking.
+
+        The "indiv" approach requires the same files and workflow as "univ",
+        the only difference is in the basis function (and file name). So,
+        use the class method write_univ with different parameters.
+
+        """
+        self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
 
     def generate_reml(self, subj, sess, log_dir):
         """Generate matrices and 3dREMLfit command.
@@ -1844,20 +1881,25 @@ class WriteDecon:
         if os.path.exists(out_path):
             return out_path
 
-        # Execute decon_cmd
+        # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
             self.decon_cmd,
             f"dcn{subj[6:]}s{sess[-1]}",
             log_dir,
             mem_gig=10,
         )
+        if not os.path.exists(out_path):
+            time.sleep(300)
 
-        # Check generated file length
+        # Check generated file length, account for 0 vs 1 indexing
         with open(out_path, "r") as rf:
             for line_count, _ in enumerate(rf):
                 pass
-        if line_count + 1 != 7:
-            raise ValueError(f"Expected 7 lines in {out_path}")
+        line_count += 1
+        if line_count != 8:
+            raise ValueError(
+                f"Expected 8 lines in {out_path}, found {line_count}"
+            )
         return out_path
 
 
@@ -2032,8 +2074,8 @@ class RunDecon:
         sess : str
             BIDS session identifier
         model_name : str
-            [univ]
-            Desired AFNI model, triggers write methods
+            [univ | indiv]
+            Desired AFNI model, triggers right methods
 
         Returns
         -------
@@ -2047,8 +2089,8 @@ class RunDecon:
 
         """
         # Validate model name
-        valid_names = ["univ"]
-        if model_name not in valid_names:
+        model_valid = valid_models(model_name)
+        if not model_valid:
             raise ValueError(f"Unsupported model name : {model_name}")
 
         # Set final path name (anticipate AFNI output)
@@ -2058,7 +2100,7 @@ class RunDecon:
 
         # Extract reml command from generated reml_path
         tail_path = os.path.join(self.subj_work, "decon_reml.txt")
-        bash_cmd = f"tail -n 5 {self.reml_path} > {tail_path}"
+        bash_cmd = f"tail -n 6 {self.reml_path} > {tail_path}"
         _ = submit.submit_subprocess(bash_cmd, tail_path, "Tail")
 
         # Split reml command into lines, remove formatting
@@ -2096,7 +2138,6 @@ class RunDecon:
 
         # Write script for review/records, then run
         print("\tRunning 3dREMLfit")
-
         bash_cmd = " ".join(self.afni_prep + reml_list)
         reml_script = os.path.join(
             self.subj_work, f"decon_{model_name}_reml.sh"
@@ -2104,11 +2145,12 @@ class RunDecon:
         with open(reml_script, "w") as script:
             script.write(bash_cmd)
 
+        wall_time = 38 if model_name == "indiv" else 18
         _, _ = submit.submit_sbatch(
             bash_cmd,
             f"rml{subj[6:]}s{sess[-1]}",
             self.log_dir,
-            num_hours=20,
+            num_hours=wall_time,
             num_cpus=6,
             mem_gig=8,
         )
@@ -2142,8 +2184,8 @@ def move_final(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
         Contains reference names (key) and paths (value) to
         preprocessed anatomical files
     model_name : str
-        [univ]
-        Desired AFNI model, triggers write methods
+        [univ | indiv]
+        Desired AFNI model, triggers right methods
 
     Returns
     -------
@@ -2165,8 +2207,11 @@ def move_final(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
     # Find, specify files/directories for saving
     subj_motion = os.path.join(subj_work, "motion_files")
     subj_timing = os.path.join(subj_work, "timing_files")
-    save_list = glob.glob(f"{subj_work}/*decon_{model_name}*")
-    if save_list:
+    stat_list = glob.glob(f"{subj_work}/decon_{model_name}_stats_REML+tlrc.*")
+    if stat_list:
+        sh_list = glob.glob(f"{subj_work}/decon_{model_name}*.sh")
+        x_list = glob.glob(f"{subj_work}/X.decon_{model_name}.*")
+        save_list = stat_list + sh_list + x_list
         save_list.append(sess_anat["mask-WMe"])
         save_list.append(sess_anat["mask-int"])
         save_list.append(subj_motion)
