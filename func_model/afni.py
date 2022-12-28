@@ -1786,6 +1786,7 @@ class WriteDecon:
         epi_preproc = " ".join(self.func_dict["func-scaled"])
         reg_motion_mean = self.func_dict["func-mean"]
         reg_motion_deriv = self.func_dict["func-deriv"]
+        mask_int = self.anat_dict["mask-int"]
 
         # Start counter for num_stimts, build regressors
         count_beh = 0
@@ -1797,6 +1798,7 @@ class WriteDecon:
             "3dDeconvolve",
             "-x1D_stop",
             "-GOFORIT",
+            f"-mask {mask_int}",
             f"-input {epi_preproc}",
             f"-ortvec {reg_motion_mean} mot_mean",
             f"-ortvec {reg_motion_deriv} mot_deriv",
@@ -2130,7 +2132,6 @@ class RunDecon:
 
         # Write script for review/records, then run
         print("\tRunning 3dREMLfit")
-
         bash_cmd = " ".join(self.afni_prep + reml_list)
         reml_script = os.path.join(
             self.subj_work, f"decon_{model_name}_reml.sh"
@@ -2138,11 +2139,12 @@ class RunDecon:
         with open(reml_script, "w") as script:
             script.write(bash_cmd)
 
+        wall_time = 38 if model_name == "indiv" else 18
         _, _ = submit.submit_sbatch(
             bash_cmd,
             f"rml{subj[6:]}s{sess[-1]}",
             self.log_dir,
-            num_hours=20,
+            num_hours=wall_time,
             num_cpus=6,
             mem_gig=8,
         )
@@ -2199,8 +2201,11 @@ def move_final(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
     # Find, specify files/directories for saving
     subj_motion = os.path.join(subj_work, "motion_files")
     subj_timing = os.path.join(subj_work, "timing_files")
-    save_list = glob.glob(f"{subj_work}/*decon_{model_name}*")
-    if save_list:
+    stat_list = glob.glob(f"{subj_work}/decon_{model_name}_stats_REML+tlrc.*")
+    if stat_list:
+        sh_list = glob.glob(f"{subj_work}/decon_{model_name}*.sh")
+        x_list = glob.glob(f"{subj_work}/X.decon_{model_name}.*")
+        save_list = stat_list + sh_list + x_list
         save_list.append(sess_anat["mask-WMe"])
         save_list.append(sess_anat["mask-int"])
         save_list.append(subj_motion)
