@@ -3,6 +3,7 @@ import os
 import json
 import glob
 import shutil
+import time
 import subprocess
 import pandas as pd
 import numpy as np
@@ -1519,7 +1520,7 @@ class WriteDecon:
         ----------
         model_name : str
             [univ | indiv]
-            Desired AFNI model, triggers write methods
+            Desired AFNI model, triggers right methods
 
         Raises
         ------
@@ -1880,20 +1881,25 @@ class WriteDecon:
         if os.path.exists(out_path):
             return out_path
 
-        # Execute decon_cmd
+        # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
             self.decon_cmd,
             f"dcn{subj[6:]}s{sess[-1]}",
             log_dir,
             mem_gig=10,
         )
+        if not os.path.exists(out_path):
+            time.sleep(300)
 
-        # Check generated file length
+        # Check generated file length, account for 0 vs 1 indexing
         with open(out_path, "r") as rf:
             for line_count, _ in enumerate(rf):
                 pass
-        if line_count + 1 != 7:
-            raise ValueError(f"Expected 7 lines in {out_path}")
+        line_count += 1
+        if line_count != 8:
+            raise ValueError(
+                f"Expected 8 lines in {out_path}, found {line_count}"
+            )
         return out_path
 
 
@@ -2069,7 +2075,7 @@ class RunDecon:
             BIDS session identifier
         model_name : str
             [univ | indiv]
-            Desired AFNI model, triggers write methods
+            Desired AFNI model, triggers right methods
 
         Returns
         -------
@@ -2094,7 +2100,7 @@ class RunDecon:
 
         # Extract reml command from generated reml_path
         tail_path = os.path.join(self.subj_work, "decon_reml.txt")
-        bash_cmd = f"tail -n 5 {self.reml_path} > {tail_path}"
+        bash_cmd = f"tail -n 6 {self.reml_path} > {tail_path}"
         _ = submit.submit_subprocess(bash_cmd, tail_path, "Tail")
 
         # Split reml command into lines, remove formatting
@@ -2179,7 +2185,7 @@ def move_final(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
         preprocessed anatomical files
     model_name : str
         [univ | indiv]
-        Desired AFNI model, triggers write methods
+        Desired AFNI model, triggers right methods
 
     Returns
     -------

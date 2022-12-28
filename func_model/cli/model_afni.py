@@ -6,9 +6,11 @@ script. Execute 3dREMLfit, and save output files to group location.
 A workflow is submitted for each session found in subject's fmriprep
 directory.
 
-Option --model-name is used to trigger different workflows. It is planned to
-support generating different timing files and 3dDeconvolve commands based
-on the value of this option, but only "--model-name univ" is currently built.
+Model names:
+    - univ = A standard univariate model yielding a single averaged
+        beta-coefficient for each event type (-stim_times_AM1)
+    - indiv = A standard univariate model yielding a single beta-coefficient
+        for each trial, accounting for event type (-stim_times_IM)
 
 Examples
 --------
