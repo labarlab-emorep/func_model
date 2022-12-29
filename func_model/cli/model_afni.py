@@ -11,6 +11,10 @@ Model names:
         beta-coefficient for each event type (-stim_times_AM1)
     - indiv = A standard univariate model yielding a single beta-coefficient
         for each trial, accounting for event type (-stim_times_IM)
+    - rest = Conduct a resting-state analysis
+
+Output logs are written to:
+    /work/$(whoami)/EmoRep/logs/func-afni_model-<model-name>_<timestamp>
 
 Examples
 --------
@@ -42,7 +46,7 @@ def _get_args():
         default="univ",
         help=textwrap.dedent(
             """\
-            [univ | indiv]
+            [univ | indiv | rest]
             AFNI model name/type, for triggering different workflows
             (default : %(default)s)
             """
@@ -110,7 +114,8 @@ def main():
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,
-        f"logs/func_model-afni_{now_time.strftime('%Y-%m-%d_%H:%M')}",
+        f"logs/func-afni_model-{model_name}_"
+        + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
     )
     # log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
     if not os.path.exists(log_dir):
