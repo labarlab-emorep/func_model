@@ -82,13 +82,15 @@ class TimingFiles:
 
     Methods
     -------
-    common_events(marry=True, common_name=None)
+    common_events(subj, sess, task, marry=True, common_name=None)
         Generate timing files for common events
         (replay, judge, and wash)
-    select_events(marry=True, select_name=None)
+    select_events(subj, sess, task, marry=True, select_name=None)
         Generate timing files for selection trials
         (emotion, intensity)
-    session_events(marry=True, emotion_name=None, emo_query=False)
+    session_events(
+        subj, sess, task, marry=True, emotion_name=None, emo_query=False
+    )
         Generate timing files for movie or scenario emotions
 
     Notes
@@ -1164,8 +1166,8 @@ class MotionCensor:
         Make average motion file for 6 dof
     deriv_motion
         Make derivative motion file for 6 dof
-    censor_volumes
-        Make censor and inverted censor files
+    censor_volumes(thresh=0.3)
+        Determine which volumes to censor
     count_motion
         Determine number, proportion of censored volumes
 
@@ -1359,7 +1361,7 @@ class MotionCensor:
         return deriv_out
 
     def censor_volumes(self, thresh=0.3):
-        """Make censor files.
+        """Determine volumes needing censoring.
 
         Generate AFNI-styled censor files. Converts fMRIPrep rotation
         values (radians) into millimeters.
@@ -1482,16 +1484,16 @@ class WriteDecon:
 
     Methods
     -------
-    build_decon(model_name: str, sess_tfs: dict = None)
+    build_decon(model_name, sess_tfs=None)
         Trigger the appropriate method for the current pipeline, e.g.
         build_decon(model_name="univ") causes the method "write_univ"
         to be executed.
-    write_univ(basis_func: str = "dur_mod, decon_name: str = "decon_univ")
+    write_univ(basis_func="dur_mod, decon_name="decon_univ")
         Write a univariate 3dDeconvolve command for sanity checks
     write_indiv()
         Write a univariate, individual modulated 3dDeconvolve command
         for sanity checks
-    write_rest(decon_name: str = "decon_rest")
+    write_rest(decon_name="decon_rest")
         Setup for and write a resting-state 3dDeconvolve command
 
     """
@@ -1759,13 +1761,14 @@ class WriteDecon:
 
         Returns
         -------
-        tuple
+        triple
             [0] = Generated 3dDeconvolve command
             [1] = Prefix for output deconvolve files
+            [2] = Path to masked epi file
 
         """
         #
-        pcomp_path = self._run_pca()
+        pcomp_path, epi_mask = self._run_pca()
 
         #
         epi_path = self.func_dict["func-scaled"][0]
@@ -1802,7 +1805,7 @@ class WriteDecon:
         decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
             script.write(decon_cmd)
-        return (decon_cmd, decon_name)
+        return (decon_cmd, decon_name, epi_mask)
 
     def _run_pca(self):
         """Title.
@@ -1811,27 +1814,28 @@ class WriteDecon:
 
         """
         #
-        out_name = os.path.basename(self.func_dict["mot-cens"]).replace(
-            "censor", "csfPC"
-        )
-        out_path = os.path.join(self.subj_work, out_name)
-        if os.path.exists(out_path):
-            return out_path
 
         #
         mask_name = "tmp_masked_" + os.path.basename(
             self.func_dict["func-scaled"][0]
         )
-        out_mask = os.path.join(self.subj_work, mask_name)
+        epi_mask = os.path.join(self.subj_work, mask_name)
+        out_name = os.path.basename(self.func_dict["mot-cens"]).replace(
+            "censor", "csfPC"
+        )
+        out_path = os.path.join(self.subj_work, out_name)
+        if os.path.exists(epi_mask) and os.path.exists(out_path):
+            return (out_path, epi_mask)
+
         bash_list = [
             "3dcalc",
             f"-a {self.func_dict['func-scaled'][0]}",
             f"-b {self.anat_dict['mask-min']}",
             "-expr 'a*b'",
-            f"-prefix {out_mask}",
+            f"-prefix {epi_mask}",
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
-        _ = submit.submit_subprocess(bash_cmd, out_mask, "Mask rest")
+        _ = submit.submit_subprocess(bash_cmd, epi_mask, "Mask rest")
 
         #
         epi_info = self._get_epi_info()
@@ -1865,7 +1869,7 @@ class WriteDecon:
             f"-prefix {out_proj}",
             f"-censor {out_cens}",
             "-cenmode KILL",
-            f"-input {out_mask}",
+            f"-input {epi_mask}",
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_proj, "Proj rest")
@@ -1896,7 +1900,7 @@ class WriteDecon:
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Split rest")
-        return out_path
+        return (out_path, epi_mask)
 
     def _get_epi_info(self):
         """Return dict of TR, volume info."""
@@ -1966,19 +1970,14 @@ class RunReml:
         preprocessed functional files
     sing_afni : path
         Location of AFNI singularity file
-    subj : str
-        BIDS subject identifier
     subj_work : path
         Location of working directory for intermediates
-    reml_path : path
-        Output of afni.WriteDecon.generate_decon_<foo>,
-        location of foo.REML_cmd file written by 3ddeconvolve
 
     Methods
     -------
-    generate_reml(log_dir: path)
+    generate_reml(subj, sess, decon_cmd, decon_name)
         Execute 3dDeconvolve to generate 3dREMLfit command
-    exec_reml
+    exec_reml(subj, sess, reml_path, decon_name)
         Setup for and run 3dREMLfit
 
     """
@@ -2043,7 +2042,7 @@ class RunReml:
         self.log_dir = log_dir
         self.afni_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
 
-    def generate_reml(self, subj, sess, decon_cmd, decon_name, log_dir):
+    def generate_reml(self, subj, sess, decon_cmd, decon_name):
         """Generate matrices and 3dREMLfit command.
 
         Run the 3dDeconvolve command to generate the 3dREMLfit
@@ -2059,8 +2058,6 @@ class RunReml:
             Bash 3dDeconvolve command
         decon_name : str
             Output prefix for 3dDeconvolve files
-        log_dir : path
-            Output location for logs
 
         Returns
         -------
@@ -2081,7 +2078,7 @@ class RunReml:
 
         # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
-            decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
+            decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", self.log_dir, mem_gig=10,
         )
         if not os.path.exists(out_path):
             time.sleep(300)
@@ -2243,6 +2240,175 @@ class RunReml:
             num_cpus=6,
             mem_gig=8,
         )
+        if not os.path.exists(out_path):
+            raise FileNotFoundError(f"Expected to find {out_path}")
+        return out_path
+
+
+class ProjectRest:
+    """Title.
+
+    Desc.
+
+    Attributes
+    ----------
+
+    Methods
+    -------
+    gen_matrix(decon_cmd, decon_name)
+    anaticor(
+        decon_name, epi_mask, xmat_path, anat_dict, func_dict, proj_deriv, sing_afni
+    )
+
+    """
+
+    def __init__(self, subj, sess, subj_work, log_dir):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        subj
+        sess
+        subj_work
+        log_dir
+
+        """
+        self.subj = subj
+        self.sess = sess
+        self.subj_work = subj_work
+        self.log_dir = log_dir
+
+    def gen_xmatrix(self, decon_cmd, decon_name):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        decon_cmd
+        decon_name
+
+        Returns
+        -------
+        path
+
+        Raises
+        ------
+        FileNotFoundError
+
+        """
+        # generate x-matrices
+        xmat_path = os.path.join(
+            self.subj_work, f"X.{decon_name}.nocensor.xmat.1D"
+        )
+        if os.path.exists(xmat_path):
+            return xmat_path
+
+        # Execute decon_cmd, wait for singularity to close
+        print("\nRunning 3dDeconvolve for Resting data")
+        _, _ = submit.submit_sbatch(
+            decon_cmd,
+            f"dcn{self.subj[6:]}s{self.sess[-1]}",
+            self.log_dir,
+            mem_gig=6,
+        )
+        time.sleep(300)
+
+        #
+        if not os.path.exists(xmat_path):
+            raise FileNotFoundError(f"Expected to find {xmat_path}")
+        return xmat_path
+
+    def anaticor(
+        self,
+        decon_name,
+        epi_mask,
+        xmat_path,
+        anat_dict,
+        func_dict,
+        proj_deriv,
+        sing_afni,
+    ):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        decon_name
+        epi_mask
+        xmat_path
+        anat_dict
+        func_dict
+        proj_deriv
+        sing_afni
+
+        Returns
+        -------
+        path
+
+        Raises
+        ------
+        FileNotFoundError
+
+        """
+        #
+        out_path = os.path.join(
+            self.subj_work, f"{decon_name}_anaticor+tlrc.HEAD"
+        )
+        if os.path.exists(out_path):
+            return out_path
+
+        #
+        afni_prep = _prepend_afni_sing(proj_deriv, self.subj_work, sing_afni)
+
+        #
+        comb_path = os.path.join(self.subj_work, "tmp_epi-mask_WMe.nii.gz")
+        bash_list = [
+            "3dcalc",
+            f"-a {epi_mask}",
+            f"-b {anat_dict['mask-WMe']}",
+            "-expr 'a*bool(b)'",
+            "-datum float",
+            f"-prefix {comb_path}",
+        ]
+        bash_cmd = " ".join(afni_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, comb_path, "Comb mask")
+
+        #
+        blur_path = os.path.join(self.subj_work, "tmp_epi-blur.nii.gz")
+        bash_list = [
+            "3dmerge",
+            "-1blur_fwhm 60",
+            "-doall",
+            f"-prefix {blur_path}",
+            comb_path,
+        ]
+        bash_cmd = " ".join(afni_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, blur_path, "Blur mask")
+
+        #
+        bash_list = [
+            "3dTproject",
+            "-polort 0",
+            f"-input {func_dict['func-scaled'][0]}",
+            f"-censor {func_dict['mot-cens']}" "-cenmode ZERO",
+            f"-dsort {blur_path}",
+            f"-ort {xmat_path}",
+            f"-prefix {self.subj_work}/{decon_name}_anaticor+tlrc",
+        ]
+        bash_cmd = " ".join(afni_prep + bash_list)
+        _, _ = submit.submit_sbatch(
+            bash_cmd,
+            f"pro{self.subj[6:]}s{self.sess[-1]}",
+            self.log_dir,
+            mem_gig=8,
+        )
+        time.sleep(300)
+
+        #
         if not os.path.exists(out_path):
             raise FileNotFoundError(f"Expected to find {out_path}")
         return out_path

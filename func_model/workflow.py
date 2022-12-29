@@ -82,13 +82,13 @@ def pipeline_afni_task(
     tf_pipe = getattr(pipe_mod, f"afni_{model_name}_tfs")
     sess_tfs = tf_pipe(subj, sess, subj_work, subj_sess_raw)
 
-    # Generate deconvolution matrics, REML command
+    # Generate deconvolution command
     write_decon = afni.WriteDecon(
         subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
     )
     decon_cmd, decon_name = write_decon.build_decon(model_name, sess_tfs)
 
-    # Run REML
+    # Use decon command to make REMl command, execute REML
     make_reml = afni.RunReml(
         subj_work, proj_deriv, sess_anat, sess_func, sing_afni, log_dir,
     )
@@ -169,23 +169,24 @@ def pipeline_afni_rest(
         subj, sess, subj_work, proj_deriv, sing_afni
     )
 
-    # Generate deconvolution matrics, REML command
+    # Generate deconvolution command
     write_decon = afni.WriteDecon(
         subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
     )
-    decon_cmd, decon_name = write_decon.build_decon(model_name)
+    decon_cmd, decon_name, epi_mask = write_decon.build_decon(model_name)
 
-    # # Run REML
-    # make_reml = afni.RunDecon(
-    #     subj_work,
-    #     proj_deriv,
-    #     reml_path,
-    #     sess_anat,
-    #     sess_func,
-    #     sing_afni,
-    #     log_dir,
-    # )
-    # sess_func["func-decon"] = make_reml.exec_reml(subj, sess, model_name)
+    # Project regression matrix
+    proj_reg = afni.ProjectRest(subj, sess, subj_work, log_dir)
+    xmat_path = proj_reg.gen_xmatrix(decon_cmd, decon_name)
+    sess_func["func-proj"] = proj_reg.anaticor(
+        decon_name,
+        epi_mask,
+        xmat_path,
+        sess_anat,
+        sess_func,
+        proj_deriv,
+        sing_afni,
+    )
 
     # # Clean
     # wf_done = afni.move_final(
