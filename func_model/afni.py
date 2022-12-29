@@ -1455,8 +1455,8 @@ class MotionCensor:
 class WriteDecon:
     """Write an AFNI 3dDeconvolve command.
 
-    Write 3dDeconvolve and then execute it to generate
-    matrices and 3dREMLfit script.
+    Write 3dDeconvolve command supporting different basis functions
+    and data types (task, resting-state).
 
     Attributes
     ----------
@@ -1465,10 +1465,6 @@ class WriteDecon:
     anat_dict : dict
         Contains reference names (key) and paths (value) to
         preprocessed anatomical files.
-    decon_cmd : str
-        Generated 3dDeconvolve command
-    decon_name : str
-        Prefix for output deconvolve files
     func_dict : dict
         Contains reference names (key) and paths (value) to
         preprocessed functional files.
@@ -1495,8 +1491,8 @@ class WriteDecon:
     write_indiv()
         Write a univariate, individual modulated 3dDeconvolve command
         for sanity checks
-    generate_reml(log_dir: path)
-        Execute 3dDeconvolve to generate 3dREMLfit command
+    write_rest(decon_name: str = "decon_rest")
+        Setup for and write a resting-state 3dDeconvolve command
 
     """
 
@@ -1517,9 +1513,9 @@ class WriteDecon:
             preprocessed functional files.
             Required keys:
             -   [func-scaled] = list of scaled EPI file paths
-            -   [func-mean] = path to mean motion regressor
-            -   [func-deriv] = path to derivative motion regressor
-            -   [func-cens] = path to censor vector
+            -   [mot-mean] = path to mean motion regressor
+            -   [mot-deriv] = path to derivative motion regressor
+            -   [mot-cens] = path to censor vector
         sess_anat : dict
             Contains reference names (key) and paths (value) to
             preprocessed anatomical files.
@@ -1542,7 +1538,7 @@ class WriteDecon:
 
         """
         # Validate dict keys
-        for _key in ["func-scaled", "func-mean", "func-deriv", "func-cens"]:
+        for _key in ["func-scaled", "mot-mean", "mot-deriv", "mot-cens"]:
             if _key not in sess_func:
                 raise KeyError(f"Expected {_key} key in sess_func")
         for _key in ["mask-int", "mask-min", "mask-CSe"]:
@@ -1676,12 +1672,11 @@ class WriteDecon:
         decon_name : str, optional
             Prefix for output deconvolve files
 
-        Attributes
-        ----------
-        decon_name : str
-            Prefix for output deconvolve files
-        decon_cmd : str
-            Generated 3dDeconvolve command
+        Returns
+        -------
+        tuple
+            [0] = Generated 3dDeconvolve command
+            [1] = Prefix for output deconvolve files
 
         Raises
         ------
@@ -1695,11 +1690,10 @@ class WriteDecon:
 
         # Determine input variables for 3dDeconvolve
         print("\tBuilding 3dDeconvolve command ...")
-        self.decon_name = decon_name
         epi_preproc = " ".join(self.func_dict["func-scaled"])
-        reg_motion_mean = self.func_dict["func-mean"]
-        reg_motion_deriv = self.func_dict["func-deriv"]
-        motion_censor = self.func_dict["func-cens"]
+        reg_motion_mean = self.func_dict["mot-mean"]
+        reg_motion_deriv = self.func_dict["mot-deriv"]
+        motion_censor = self.func_dict["mot-cens"]
         mask_int = self.anat_dict["mask-int"]
 
         # Build behavior regressors, get stimts count
@@ -1728,12 +1722,13 @@ class WriteDecon:
             f"-cbucket {self.subj_work}/{decon_name}_cbucket",
             f"-errts {self.subj_work}/{decon_name}_errts",
         ]
-        self.decon_cmd = " ".join(self.afni_prep + decon_list)
+        decon_cmd = " ".join(self.afni_prep + decon_list)
 
         # Write script for review, records
         decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
-            script.write(self.decon_cmd)
+            script.write(decon_cmd)
+        return (decon_cmd, decon_name)
 
     def write_indiv(self):
         """Write an AFNI 3dDeconvolve command for individual mod checking.
@@ -1742,10 +1737,19 @@ class WriteDecon:
         the only difference is in the basis function (and file name). So,
         use the class method write_univ with different parameters.
 
-        """
-        self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
+        Returns
+        -------
+        tuple
+            [0] = Generated 3dDeconvolve command
+            [1] = Prefix for output deconvolve files
 
-    def write_rest(self):
+        """
+        decon_cmd, decon_name = self.write_univ(
+            basis_func="ind_mod", decon_name="decon_indiv"
+        )
+        return (decon_cmd, decon_name)
+
+    def write_rest(self, decon_name="decon_rest"):
         """Title.
 
         # Conduct PCA on CSF
@@ -1753,9 +1757,52 @@ class WriteDecon:
         # Generate x-matrices
         # Project regression matrix, anaticor method
 
+        Returns
+        -------
+        tuple
+            [0] = Generated 3dDeconvolve command
+            [1] = Prefix for output deconvolve files
+
         """
         #
         pcomp_path = self._run_pca()
+
+        #
+        epi_path = self.func_dict["func-scaled"][0]
+        censor_path = self.func_dict["mot-cens"]
+        reg_motion_mean = self.func_dict["mot-mean"]
+        reg_motion_deriv = self.func_dict["mot-deriv"]
+
+        # Build deconvolve command, write script for review.
+        # This will load effects of no interest on fitts sub-brick, and
+        # errts will contain cleaned time series. CSF time series is
+        # used as a nuissance regressor.
+        print("\tBuilding 3dDeconvolve command ...")
+        decon_list = [
+            "3dDeconvolve",
+            "-x1D_stop",
+            f"-input {epi_path}",
+            f"-censor {censor_path}",
+            f"-ortvec {pcomp_path} csf_ts",
+            f"-ortvec {reg_motion_mean} mot_mean",
+            f"-ortvec {reg_motion_deriv} mot_deriv",
+            "-polort A",
+            "-fout -tout",
+            f"-x1D {self.subj_work}/X.{decon_name}.xmat.1D",
+            f"-xjpeg {self.subj_work}/X.{decon_name}.jpg",
+            "-x1D_uncensored",
+            f"{self.subj_work}/X.{decon_name}.nocensor.xmat.1D",
+            f"-fitts {self.subj_work}/{decon_name}_fitts",
+            f"-errts {self.subj_work}/{decon_name}_errts",
+            f"-bucket {self.subj_work}/{decon_name}_stats",
+        ]
+        decon_cmd = " ".join(self.afni_prep + decon_list)
+
+        # Write script for review, records
+        decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
+        with open(decon_script, "w") as script:
+            script.write(decon_cmd)
+        return (decon_cmd, decon_name)
 
     def _run_pca(self):
         """Title.
@@ -1764,7 +1811,7 @@ class WriteDecon:
 
         """
         #
-        out_name = os.path.basename(self.func_dict["func-cens"]).replace(
+        out_name = os.path.basename(self.func_dict["mot-cens"]).replace(
             "censor", "csfPC"
         )
         out_path = os.path.join(self.subj_work, out_name)
@@ -1795,13 +1842,13 @@ class WriteDecon:
         #
         out_cens = os.path.join(
             self.subj_work,
-            f"tmp_{os.path.basename(self.func_dict['func-cens'])}",
+            f"tmp_{os.path.basename(self.func_dict['mot-cens'])}",
         )
         bash_list = [
             "1d_tool.py",
             f"-set_run_lengths {epi_info['sum_vol']}",
             "-select_runs 1",
-            f"-infile {self.func_dict['func-cens']}",
+            f"-infile {self.func_dict['mot-cens']}",
             f"-write {out_cens}",
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
@@ -1898,73 +1945,8 @@ class WriteDecon:
             "sum_vol": sum_vol,
         }
 
-    def generate_reml(self, subj, sess, log_dir):
-        """Generate matrices and 3dREMLfit command.
 
-        Run the 3dDeconvolve command to generate the 3dREMLfit
-        command and required input.
-
-        Parameters
-        ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        log_dir : path
-            Output location for logs
-
-        Returns
-        -------
-        path
-            Location of 3dREMLfit script
-
-        Raises
-        ------
-        AttributeError
-            Missing decon_cmd
-            Missing decon_name
-        ValueError
-            Output 3dREMLfit script unexpected length
-
-        """
-        # Check for required attributes
-        if not hasattr(self, "decon_cmd"):
-            raise AttributeError(
-                "No decon_cmd detected, try WriteDecon.write_univ."
-            )
-        if not hasattr(self, "decon_name"):
-            raise AttributeError(
-                "No decon_name detected, try WriteDecon.write_univ."
-            )
-
-        # Setup output file, avoid repeating work
-        print("\tRunning 3dDeconvolve command ...")
-        out_path = os.path.join(
-            self.subj_work, f"{self.decon_name}_stats.REML_cmd"
-        )
-        if os.path.exists(out_path):
-            return out_path
-
-        # Execute decon_cmd, wait for singularity to close
-        _, _ = submit.submit_sbatch(
-            self.decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
-        )
-        if not os.path.exists(out_path):
-            time.sleep(300)
-
-        # Check generated file length, account for 0 vs 1 indexing
-        with open(out_path, "r") as rf:
-            for line_count, _ in enumerate(rf):
-                pass
-        line_count += 1
-        if line_count != 8:
-            raise ValueError(
-                f"Expected 8 lines in {out_path}, found {line_count}"
-            )
-        return out_path
-
-
-class RunDecon:
+class RunReml:
     """Run 3dREMLfit deconvolution.
 
     Setup for and execute 3dREMLfit command generated by
@@ -1994,6 +1976,8 @@ class RunDecon:
 
     Methods
     -------
+    generate_reml(log_dir: path)
+        Execute 3dDeconvolve to generate 3dREMLfit command
     exec_reml
         Setup for and run 3dREMLfit
 
@@ -2017,16 +2001,17 @@ class RunDecon:
             Location of working directory for intermediates
         proj_deriv : path
             Location of project derivatives, containing fmriprep
-            and fsl_denoise sub-directories
-        reml_path : path
-            Output of afni.WriteDecon.generate_decon_<foo>,
-            location of foo.REML_cmd file written by 3ddeconvolve
+            and fsl_denoise sub-directories.
         sess_anat : dict
             Contains reference names (key) and paths (value) to
-            preprocessed anatomical files
+            preprocessed anatomical files.
+            Required keys:
+            -   [mask-WMe] = path to eroded WM mask
         sess_func : dict
             Contains reference names (key) and paths (value) to
-            preprocessed functional files
+            preprocessed functional files.
+            Required keys:
+            -   [func-scaled] = list of scaled EPI paths
         sing_afni : path
             Location of AFNI singularity file
         log_dir : path
@@ -2037,19 +2022,80 @@ class RunDecon:
         afni_prep : list
             First part of subprocess call for AFNI singularity
 
-        """
-        print("\nInitializing RunDecon")
+        Raises
+        ------
+        KeyError
+            sess_anat missing mask-WMe key
+            sess_func missing func-scaled key
 
-        # Capture parameters
+        """
+        # Validate needed keys
+        if "mask-WMe" not in self.sess_anat:
+            raise KeyError("Expected mask-WMe key in sess_anat")
+        if "func-scaled" not in self.sess_func:
+            raise KeyError("Expected func-scaled key in sess_func")
+
+        print("\nInitializing RunDecon")
         self.subj_work = subj_work
-        self.reml_path = reml_path
         self.sess_anat = sess_anat
         self.sess_func = sess_func
         self.sing_afni = sing_afni
         self.log_dir = log_dir
-
-        # Set attributes, trigger reml execution
         self.afni_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+
+    def generate_reml(self, subj, sess, decon_cmd, decon_name, log_dir):
+        """Generate matrices and 3dREMLfit command.
+
+        Run the 3dDeconvolve command to generate the 3dREMLfit
+        command and required input.
+
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        decon_cmd : str
+            Bash 3dDeconvolve command
+        decon_name : str
+            Output prefix for 3dDeconvolve files
+        log_dir : path
+            Output location for logs
+
+        Returns
+        -------
+        path
+            Location of 3dREMLfit script
+
+        Raises
+        ------
+        ValueError
+            Output 3dREMLfit script unexpected length
+
+        """
+        # Setup output file, avoid repeating work
+        print("\tRunning 3dDeconvolve command ...")
+        out_path = os.path.join(self.subj_work, f"{decon_name}_stats.REML_cmd")
+        if os.path.exists(out_path):
+            return out_path
+
+        # Execute decon_cmd, wait for singularity to close
+        _, _ = submit.submit_sbatch(
+            decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", log_dir, mem_gig=10,
+        )
+        if not os.path.exists(out_path):
+            time.sleep(300)
+
+        # Check generated file length, account for 0 vs 1 indexing
+        with open(out_path, "r") as rf:
+            for line_count, _ in enumerate(rf):
+                pass
+        line_count += 1
+        if line_count != 8:
+            raise ValueError(
+                f"Expected 8 lines in {out_path}, found {line_count}"
+            )
+        return out_path
 
     def _make_nuiss(self):
         """Make noise estimation file.
@@ -2062,20 +2108,8 @@ class RunDecon:
         path
             Location of WM signal file
 
-        Raises
-        ------
-        KeyError
-            sess_anat missing mask-WMe key
-            sess_func missing func-scaled key
-
         """
         print("\tMaking nuissance mask")
-
-        # Validate needed keys
-        if "mask-WMe" not in self.sess_anat:
-            raise KeyError("Expected mask-WMe key in sess_anat")
-        if "func-scaled" not in self.sess_func:
-            raise KeyError("Expected func-scaled key in sess_func")
 
         # Setup output location and name, avoid repeating work
         h_name = os.path.basename(self.sess_anat["mask-WMe"])
@@ -2121,7 +2155,7 @@ class RunDecon:
 
         return out_path
 
-    def exec_reml(self, subj, sess, model_name):
+    def exec_reml(self, subj, sess, reml_path, decon_name):
         """Exectue 3dREMLfit command.
 
         Setup for and exectue 3dREMLfit command generated
@@ -2134,9 +2168,10 @@ class RunDecon:
             BIDS subject identfier
         sess : str
             BIDS session identifier
-        model_name : str
-            [univ | indiv]
-            Desired AFNI model, triggers right methods
+        reml_path : path
+            Location of 3dREMLfit script
+        decon_name : str
+            Output prefix for 3dDeconvolve files
 
         Returns
         -------
@@ -2149,13 +2184,8 @@ class RunDecon:
             Converting reml_path content to list failed
 
         """
-        # Validate model name
-        model_valid = valid_models(model_name)
-        if not model_valid:
-            raise ValueError(f"Unsupported model name : {model_name}")
-
         # Set final path name (anticipate AFNI output)
-        out_path = self.reml_path.replace(".REML_cmd", "_REML+tlrc.HEAD")
+        out_path = reml_path.replace(".REML_cmd", "_REML+tlrc.HEAD")
         if os.path.exists(out_path):
             return out_path
 
@@ -2189,7 +2219,7 @@ class RunDecon:
         if reml_list[0] != "3dREMLfit":
             raise ValueError(
                 "An issue occurred when converting "
-                + f"contents of {self.reml_path} to a list"
+                + f"contents of {reml_path} to a list"
             )
 
         # Make nuissance file, add to reml command
@@ -2200,13 +2230,11 @@ class RunDecon:
         # Write script for review/records, then run
         print("\tRunning 3dREMLfit")
         bash_cmd = " ".join(self.afni_prep + reml_list)
-        reml_script = os.path.join(
-            self.subj_work, f"decon_{model_name}_reml.sh"
-        )
+        reml_script = os.path.join(self.subj_work, f"{decon_name}_reml.sh")
         with open(reml_script, "w") as script:
             script.write(bash_cmd)
 
-        wall_time = 38 if model_name == "indiv" else 18
+        wall_time = 38 if decon_name == "decon_indiv" else 18
         _, _ = submit.submit_sbatch(
             bash_cmd,
             f"rml{subj[6:]}s{sess[-1]}",

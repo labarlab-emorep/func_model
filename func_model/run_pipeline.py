@@ -247,9 +247,9 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     make_motion = afni.MotionCensor(
         subj_work, proj_deriv, func_dict["func-motion"], sing_afni
     )
-    func_dict["func-mean"] = make_motion.mean_motion()
-    func_dict["func-deriv"] = make_motion.deriv_motion()
-    func_dict["func-cens"] = make_motion.censor_volumes()
+    func_dict["mot-mean"] = make_motion.mean_motion()
+    func_dict["mot-deriv"] = make_motion.deriv_motion()
+    func_dict["mot-cens"] = make_motion.censor_volumes()
     _ = make_motion.count_motion()
 
     return (func_dict, anat_dict)

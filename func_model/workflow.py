@@ -86,20 +86,18 @@ def pipeline_afni_task(
     write_decon = afni.WriteDecon(
         subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
     )
-    write_decon.build_decon(model_name, sess_tfs)
-    reml_path = write_decon.generate_reml(subj, sess, log_dir)
+    decon_cmd, decon_name = write_decon.build_decon(model_name, sess_tfs)
 
     # Run REML
-    make_reml = afni.RunDecon(
-        subj_work,
-        proj_deriv,
-        reml_path,
-        sess_anat,
-        sess_func,
-        sing_afni,
-        log_dir,
+    make_reml = afni.RunReml(
+        subj_work, proj_deriv, sess_anat, sess_func, sing_afni, log_dir,
     )
-    sess_func["func-decon"] = make_reml.exec_reml(subj, sess, model_name)
+    reml_path = make_reml.generate_reml(
+        subj, sess, decon_cmd, decon_name, log_dir
+    )
+    sess_func["func-decon"] = make_reml.exec_reml(
+        subj, sess, reml_path, decon_name
+    )
 
     # Clean
     wf_done = afni.move_final(
@@ -175,8 +173,7 @@ def pipeline_afni_rest(
     write_decon = afni.WriteDecon(
         subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
     )
-    write_decon.build_decon(model_name)
-    # reml_path = write_decon.generate_reml(subj, sess, log_dir)
+    decon_cmd, decon_name = write_decon.build_decon(model_name)
 
     # # Run REML
     # make_reml = afni.RunDecon(
