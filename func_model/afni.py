@@ -659,7 +659,12 @@ class MakeMasks:
     """
 
     def __init__(
-        self, subj_work, proj_deriv, anat_dict, func_dict, sing_afni,
+        self,
+        subj_work,
+        proj_deriv,
+        anat_dict,
+        func_dict,
+        sing_afni,
     ):
         """Initialize object.
 
@@ -675,7 +680,7 @@ class MakeMasks:
             preprocessed anatomical files.
             Required keys:
             -   [mask-brain] = path to fmriprep brain mask
-            -   [mask-probCSF] = path to fmriprep CSF label
+            -   [mask-probCS] = path to fmriprep CSF label
             -   [mask-probWM] = path to fmriprep WM label
         func_dict : dict
             Contains reference names (key) and paths (value) to
@@ -701,7 +706,7 @@ class MakeMasks:
         print("\nInitializing MakeMasks")
 
         # Validate dict keys
-        for _key in ["mask-brain", "mask-probCSF", "mask-probWM"]:
+        for _key in ["mask-brain", "mask-probCS", "mask-probWM"]:
             if _key not in anat_dict:
                 raise KeyError(f"Expected {_key} key in anat_dict")
         if "func-preproc" not in func_dict:
@@ -718,14 +723,15 @@ class MakeMasks:
         )
 
         try:
-            subj, sess, task, _, _, _ = os.path.basename(
-                func_dict["func-preproc"][0]
-            ).split("_")
+            _file_name = os.path.basename(func_dict["func-preproc"][0])
+            subj, sess, task, _, _, _, _, _ = _file_name.split("_")
         except ValueError:
             raise ValueError(
                 "BIDS file names required for items in func_dict: "
-                + "subject, session, task, run, description, and suffix.ext "
-                + "BIDS fields are required by afni.MakeMasks."
+                + "subject, session, task, run, space, resolution, "
+                + "description, and suffix.ext BIDS fields are "
+                + "required by afni.MakeMasks. "
+                + f"\n\tFound : {_file_name}"
             )
         self.subj = subj
         self.sess = sess
@@ -986,7 +992,11 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
+    subj_work,
+    proj_deriv,
+    func_preproc,
+    sing_afni,
+    blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1499,7 +1509,12 @@ class WriteDecon:
     """
 
     def __init__(
-        self, subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
+        self,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sing_afni,
     ):
         """Initialize object.
 
@@ -1674,11 +1689,12 @@ class WriteDecon:
         decon_name : str, optional
             Prefix for output deconvolve files
 
-        Returns
-        -------
-        tuple
-            [0] = Generated 3dDeconvolve command
-            [1] = Prefix for output deconvolve files
+        Attributes
+        ----------
+        decon_cmd : str
+            Generated 3dDeconvolve command
+        decon_name : str
+            Prefix for output deconvolve files
 
         Raises
         ------
@@ -1730,26 +1746,20 @@ class WriteDecon:
         decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
             script.write(decon_cmd)
-        return (decon_cmd, decon_name)
+        self.decon_cmd = decon_cmd
+        self.decon_name = decon_name
 
     def write_indiv(self):
         """Write an AFNI 3dDeconvolve command for individual mod checking.
+
+        DEPRECATED.
 
         The "indiv" approach requires the same files and workflow as "univ",
         the only difference is in the basis function (and file name). So,
         use the class method write_univ with different parameters.
 
-        Returns
-        -------
-        tuple
-            [0] = Generated 3dDeconvolve command
-            [1] = Prefix for output deconvolve files
-
         """
-        decon_cmd, decon_name = self.write_univ(
-            basis_func="ind_mod", decon_name="decon_indiv"
-        )
-        return (decon_cmd, decon_name)
+        self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
 
     def write_rest(self, decon_name="decon_rest"):
         """Title.
@@ -1759,12 +1769,14 @@ class WriteDecon:
         # Generate x-matrices
         # Project regression matrix, anaticor method
 
-        Returns
-        -------
-        triple
-            [0] = Generated 3dDeconvolve command
-            [1] = Prefix for output deconvolve files
-            [2] = Path to masked epi file
+        Attributes
+        ----------
+        decon_cmd : str
+            Generated 3dDeconvolve command
+        decon_name : str
+            Prefix for output deconvolve files
+        epi_mask : path
+            Location of masking EPI file
 
         """
         #
@@ -1805,7 +1817,11 @@ class WriteDecon:
         decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
             script.write(decon_cmd)
-        return (decon_cmd, decon_name, epi_mask)
+
+        # return (decon_cmd, decon_name, epi_mask)
+        self.decon_cmd = decon_cmd
+        self.decon_name = decon_name
+        self.epi_mask = epi_mask
 
     def _run_pca(self):
         """Title.
@@ -1888,18 +1904,26 @@ class WriteDecon:
             bash_cmd, f"{out_pcomp}_vec.1D", "Pcomp rest"
         )
 
-        #
+        tmp_out = os.path.join(self.subj_work, "test_" + out_name)
         bash_list = [
             "1d_tool.py",
             f"-censor_fill_parent {out_cens}",
             f"-infile {out_pcomp}_vec.1D",
-            "-write - | 1d_tool.py",
+            f"-write {tmp_out}",
+        ]
+        bash_cmd = " ".join(self.afni_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, tmp_out, "Split rest1")
+
+        bash_list = [
+            "1d_tool.py",
             f"-set_run_lengths {epi_info['sum_vol']}",
             "-pad_into_many_runs 1 1",
-            f"-infile - -write {out_path}",
+            f"-infile {tmp_out}",
+            f"-write {out_path}",
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Split rest")
+
         return (out_path, epi_mask)
 
     def _get_epi_info(self):
@@ -1986,7 +2010,6 @@ class RunReml:
         self,
         subj_work,
         proj_deriv,
-        reml_path,
         sess_anat,
         sess_func,
         sing_afni,
@@ -2029,9 +2052,9 @@ class RunReml:
 
         """
         # Validate needed keys
-        if "mask-WMe" not in self.sess_anat:
+        if "mask-WMe" not in sess_anat:
             raise KeyError("Expected mask-WMe key in sess_anat")
-        if "func-scaled" not in self.sess_func:
+        if "func-scaled" not in sess_func:
             raise KeyError("Expected func-scaled key in sess_func")
 
         print("\nInitializing RunDecon")
@@ -2078,7 +2101,10 @@ class RunReml:
 
         # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
-            decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", self.log_dir, mem_gig=10,
+            decon_cmd,
+            f"dcn{subj[6:]}s{sess[-1]}",
+            self.log_dir,
+            mem_gig=10,
         )
         if not os.path.exists(out_path):
             time.sleep(300)
@@ -2188,7 +2214,7 @@ class RunReml:
 
         # Extract reml command from generated reml_path
         tail_path = os.path.join(self.subj_work, "decon_reml.txt")
-        bash_cmd = f"tail -n 6 {self.reml_path} > {tail_path}"
+        bash_cmd = f"tail -n 6 {reml_path} > {tail_path}"
         _ = submit.submit_subprocess(bash_cmd, tail_path, "Tail")
 
         # Split reml command into lines, remove formatting
@@ -2257,7 +2283,13 @@ class ProjectRest:
     -------
     gen_matrix(decon_cmd, decon_name)
     anaticor(
-        decon_name, epi_mask, xmat_path, anat_dict, func_dict, proj_deriv, sing_afni
+        decon_name,
+        epi_mask,
+        xmat_path,
+        anat_dict,
+        func_dict,
+        proj_deriv,
+        sing_afni,
     )
 
     """
