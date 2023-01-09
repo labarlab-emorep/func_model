@@ -190,7 +190,9 @@ def pipeline_afni_rest(
     write_decon.build_decon(model_name)
 
     # Project regression matrix
-    proj_reg = afni.ProjectRest(subj, sess, subj_work, log_dir)
+    proj_reg = afni.ProjectRest(
+        subj, sess, subj_work, proj_deriv, sing_afni, log_dir
+    )
     xmat_path = proj_reg.gen_xmatrix(
         write_decon.decon_cmd, write_decon.decon_name
     )
@@ -200,9 +202,10 @@ def pipeline_afni_rest(
         xmat_path,
         sess_anat,
         sess_func,
-        proj_deriv,
-        sing_afni,
     )
+
+    # Seed - sanity check
+    corr_dict = proj_reg.seed_corr(sess_anat)
 
     # # Clean
     # wf_done = afni.move_final(

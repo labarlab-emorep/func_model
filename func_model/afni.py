@@ -2294,7 +2294,7 @@ class ProjectRest:
 
     """
 
-    def __init__(self, subj, sess, subj_work, log_dir):
+    def __init__(self, subj, sess, subj_work, proj_deriv, sing_afni, log_dir):
         """Title.
 
         Desc.
@@ -2311,6 +2311,9 @@ class ProjectRest:
         self.sess = sess
         self.subj_work = subj_work
         self.log_dir = log_dir
+        self.afni_prep = _prepend_afni_sing(
+            proj_deriv, self.subj_work, sing_afni
+        )
 
     def gen_xmatrix(self, decon_cmd, decon_name):
         """Title.
@@ -2360,8 +2363,6 @@ class ProjectRest:
         xmat_path,
         anat_dict,
         func_dict,
-        proj_deriv,
-        sing_afni,
     ):
         """Title.
 
@@ -2374,8 +2375,10 @@ class ProjectRest:
         xmat_path
         anat_dict
         func_dict
-        proj_deriv
-        sing_afni
+
+        Attributes
+        ----------
+        reg_matrix
 
         Returns
         -------
@@ -2387,51 +2390,50 @@ class ProjectRest:
 
         """
         #
-        out_path = os.path.join(
-            self.subj_work, f"{decon_name}_anaticor+tlrc.HEAD"
-        )
-        if os.path.exists(out_path):
+        out_path = os.path.join(self.subj_work, f"{decon_name}_anaticor+tlrc")
+        if os.path.exists(f"{out_path}.HEAD"):
+            self.reg_matrix = out_path
             return out_path
 
         #
-        afni_prep = _prepend_afni_sing(proj_deriv, self.subj_work, sing_afni)
-
-        #
         comb_path = os.path.join(self.subj_work, "tmp_epi-mask_WMe.nii.gz")
-        bash_list = [
-            "3dcalc",
-            f"-a {epi_mask}",
-            f"-b {anat_dict['mask-WMe']}",
-            "-expr 'a*bool(b)'",
-            "-datum float",
-            f"-prefix {comb_path}",
-        ]
-        bash_cmd = " ".join(afni_prep + bash_list)
-        _ = submit.submit_subprocess(bash_cmd, comb_path, "Comb mask")
+        if not os.path.exists(comb_path):
+            bash_list = [
+                "3dcalc",
+                f"-a {epi_mask}",
+                f"-b {anat_dict['mask-WMe']}",
+                "-expr 'a*bool(b)'",
+                "-datum float",
+                f"-prefix {comb_path}",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, comb_path, "Comb mask")
 
         #
         blur_path = os.path.join(self.subj_work, "tmp_epi-blur.nii.gz")
-        bash_list = [
-            "3dmerge",
-            "-1blur_fwhm 60",
-            "-doall",
-            f"-prefix {blur_path}",
-            comb_path,
-        ]
-        bash_cmd = " ".join(afni_prep + bash_list)
-        _ = submit.submit_subprocess(bash_cmd, blur_path, "Blur mask")
+        if not os.path.exists(blur_path):
+            bash_list = [
+                "3dmerge",
+                "-1blur_fwhm 60",
+                "-doall",
+                f"-prefix {blur_path}",
+                comb_path,
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, blur_path, "Blur mask")
 
         #
         bash_list = [
             "3dTproject",
             "-polort 0",
             f"-input {func_dict['func-scaled'][0]}",
-            f"-censor {func_dict['mot-cens']}" "-cenmode ZERO",
+            f"-censor {func_dict['mot-cens']}",
+            "-cenmode ZERO",
             f"-dsort {blur_path}",
             f"-ort {xmat_path}",
-            f"-prefix {self.subj_work}/{decon_name}_anaticor+tlrc",
+            f"-prefix {out_path}",
         ]
-        bash_cmd = " ".join(afni_prep + bash_list)
+        bash_cmd = " ".join(self.afni_prep + bash_list)
         _, _ = submit.submit_sbatch(
             bash_cmd,
             f"pro{self.subj[6:]}s{self.sess[-1]}",
@@ -2441,9 +2443,132 @@ class ProjectRest:
         time.sleep(300)
 
         #
-        if not os.path.exists(out_path):
-            raise FileNotFoundError(f"Expected to find {out_path}")
+        if not os.path.exists(f"{out_path}.HEAD"):
+            raise FileNotFoundError(f"Expected to find {out_path}.HEAD")
+        self.reg_matrix = out_path
         return out_path
+
+    def seed_corr(self, anat_dict, coord_dict={"rPCC": "4 -54 24"}):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        anat_dict
+        coord_dict
+
+        Returns
+        -------
+        dict
+
+        Raises
+        ------
+
+        """
+        # Check for self.reg_matrix
+
+        # Check for mask-int
+
+        #
+        seed_dict = self._coord_seed(coord_dict)
+        corr_dict = {}
+        for seed in seed_dict:
+            ztrans_file = self.reg_matrix.replace("+tlrc", f"_{seed}_ztrans")
+            if os.path.exists(f"{ztrans_file}.HEAD"):
+                corr_dict[seed] = ztrans_file
+                continue
+
+            #
+            corr_file = self.reg_matrix.replace("+tlrc", f"_{seed}_corr")
+            if not os.path.exists(corr_file):
+                bash_list = [
+                    "3dTcorr1D",
+                    f"-mask {anat_dict['mask-int']}",
+                    f"-prefix {corr_file}",
+                    self.reg_matrix,
+                    f"{self.subj_work}/resting_state_{seed}.1D",
+                ]
+                bash_cmd = " ".join(self.afni_prep + bash_list)
+                _ = submit.submit_subprocess(bash_cmd, corr_file, "Corr mat")
+
+            #
+            bash_list = [
+                "3dcalc",
+                f"-a {corr_file}+tlrc",
+                "-expr 'log((1+a/(1-a)/2'",
+                f"-prefix {ztrans_file}",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, ztrans_file, "Fisher Z")
+
+        return corr_dict
+
+    def _coord_seed(self, coord_dict):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        coord_dict
+
+        Returns
+        -------
+        dict
+
+        Raises
+        ------
+        AttributeError
+
+        """
+        # Check coord_dict
+
+        # Check for self.reg_matrix
+        if not hasattr(self, "reg_matrix"):
+            raise AttributeError("Attribute reg_matrix required")
+
+        #
+        seed_dict = {}
+        for seed, coord in coord_dict.items():
+            seed_ts = os.path.join(
+                self.subj_work, f"seed_{seed}_timeseries.1D"
+            )
+            if os.path.exists(seed_ts):
+                seed_dict["seed"] = seed_ts
+                continue
+
+            #
+            seed_file = os.path.join(self.subj_work, f"seed_{seed}.nii.gz")
+            if not os.path.exists(seed_file):
+                tmp_coord = os.path.join(
+                    self.subj_work, f"tmp_seed_{seed}.txt"
+                )
+                _ = submit.submit_subprocess(
+                    f"echo {coord} > {tmp_coord} ", tmp_coord, "Echo"
+                )
+                bash_list = [
+                    "3dUndump",
+                    f"-prefix {seed_file}",
+                    f"-master {self.reg_matrix}",
+                    "-srad 2",
+                    f"-xyz {tmp_coord}",
+                ]
+                bash_cmd = " ".join(self.afni_prep + bash_list)
+                _ = submit.submit_subprocess(bash_cmd, seed_file, "Make seed")
+
+            #
+            bash_list = [
+                "3dROIstats",
+                "-quiet",
+                f"-mask {seed_file}",
+                f"{self.reg_matrix} > {seed_ts}",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, seed_ts, "Seed TS")
+            seed_dict["seed"] = seed_ts
+
+        return seed_dict
 
 
 def move_final(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
