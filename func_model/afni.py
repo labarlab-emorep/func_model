@@ -48,7 +48,7 @@ def valid_models(model_name):
     Parameters
     ----------
     model_name : str
-        [univ | indiv | rest]
+        [univ | rest]
         Desired AFNI model, for triggering different workflows
 
     Returns
@@ -56,7 +56,7 @@ def valid_models(model_name):
     bool
 
     """
-    valid_list = ["univ", "indiv", "rest"]
+    valid_list = ["univ", "rest"]
     return model_name in valid_list
 
 
@@ -1501,6 +1501,7 @@ class WriteDecon:
     write_univ(basis_func="dur_mod, decon_name="decon_univ")
         Write a univariate 3dDeconvolve command for sanity checks
     write_indiv()
+        Deprecated.
         Write a univariate, individual modulated 3dDeconvolve command
         for sanity checks
     write_rest(decon_name="decon_rest")
@@ -1561,6 +1562,8 @@ class WriteDecon:
         for _key in ["mask-int", "mask-min", "mask-CSe"]:
             if _key not in sess_anat:
                 raise KeyError(f"Expected {_key} key in sess_anat")
+        if len(sess_func["func-scaled"]) == 0:
+            raise ValueError("Expected list of paths to scaled EPI files.")
 
         print("\nInitializing WriteDecon")
         self.proj_deriv = proj_deriv
@@ -1762,12 +1765,17 @@ class WriteDecon:
         self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
 
     def write_rest(self, decon_name="decon_rest"):
-        """Title.
+        """Write an AFNI 3dDeconvolve command for resting state checking.
 
-        # Conduct PCA on CSF
-        # Build decon 1 to clean signal
-        # Generate x-matrices
-        # Project regression matrix, anaticor method
+        First conduct PCA on the CSF to determine a nuissance timeseries.
+        Then model all nuissance parameters to produce 'cleaned' resting
+        state output. Writes a shell script to:
+            <subj_work>/<decon_name>.sh
+
+        Parameters
+        ----------
+        decon_name : str, optional
+            Prefix for output deconvolve files
 
         Attributes
         ----------
@@ -1775,14 +1783,12 @@ class WriteDecon:
             Generated 3dDeconvolve command
         decon_name : str
             Prefix for output deconvolve files
-        epi_mask : path
-            Location of masking EPI file
 
         """
-        #
-        pcomp_path, epi_mask = self._run_pca()
+        # Conduct principal components analysis
+        pcomp_path = self._run_pca()
 
-        #
+        # Unpack dictionaries for readability
         epi_path = self.func_dict["func-scaled"][0]
         censor_path = self.func_dict["mot-cens"]
         reg_motion_mean = self.func_dict["mot-mean"]
@@ -1790,8 +1796,7 @@ class WriteDecon:
 
         # Build deconvolve command, write script for review.
         # This will load effects of no interest on fitts sub-brick, and
-        # errts will contain cleaned time series. CSF time series is
-        # used as a nuissance regressor.
+        # errts will contain cleaned time series.
         print("\tBuilding 3dDeconvolve command ...")
         decon_list = [
             "3dDeconvolve",
@@ -1813,53 +1818,62 @@ class WriteDecon:
         ]
         decon_cmd = " ".join(self.afni_prep + decon_list)
 
-        # Write script for review, records
+        # Write script for review/records
         decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
             script.write(decon_cmd)
 
-        # return (decon_cmd, decon_name, epi_mask)
         self.decon_cmd = decon_cmd
         self.decon_name = decon_name
-        self.epi_mask = epi_mask
 
     def _run_pca(self):
-        """Title.
+        """Conduct principal components analysis.
 
-        Desc.
+        Determine first 3 components of CSF 'signal'.
+
+        Attributes
+        ----------
+        epi_masked : path
+            Location of masked EPI data
+
+        Returns
+        -------
+        path
+            Location of file containing PCA output for each volume
 
         """
-        #
-
-        #
+        # Setup output paths/names, avoid repeating work
         mask_name = "tmp_masked_" + os.path.basename(
             self.func_dict["func-scaled"][0]
         )
-        epi_mask = os.path.join(self.subj_work, mask_name)
+        epi_masked = os.path.join(self.subj_work, mask_name)
         out_name = os.path.basename(self.func_dict["mot-cens"]).replace(
             "censor", "csfPC"
         )
         out_path = os.path.join(self.subj_work, out_name)
-        if os.path.exists(epi_mask) and os.path.exists(out_path):
-            return (out_path, epi_mask)
+        if os.path.exists(epi_masked) and os.path.exists(out_path):
+            self.epi_masked = epi_masked
+            return out_path
 
+        # Remove bad volumes
+        print("\t\tConducting CSF PCA")
         bash_list = [
             "3dcalc",
             f"-a {self.func_dict['func-scaled'][0]}",
             f"-b {self.anat_dict['mask-min']}",
             "-expr 'a*b'",
-            f"-prefix {epi_mask}",
+            f"-prefix {epi_masked}",
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
-        _ = submit.submit_subprocess(bash_cmd, epi_mask, "Mask rest")
+        _ = submit.submit_subprocess(bash_cmd, epi_masked, "Mask rest")
 
-        #
+        # Get protocol info, calculate polynomial order
         epi_info = self._get_epi_info()
         num_pol = 1 + math.ceil(
             (epi_info["sum_vol"] * epi_info["len_tr"]) / 150
         )
 
-        #
+        # Split censor file into runs
         out_cens = os.path.join(
             self.subj_work,
             f"tmp_{os.path.basename(self.func_dict['mot-cens'])}",
@@ -1874,7 +1888,7 @@ class WriteDecon:
         bash_cmd = " ".join(self.afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_cens, "Cens rest")
 
-        #
+        # Censor EPI data
         out_proj = os.path.join(
             self.subj_work,
             f"tmp_proj_{os.path.basename(self.func_dict['func-scaled'][0])}",
@@ -1885,12 +1899,12 @@ class WriteDecon:
             f"-prefix {out_proj}",
             f"-censor {out_cens}",
             "-cenmode KILL",
-            f"-input {epi_mask}",
+            f"-input {epi_masked}",
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_proj, "Proj rest")
 
-        #
+        # Conduct PCA
         out_pcomp = os.path.join(self.subj_work, "tmp_pcomp")
         bash_list = [
             "3dpc",
@@ -1904,6 +1918,7 @@ class WriteDecon:
             bash_cmd, f"{out_pcomp}_vec.1D", "Pcomp rest"
         )
 
+        # Account for censoring in PCA output
         tmp_out = os.path.join(self.subj_work, "test_" + out_name)
         bash_list = [
             "1d_tool.py",
@@ -1914,6 +1929,7 @@ class WriteDecon:
         bash_cmd = " ".join(self.afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, tmp_out, "Split rest1")
 
+        # Finalize PCA file
         bash_list = [
             "1d_tool.py",
             f"-set_run_lengths {epi_info['sum_vol']}",
@@ -1923,11 +1939,21 @@ class WriteDecon:
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Split rest")
-
-        return (out_path, epi_mask)
+        self.epi_masked = epi_masked
+        return out_path
 
     def _get_epi_info(self):
-        """Return dict of TR, volume info."""
+        """Return dict of TR, volume info.
+
+        Returns
+        -------
+        dict
+            len_tr = float, TR value
+            run_len = list, time (seconds) of each run
+            run_vol = list, number of volumes in each run
+            sum_vol = float, int, total number of volumes in session
+
+        """
         # Find TR length
         bash_cmd = f"""
             fslhd \
@@ -2278,6 +2304,12 @@ class ProjectRest:
 
     Attributes
     ----------
+    subj
+    sess
+    subj_work
+    log_dir
+    afni_prep
+
 
     Methods
     -------
@@ -2295,16 +2327,23 @@ class ProjectRest:
     """
 
     def __init__(self, subj, sess, subj_work, proj_deriv, sing_afni, log_dir):
-        """Title.
-
-        Desc.
+        """Initialize object.
 
         Parameters
         ----------
-        subj
-        sess
-        subj_work
-        log_dir
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        subj_work : path
+            Location of working directory for intermediates
+        log_dir : path
+            Output location for log files and scripts
+
+        Attributes
+        ----------
+        afni_prep : list
+            First part of subprocess call for AFNI singularity
 
         """
         print("\nInitializing ProjectRest")
@@ -2317,22 +2356,26 @@ class ProjectRest:
         )
 
     def gen_xmatrix(self, decon_cmd, decon_name):
-        """Title.
+        """Execute generated 3dDeconvolve command to x-files.
 
-        Desc.
+        Cue 90's theme.
 
         Parameters
         ----------
-        decon_cmd
-        decon_name
+        decon_cmd : str
+            Bash 3dDeconvolve command
+        decon_name : str
+            Output prefix for 3dDeconvolve files
 
         Returns
         -------
         path
+            Location of X.<decon_name>.nocensor.xmat.1D
 
         Raises
         ------
         FileNotFoundError
+            Missing expected x-file
 
         """
         # generate x-matrices
@@ -2352,7 +2395,7 @@ class ProjectRest:
         )
         time.sleep(300)
 
-        #
+        # Check
         if not os.path.exists(xmat_path):
             raise FileNotFoundError(f"Expected to find {xmat_path}")
         return xmat_path
@@ -2360,49 +2403,72 @@ class ProjectRest:
     def anaticor(
         self,
         decon_name,
-        epi_mask,
+        epi_masked,
         xmat_path,
         anat_dict,
         func_dict,
     ):
-        """Title.
-
-        Desc.
+        """Project resting state correlation matrix.
 
         Parameters
         ----------
-        decon_name
-        epi_mask
-        xmat_path
-        anat_dict
-        func_dict
+        decon_name : str
+            Output prefix for 3dDeconvolve files
+        epi_masked : path
+            Location of masked EPI data
+        xmat_path : path
+            Location of nocensor x-matrix
+        anat_dict : dict
+            Contains reference names (key) and paths (value) to
+            preprocessed anatomical files.
+            Required keys:
+            -   [mask-WMe] = path to eroded CSF mask
+        func_dict : dict
+            Contains reference names (key) and paths (value) to
+            preprocessed functional files.
+            Required keys:
+            -   [func-scaled] = list of scaled EPI file paths
+            -   [mot-cens] = path to censor vector
 
         Attributes
         ----------
-        reg_matrix
+        reg_matrix : path
+            Location of AFNI regression matrix
 
         Returns
         -------
         path
+            Location of AFNI regression matrix
 
         Raises
         ------
         FileNotFoundError
+            Missing regression matrix
 
         """
-        #
+        # Validate dict keys
+        for _key in ["func-scaled", "mot-cens"]:
+            if _key not in func_dict:
+                raise KeyError(f"Expected {_key} key in func_dict")
+        for _key in ["mask-WMe"]:
+            if _key not in anat_dict:
+                raise KeyError(f"Expected {_key} key in anat_dict")
+        if len(func_dict["func-scaled"]) == 0:
+            raise ValueError("Expected list of paths to scaled EPI files.")
+
+        # Setup output path/name, avoid repeating work
         out_path = os.path.join(self.subj_work, f"{decon_name}_anaticor+tlrc")
         if os.path.exists(f"{out_path}.HEAD"):
             self.reg_matrix = out_path
             return out_path
 
-        #
+        # Get WM signal
         print("\tProjecting correlation matrix")
         comb_path = os.path.join(self.subj_work, "tmp_epi-mask_WMe.nii.gz")
         if not os.path.exists(comb_path):
             bash_list = [
                 "3dcalc",
-                f"-a {epi_mask}",
+                f"-a {epi_masked}",
                 f"-b {anat_dict['mask-WMe']}",
                 "-expr 'a*bool(b)'",
                 "-datum float",
@@ -2411,7 +2477,7 @@ class ProjectRest:
             bash_cmd = " ".join(self.afni_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, comb_path, "Comb mask")
 
-        #
+        # Smooth WM signal
         blur_path = os.path.join(self.subj_work, "tmp_epi-blur.nii.gz")
         if not os.path.exists(blur_path):
             bash_list = [
@@ -2424,7 +2490,7 @@ class ProjectRest:
             bash_cmd = " ".join(self.afni_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, blur_path, "Blur mask")
 
-        #
+        # Project regression matrix, include WM as nuissance
         bash_list = [
             "3dTproject",
             "-polort 0",
@@ -2444,7 +2510,7 @@ class ProjectRest:
         )
         time.sleep(300)
 
-        #
+        # Check
         if not os.path.exists(f"{out_path}.HEAD"):
             raise FileNotFoundError(f"Expected to find {out_path}.HEAD")
         self.reg_matrix = out_path

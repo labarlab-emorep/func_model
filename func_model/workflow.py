@@ -183,7 +183,6 @@ def pipeline_afni_rest(
         sess_anat,
         sing_afni,
     )
-    # decon_cmd, decon_name, epi_mask = write_decon.build_decon(model_name)
     write_decon.build_decon(model_name)
 
     # Project regression matrix
@@ -195,7 +194,7 @@ def pipeline_afni_rest(
     )
     sess_func["func-proj"] = proj_reg.anaticor(
         write_decon.decon_name,
-        write_decon.epi_mask,
+        write_decon.epi_masked,
         xmat_path,
         sess_anat,
         sess_func,

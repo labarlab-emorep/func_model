@@ -9,8 +9,6 @@ directory.
 Model names:
     - univ = A standard univariate model yielding a single averaged
         beta-coefficient for each event type (-stim_times_AM1)
-    - indiv = A standard univariate model yielding a single beta-coefficient
-        for each trial, accounting for event type (-stim_times_IM)
     - rest = Conduct a resting-state analysis
 
 Output logs are written to:
