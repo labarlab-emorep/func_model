@@ -109,11 +109,8 @@ def pipeline_afni_task(
     )
 
     # Clean
-    wf_done = afni.move_final(
-        subj, sess, proj_deriv, subj_work, sess_anat, model_name
-    )
-    if wf_done:
-        return (sess_timing, sess_anat, sess_func)
+    afni.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
+    return (sess_timing, sess_anat, sess_func)
 
 
 def pipeline_afni_rest(
@@ -207,12 +204,9 @@ def pipeline_afni_rest(
     # Seed - sanity check
     corr_dict = proj_reg.seed_corr(sess_anat)
 
-    # # Clean
-    # wf_done = afni.move_final(
-    #     subj, sess, proj_deriv, subj_work, sess_anat, model_name
-    # )
-    # if wf_done:
-    #     return (sess_tfs, sess_anat, sess_func)
+    # Clean
+    afni.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
+    return (corr_dict, sess_anat, sess_func)
 
 
 def pipeline_fsl():

@@ -2307,6 +2307,7 @@ class ProjectRest:
         log_dir
 
         """
+        print("\nInitializing ProjectRest")
         self.subj = subj
         self.sess = sess
         self.subj_work = subj_work
@@ -2342,7 +2343,7 @@ class ProjectRest:
             return xmat_path
 
         # Execute decon_cmd, wait for singularity to close
-        print("\nRunning 3dDeconvolve for Resting data")
+        print("\tRunning 3dDeconvolve for resting data")
         _, _ = submit.submit_sbatch(
             decon_cmd,
             f"dcn{self.subj[6:]}s{self.sess[-1]}",
@@ -2396,6 +2397,7 @@ class ProjectRest:
             return out_path
 
         #
+        print("\tProjecting correlation matrix")
         comb_path = os.path.join(self.subj_work, "tmp_epi-mask_WMe.nii.gz")
         if not os.path.exists(comb_path):
             bash_list = [
@@ -2466,6 +2468,8 @@ class ProjectRest:
         ------
 
         """
+        print("\tGenerating seed-based correlation matrices")
+
         # Check for self.reg_matrix
 
         # Check for mask-int
@@ -2473,34 +2477,40 @@ class ProjectRest:
         #
         seed_dict = self._coord_seed(coord_dict)
         corr_dict = {}
-        for seed in seed_dict:
+        for seed, seed_ts in seed_dict.items():
+            print(f"\t\tWorking on seed {seed} ...")
             ztrans_file = self.reg_matrix.replace("+tlrc", f"_{seed}_ztrans")
-            if os.path.exists(f"{ztrans_file}.HEAD"):
-                corr_dict[seed] = ztrans_file
+            if os.path.exists(f"{ztrans_file}+tlrc.HEAD"):
+                corr_dict[seed] = f"{ztrans_file}+tlrc.HEAD"
                 continue
 
             #
             corr_file = self.reg_matrix.replace("+tlrc", f"_{seed}_corr")
-            if not os.path.exists(corr_file):
+            if not os.path.exists(f"{corr_file}+tlrc.HEAD"):
                 bash_list = [
                     "3dTcorr1D",
                     f"-mask {anat_dict['mask-int']}",
                     f"-prefix {corr_file}",
                     self.reg_matrix,
-                    f"{self.subj_work}/resting_state_{seed}.1D",
+                    seed_ts,
                 ]
                 bash_cmd = " ".join(self.afni_prep + bash_list)
-                _ = submit.submit_subprocess(bash_cmd, corr_file, "Corr mat")
+                _ = submit.submit_subprocess(
+                    bash_cmd, f"{corr_file}+tlrc.HEAD", "Corr mat"
+                )
 
             #
             bash_list = [
                 "3dcalc",
                 f"-a {corr_file}+tlrc",
-                "-expr 'log((1+a/(1-a)/2'",
+                "-expr 'log((1+a)/(1-a))/2'",
                 f"-prefix {ztrans_file}",
             ]
             bash_cmd = " ".join(self.afni_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, ztrans_file, "Fisher Z")
+            _ = submit.submit_subprocess(
+                bash_cmd, f"{ztrans_file}+tlrc.HEAD", "Fisher Z"
+            )
+            corr_dict[seed] = f"{ztrans_file}+tlrc.HEAD"
 
         return corr_dict
 
@@ -2522,6 +2532,7 @@ class ProjectRest:
         AttributeError
 
         """
+        print("\t\tBuilding seeds")
         # Check coord_dict
 
         # Check for self.reg_matrix
@@ -2531,119 +2542,230 @@ class ProjectRest:
         #
         seed_dict = {}
         for seed, coord in coord_dict.items():
+            print(f"\t\t\tWorking on seed {seed}")
             seed_ts = os.path.join(
                 self.subj_work, f"seed_{seed}_timeseries.1D"
             )
             if os.path.exists(seed_ts):
-                seed_dict["seed"] = seed_ts
+                seed_dict[seed] = seed_ts
                 continue
 
             #
             seed_file = os.path.join(self.subj_work, f"seed_{seed}.nii.gz")
-            if not os.path.exists(seed_file):
-                tmp_coord = os.path.join(
-                    self.subj_work, f"tmp_seed_{seed}.txt"
-                )
-                _ = submit.submit_subprocess(
-                    f"echo {coord} > {tmp_coord} ", tmp_coord, "Echo"
-                )
-                bash_list = [
-                    "3dUndump",
-                    f"-prefix {seed_file}",
-                    f"-master {self.reg_matrix}",
-                    "-srad 2",
-                    f"-xyz {tmp_coord}",
-                ]
-                bash_cmd = " ".join(self.afni_prep + bash_list)
-                _ = submit.submit_subprocess(bash_cmd, seed_file, "Make seed")
+            tmp_coord = os.path.join(self.subj_work, f"tmp_seed_{seed}.txt")
+            _ = submit.submit_subprocess(
+                f"echo {coord} > {tmp_coord} ", tmp_coord, "Echo"
+            )
+            bash_list = [
+                "3dUndump",
+                f"-prefix {seed_file}",
+                f"-master {self.reg_matrix}",
+                "-srad 2",
+                f"-xyz {tmp_coord}",
+            ]
+            bash_cmd = " ".join(self.afni_prep + bash_list)
+            _ = submit.submit_subprocess(bash_cmd, seed_file, "Make seed")
 
             #
+            seed_long = os.path.join(
+                self.subj_work, f"tmp_seed_{seed}_timeseries.1D"
+            )
             bash_list = [
                 "3dROIstats",
                 "-quiet",
                 f"-mask {seed_file}",
-                f"{self.reg_matrix} > {seed_ts}",
+                f"{self.reg_matrix} > {seed_long}",
             ]
             bash_cmd = " ".join(self.afni_prep + bash_list)
-            _ = submit.submit_subprocess(bash_cmd, seed_ts, "Seed TS")
-            seed_dict["seed"] = seed_ts
+            _ = submit.submit_subprocess(bash_cmd, seed_long, "Seed TS")
+            _ = submit.submit_subprocess(
+                f"tail -n +3 {seed_long} > {seed_ts}", seed_ts, "Tail"
+            )
+            seed_dict[seed] = seed_ts
 
         return seed_dict
 
 
-def move_final(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
-    """Save certain files and delete intermediates.
+class MoveFinal:
+    """Title.
 
-    Copy decon, motion, timing, eroded WM mask, and intersection mask
-    files to the group location on the DCC. Then clean up the
-    session intermediates.
-
-    Files saved to:
-        <proj_deriv>/model_afni/<subj>/<sess>/func
-
-    Parameters
-    ----------
-    subj : str
-        BIDS subject identifier
-    sess : str
-        BIDS session identifier
-    proj_deriv : path
-        Location of project derivatives, "model_afni sub-directory
-        will be destination of saved files.
-    subj_work : path
-        Location of working directory for intermediates
-    sess_anat : dict
-        Contains reference names (key) and paths (value) to
-        preprocessed anatomical files
-    model_name : str
-        [univ | indiv]
-        Desired AFNI model, triggers right methods
-
-    Returns
-    -------
-    bool
-        Whether all work was completed
-
-    Raises
-    ------
-    FileNotFoundError
-        Failure to detect decon files in subj_work
-        Failure to detect desired files in proj_deriv location
+    Desc.
 
     """
-    # Setup save location in group directory
-    subj_final = os.path.join(proj_deriv, "model_afni", subj, sess, "func")
-    if not os.path.exists(subj_final):
-        os.makedirs(subj_final)
 
-    # Find, specify files/directories for saving
-    subj_motion = os.path.join(subj_work, "motion_files")
-    subj_timing = os.path.join(subj_work, "timing_files")
-    stat_list = glob.glob(f"{subj_work}/decon_{model_name}_stats_REML+tlrc.*")
-    if stat_list:
-        sh_list = glob.glob(f"{subj_work}/decon_{model_name}*.sh")
-        x_list = glob.glob(f"{subj_work}/X.decon_{model_name}.*")
-        save_list = stat_list + sh_list + x_list
-        save_list.append(sess_anat["mask-WMe"])
-        save_list.append(sess_anat["mask-int"])
-        save_list.append(subj_motion)
-        save_list.append(subj_timing)
-    else:
-        raise FileNotFoundError(
-            f"Missing decon_{model_name} files in {subj_work}"
+    def __init__(
+        self, subj, sess, proj_deriv, subj_work, sess_anat, model_name
+    ):
+        """Title.
+
+        Desc.
+
+        """
+        self.subj = subj
+        self.sess = sess
+        self.proj_deriv = proj_deriv
+        self.subj_work = subj_work
+        self.sess_anat = sess_anat
+        self.model_name = model_name
+
+        save_list = (
+            self._make_list_rest()
+            if model_name == "rest"
+            else self._make_list_task()
         )
+        self.copy_files(save_list)
 
-    # Copy desired files to group location
-    for h_save in save_list:
-        bash_cmd = f"cp -r {h_save} {subj_final}"
-        h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
-        _ = h_sp.communicate()
-        h_sp.wait()
-        chk_save = os.path.join(subj_final, h_save)
-        if not os.path.exists(chk_save):
-            raise FileNotFoundError(f"Expected to find {chk_save}")
+    def _make_list_task(self):
+        """Title.
 
-    # Clean up - remove session directory in case
-    # other session is still running.
-    shutil.rmtree(os.path.dirname(subj_work))
-    return True
+        Desc.
+
+        """
+        # Find, specify files/directories for saving
+        subj_motion = os.path.join(self.subj_work, "motion_files")
+        subj_timing = os.path.join(self.subj_work, "timing_files")
+        stat_list = glob.glob(
+            f"{self.subj_work}/decon_{self.model_name}_stats_REML+tlrc.*"
+        )
+        if stat_list:
+            sh_list = glob.glob(
+                f"{self.subj_work}/decon_{self.model_name}*.sh"
+            )
+            x_list = glob.glob(f"{self.subj_work}/X.decon_{self.model_name}.*")
+            save_list = stat_list + sh_list + x_list
+            save_list.append(self.sess_anat["mask-WMe"])
+            save_list.append(self.sess_anat["mask-int"])
+            save_list.append(subj_motion)
+            save_list.append(subj_timing)
+        else:
+            raise FileNotFoundError(
+                f"Missing decon_{self.model_name} files in {self.subj_work}"
+            )
+        return save_list
+
+    def _make_list_rest(self):
+        """Title.
+
+        Desc.
+
+        """
+        # Find, specify files/directories for saving
+        stat_list = glob.glob(f"{self.subj_work}/decon_rest_anaticor*+tlrc.*")
+        if stat_list:
+            seed_list = glob.glob(f"{self.subj_work}/seed_*")
+            x_list = glob.glob(f"{self.subj_work}/X.decon_rest.*")
+            save_list = stat_list + seed_list + x_list
+            save_list.append(self.sess_anat["mask-int"])
+            save_list.append(f"{self.subj_work}/decon_rest.sh")
+        else:
+            raise FileNotFoundError(
+                f"Missing decon_rest files in {self.subj_work}"
+            )
+        return save_list
+
+    def copy_files(self, save_list):
+        """Title.
+
+        Desc.
+
+        """
+        # Setup save location in group directory
+        subj_final = os.path.join(
+            self.proj_deriv, "model_afni", self.subj, self.sess, "func"
+        )
+        if not os.path.exists(subj_final):
+            os.makedirs(subj_final)
+
+        # Copy desired files to group location
+        for h_save in save_list:
+            bash_cmd = f"cp -r {h_save} {subj_final}"
+            h_sp = subprocess.Popen(
+                bash_cmd, shell=True, stdout=subprocess.PIPE
+            )
+            _ = h_sp.communicate()
+            h_sp.wait()
+            chk_save = os.path.join(subj_final, h_save)
+            if not os.path.exists(chk_save):
+                raise FileNotFoundError(f"Expected to find {chk_save}")
+
+        # Clean up - remove session directory in case
+        # other session is still running.
+        shutil.rmtree(os.path.dirname(self.subj_work))
+
+
+# def move_final_task(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
+#     """Save certain files and delete intermediates.
+
+#     Copy decon, motion, timing, eroded WM mask, and intersection mask
+#     files to the group location on the DCC. Then clean up the
+#     session intermediates.
+
+#     Files saved to:
+#         <proj_deriv>/model_afni/<subj>/<sess>/func
+
+#     Parameters
+#     ----------
+#     subj : str
+#         BIDS subject identifier
+#     sess : str
+#         BIDS session identifier
+#     proj_deriv : path
+#         Location of project derivatives, "model_afni sub-directory
+#         will be destination of saved files.
+#     subj_work : path
+#         Location of working directory for intermediates
+#     sess_anat : dict
+#         Contains reference names (key) and paths (value) to
+#         preprocessed anatomical files
+#     model_name : str
+#         [univ | indiv]
+#         Desired AFNI model, triggers right methods
+
+#     Returns
+#     -------
+#     bool
+#         Whether all work was completed
+
+#     Raises
+#     ------
+#     FileNotFoundError
+#         Failure to detect decon files in subj_work
+#         Failure to detect desired files in proj_deriv location
+
+#     """
+#     # Setup save location in group directory
+#     subj_final = os.path.join(proj_deriv, "model_afni", subj, sess, "func")
+#     if not os.path.exists(subj_final):
+#         os.makedirs(subj_final)
+
+#     # Find, specify files/directories for saving
+#     subj_motion = os.path.join(subj_work, "motion_files")
+#     subj_timing = os.path.join(subj_work, "timing_files")
+#     stat_list = glob.glob(f"{subj_work}/decon_{model_name}_stats_REML+tlrc.*")
+#     if stat_list:
+#         sh_list = glob.glob(f"{subj_work}/decon_{model_name}*.sh")
+#         x_list = glob.glob(f"{subj_work}/X.decon_{model_name}.*")
+#         save_list = stat_list + sh_list + x_list
+#         save_list.append(sess_anat["mask-WMe"])
+#         save_list.append(sess_anat["mask-int"])
+#         save_list.append(subj_motion)
+#         save_list.append(subj_timing)
+#     else:
+#         raise FileNotFoundError(
+#             f"Missing decon_{model_name} files in {subj_work}"
+#         )
+
+#     # Copy desired files to group location
+#     for h_save in save_list:
+#         bash_cmd = f"cp -r {h_save} {subj_final}"
+#         h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+#         _ = h_sp.communicate()
+#         h_sp.wait()
+#         chk_save = os.path.join(subj_final, h_save)
+#         if not os.path.exists(chk_save):
+#             raise FileNotFoundError(f"Expected to find {chk_save}")
+
+#     # Clean up - remove session directory in case
+#     # other session is still running.
+#     shutil.rmtree(os.path.dirname(subj_work))
+#     return True
