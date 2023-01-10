@@ -46,7 +46,7 @@ def _get_args():
         default="univ",
         help=textwrap.dedent(
             """\
-            [univ | rest]
+            [univ | rest | mixed]
             AFNI model name/type, for triggering different workflows
             (default : %(default)s)
             """

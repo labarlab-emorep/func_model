@@ -140,7 +140,7 @@ def schedule_afni(
     sing_afni : path
         Location of AFNI singularity file
     model_name : str
-        [univ | indiv | rest]
+        [univ | rest | mixed]
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -164,7 +164,7 @@ def schedule_afni(
         os.makedirs(proj_afni)
 
     # Write parent python script
-    wall_time = 40 if model_name == "indiv" else 20
+    wall_time = 20
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
 
@@ -196,7 +196,9 @@ def schedule_afni(
 
     # Execute script
     h_sp = subprocess.Popen(
-        f"sbatch {py_script}", shell=True, stdout=subprocess.PIPE,
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")

@@ -48,7 +48,7 @@ def valid_models(model_name):
     Parameters
     ----------
     model_name : str
-        [univ | rest]
+        [univ | rest | mixed]
         Desired AFNI model, for triggering different workflows
 
     Returns
@@ -56,7 +56,7 @@ def valid_models(model_name):
     bool
 
     """
-    valid_list = ["univ", "rest"]
+    valid_list = ["univ", "rest", "mixed"]
     return model_name in valid_list
 
 
@@ -615,6 +615,14 @@ class TimingFiles:
                 out_list.append(tf_path)
         return out_list
 
+    def block_events(self):
+        """Title.
+
+        Desc.
+
+        """
+        pass
+
 
 class MakeMasks:
     """Generate masks for AFNI-style analyses.
@@ -659,7 +667,12 @@ class MakeMasks:
     """
 
     def __init__(
-        self, subj_work, proj_deriv, anat_dict, func_dict, sing_afni,
+        self,
+        subj_work,
+        proj_deriv,
+        anat_dict,
+        func_dict,
+        sing_afni,
     ):
         """Initialize object.
 
@@ -987,7 +1000,11 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
+    subj_work,
+    proj_deriv,
+    func_preproc,
+    sing_afni,
+    blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1501,7 +1518,12 @@ class WriteDecon:
     """
 
     def __init__(
-        self, subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
+        self,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sing_afni,
     ):
         """Initialize object.
 
@@ -1572,7 +1594,7 @@ class WriteDecon:
         Parameters
         ----------
         model_name : str
-            [univ | indiv | rest]
+            [univ | rest | mixed]
             Desired AFNI model, triggers right methods
         sess_tfs : None, dict, optional
             Required by model_name = univ|indiv.
@@ -1582,7 +1604,7 @@ class WriteDecon:
         Attributes
         ----------
         tf_dict : dict, optional
-            When model_name = univ | indiv.
+            When model_name = univ | mixed
             Contains reference names (key) and paths (value) to
             session AFNI-style timing files.
 
@@ -1599,7 +1621,8 @@ class WriteDecon:
             raise ValueError(f"Unsupported model name : {model_name}")
 
         # Require timing files for task decons
-        if model_name == "univ" or model_name == "indiv":
+        req_tfs = ["univ", "mixed"]
+        if model_name in req_tfs:
             if not sess_tfs:
                 raise ValueError(
                     f"Argument sess_tfs required with model_name={model_name}"
@@ -1749,6 +1772,14 @@ class WriteDecon:
 
         """
         self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
+
+    def write_mixed(self):
+        """Title.
+
+        Desc.
+
+        """
+        pass
 
     def write_rest(self, decon_name="decon_rest"):
         """Write an AFNI 3dDeconvolve command for resting state checking.
@@ -2019,7 +2050,13 @@ class RunReml:
     """
 
     def __init__(
-        self, subj_work, proj_deriv, sess_anat, sess_func, sing_afni, log_dir,
+        self,
+        subj_work,
+        proj_deriv,
+        sess_anat,
+        sess_func,
+        sing_afni,
+        log_dir,
     ):
         """Initialize object.
 
@@ -2107,7 +2144,10 @@ class RunReml:
 
         # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
-            decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", self.log_dir, mem_gig=10,
+            decon_cmd,
+            f"dcn{subj[6:]}s{sess[-1]}",
+            self.log_dir,
+            mem_gig=10,
         )
         if not os.path.exists(out_path):
             time.sleep(300)
@@ -2381,7 +2421,11 @@ class ProjectRest:
             raise FileNotFoundError(f"Expected to find {self.xmat_path}")
 
     def anaticor(
-        self, decon_name, epi_masked, anat_dict, func_dict,
+        self,
+        decon_name,
+        epi_masked,
+        anat_dict,
+        func_dict,
     ):
         """Project resting state correlation matrix.
 

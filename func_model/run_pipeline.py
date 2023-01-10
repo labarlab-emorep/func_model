@@ -103,6 +103,15 @@ def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
     return sess_tfs
 
 
+def afni_mixed_tfs():
+    """Title.
+
+    Desc.
+
+    """
+    pass
+
+
 def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     """Conduct extra preprocessing for AFNI.
 
@@ -242,7 +251,11 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
         subj_work, proj_deriv, func_dict["func-preproc"], sing_afni
     )
     func_dict["func-scaled"] = afni.scale_epi(
-        subj_work, proj_deriv, anat_dict["mask-min"], smooth_epi, sing_afni,
+        subj_work,
+        proj_deriv,
+        anat_dict["mask-min"],
+        smooth_epi,
+        sing_afni,
     )
 
     # Make AFNI-style motion and censor files

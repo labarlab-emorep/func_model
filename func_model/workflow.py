@@ -38,7 +38,7 @@ def pipeline_afni_task(
     sing_afni : path
         Location of AFNI singularity file
     model_name : str
-        [univ]
+        [univ | mixed]
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -57,7 +57,7 @@ def pipeline_afni_task(
 
     """
     # Validate
-    if model_name not in ["univ"]:
+    if model_name not in ["univ", "mixed"]:
         raise ValueError(f"Unsupported model name : {model_name}")
 
     # Check that session exists for participant
@@ -84,13 +84,22 @@ def pipeline_afni_task(
 
     # Generate deconvolution command
     write_decon = afni.WriteDecon(
-        subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sing_afni,
     )
     write_decon.build_decon(model_name, sess_tfs=sess_timing)
 
     # Use decon command to make REMl command, execute REML
     make_reml = afni.RunReml(
-        subj_work, proj_deriv, sess_anat, sess_func, sing_afni, log_dir,
+        subj_work,
+        proj_deriv,
+        sess_anat,
+        sess_func,
+        sing_afni,
+        log_dir,
     )
     reml_path = make_reml.generate_reml(
         subj, sess, write_decon.decon_cmd, write_decon.decon_name
@@ -175,7 +184,11 @@ def pipeline_afni_rest(
         subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
     )
     write_decon = afni.WriteDecon(
-        subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sing_afni,
     )
     write_decon.build_decon(model_name)
 
@@ -185,7 +198,10 @@ def pipeline_afni_rest(
     )
     proj_reg.gen_xmatrix(write_decon.decon_cmd, write_decon.decon_name)
     proj_reg.anaticor(
-        write_decon.decon_name, write_decon.epi_masked, sess_anat, sess_func,
+        write_decon.decon_name,
+        write_decon.epi_masked,
+        sess_anat,
+        sess_func,
     )
 
     # Seed (sanity check) and clean
