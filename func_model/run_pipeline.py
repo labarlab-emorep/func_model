@@ -75,6 +75,8 @@ def afni_univ_tfs(subj, sess, subj_work, subj_sess_raw):
 def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
     """Make timing files for sanity check modeling individual events.
 
+    DEPRECATED.
+
     This "indiv" approach requires the same timing files as "univ", so wrap
     the afni_univ_tfs method and return that output.
 
@@ -101,7 +103,7 @@ def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
     return sess_tfs
 
 
-def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
+def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     """Conduct extra preprocessing for AFNI.
 
     Identify required files from fMRIPrep and FSL, then conduct
@@ -128,28 +130,14 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
         and fsl_denoise sub-directories
     sing_afni : path
         Location of AFNI singularity file
+    do_rest : bool
+        Whether to work with resting state or task EPI data
 
     Returns
     -------
     tuple
-        [0] = dictionary of functional files, "key": value description:
-            "func-motion": [/paths/to/fMRIPrep/timeseries.tsv]
-            "func-preproc": [/paths/to/fsl/denoised/nii]
-            "func-scaled": [/paths/to/scaled/nii]
-            "func-mean": /path/to/mean/motion/file
-            "func-deriv": /path/to/derivative/motion/file
-            "func-cens": /path/to/censor/file
-            "func-inv": /path/to/inverted/censor/file
-        [1] = dictionary of anatomical files, "key": value description:
-            "anat-preproc": /path/to/preprocessed/t1w/nii
-            "mask-brain": /path/to/anat/brain/mask
-            "mask-probCS": /path/to/probabilistic/csf/label
-            "mask-probGM": /path/to/probabilistic/gm/label
-            "mask-probWM": /path/to/probabilistic/WM/label
-            "mask-int": /path/to/epi-anat/intersection/mask
-            "mask-WMe": /path/to/eroded/wm/mask
-            "mask-CSe": /path/to/eroded/csf/mask
-            "mask-min": /path/to/minimum/value/mask
+        [0] = dictionary of functional files
+        [1] = dictionary of anatomical files
 
     Raises
     ------
@@ -189,40 +177,35 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
                 f"Expected to find fmriprep file anat/*_{search}.nii.gz"
             )
 
-    # Find motion files from fMRIPrep
-    mot_files = [
-        x
-        for x in glob.glob(f"{subj_deriv_fp}/{sess}/func/*timeseries.tsv")
-        if not fnmatch.fnmatch(x, "*task-rest*")
-    ]
+    # Find task or rest motion files from fMRIPrep
+    subj_func_fp = os.path.join(subj_deriv_fp, sess, "func")
+    if do_rest:
+        mot_files = glob.glob(f"{subj_func_fp}/*task-rest*timeseries.tsv")
+    else:
+        mot_files = [
+            x
+            for x in glob.glob(f"{subj_func_fp}/*timeseries.tsv")
+            if not fnmatch.fnmatch(x, "*task-rest*")
+        ]
     mot_files.sort()
     if not mot_files:
         raise FileNotFoundError(
             "Expected to find fmriprep files func/*timeseries.tsv"
         )
 
-    # Find preprocessed EPI files
-    # subj_deriv_fsl = os.path.join(
-    #     proj_deriv, f"pre_processing/fsl_denoise/{subj}/{sess}/func"
-    # )
-    # run_files = [
-    #     x
-    #     for x in glob.glob(f"{subj_deriv_fsl}/*tfiltMasked_bold.nii.gz")
-    #     if not fnmatch.fnmatch(x, "*task-rest*")
-    # ]
-    # run_files.sort()
-    # if not run_files:
-    #     raise FileNotFoundError(
-    #         "Expected to find fsl_denoise files *tfiltMasked_bold.nii.gz"
-    #     )
-
-    # Find preprocessed EPI files
-    subj_func_fp = os.path.join(subj_deriv_fp, sess, "func")
-    run_files = [
-        x
-        for x in glob.glob(f"{subj_func_fp}/*_res-2_desc-preproc_bold.nii.gz")
-        if not fnmatch.fnmatch(x, "*task-rest*")
-    ]
+    # Find preprocessed EPI files, task or resting
+    if do_rest:
+        run_files = glob.glob(
+            f"{subj_func_fp}/*task-rest*_res-2_desc-preproc_bold.nii.gz"
+        )
+    else:
+        run_files = [
+            x
+            for x in glob.glob(
+                f"{subj_func_fp}/*_res-2_desc-preproc_bold.nii.gz"
+            )
+            if not fnmatch.fnmatch(x, "*task-rest*")
+        ]
     run_files.sort()
     if not run_files:
         raise FileNotFoundError(
@@ -246,7 +229,7 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
 
     # Make required masks
     make_masks = afni.MakeMasks(
-        subj, sess, subj_work, proj_deriv, anat_dict, func_dict, sing_afni
+        subj_work, proj_deriv, anat_dict, func_dict, sing_afni
     )
     anat_dict["mask-int"] = make_masks.intersect()
     tiss_masks = make_masks.tissue()
@@ -266,9 +249,9 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni):
     make_motion = afni.MotionCensor(
         subj_work, proj_deriv, func_dict["func-motion"], sing_afni
     )
-    func_dict["func-mean"] = make_motion.mean_motion()
-    func_dict["func-deriv"] = make_motion.deriv_motion()
-    func_dict["func-cens"] = make_motion.censor_volumes()
+    func_dict["mot-mean"] = make_motion.mean_motion()
+    func_dict["mot-deriv"] = make_motion.deriv_motion()
+    func_dict["mot-cens"] = make_motion.censor_volumes()
     _ = make_motion.count_motion()
 
     return (func_dict, anat_dict)

@@ -140,7 +140,7 @@ def schedule_afni(
     sing_afni : path
         Location of AFNI singularity file
     model_name : str
-        [univ]
+        [univ | indiv | rest]
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -153,7 +153,8 @@ def schedule_afni(
 
     """
     # Setup software derivatives dirs, for working
-    work_afni = os.path.join(work_deriv, "model_afni")
+    pipe_name = "rest" if model_name == "rest" else "task"
+    work_afni = os.path.join(work_deriv, f"model_afni-{pipe_name}")
     if not os.path.exists(work_afni):
         os.makedirs(work_afni)
 
@@ -176,7 +177,7 @@ def schedule_afni(
         import sys
         from func_model import workflow
 
-        _, _, _ = workflow.pipeline_afni(
+        _, _, _ = workflow.pipeline_afni_{pipe_name}(
             "{subj}",
             "{sess}",
             "{proj_rawdata}",
@@ -189,15 +190,13 @@ def schedule_afni(
 
     """
     sbatch_cmd = textwrap.dedent(sbatch_cmd)
-    py_script = f"{log_dir}/run_model-afni_{subj}_{sess}.py"
+    py_script = f"{log_dir}/run-afni_model-{model_name}_{subj}_{sess}.py"
     with open(py_script, "w") as ps:
         ps.write(sbatch_cmd)
 
     # Execute script
     h_sp = subprocess.Popen(
-        f"sbatch {py_script}",
-        shell=True,
-        stdout=subprocess.PIPE,
+        f"sbatch {py_script}", shell=True, stdout=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")
