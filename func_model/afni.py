@@ -5,6 +5,7 @@ import glob
 import shutil
 import time
 import math
+import statistics
 import subprocess
 import pandas as pd
 import numpy as np
@@ -132,6 +133,10 @@ class TimingFiles:
             Output location for writing subject, session
             timing files
 
+
+        emo_switch : dict
+
+
         Raises
         ------
         ValueError
@@ -150,6 +155,27 @@ class TimingFiles:
         self.subj_tf_dir = os.path.join(subj_work, "timing_files")
         if not os.path.exists(self.subj_tf_dir):
             os.makedirs(self.subj_tf_dir)
+
+        # Set switch for naming emotion timing files
+        #   key = value in self.df_events["emotion"]
+        #   value = AFNI-style description
+        self.emo_switch = {
+            "amusement": "Amu",
+            "anger": "Ang",
+            "anxiety": "Anx",
+            "awe": "Awe",
+            "calmness": "Cal",
+            "craving": "Cra",
+            "disgust": "Dis",
+            "excitement": "Exc",
+            "fear": "Fea",
+            "horror": "Hor",
+            "joy": "Joy",
+            "neutral": "Neu",
+            "romance": "Rom",
+            "sadness": "Sad",
+            "surprise": "Sur",
+        }
 
         # Generate dataframe from events files
         self._event_dataframe()
@@ -471,7 +497,13 @@ class TimingFiles:
         return out_list
 
     def session_events(
-        self, subj, sess, task, marry=True, emotion_name=None, emo_query=False
+        self,
+        subj,
+        sess,
+        task,
+        marry=True,
+        emotion_name=None,
+        emo_query=False,
     ):
         """Generate timing files for session-specific stimulus trials.
 
@@ -525,34 +557,13 @@ class TimingFiles:
         if task not in valid_task:
             raise ValueError(f"Inappropriate task name specified : {task}")
 
-        # Set emotion types
-        #   key = value in self.df_events["emotion"]
-        #   value = AFNI-style description
-        sess_dict = {
-            "amusement": "Amu",
-            "anger": "Ang",
-            "anxiety": "Anx",
-            "awe": "Awe",
-            "calmness": "Cal",
-            "craving": "Cra",
-            "disgust": "Dis",
-            "excitement": "Exc",
-            "fear": "Fea",
-            "horror": "Hor",
-            "joy": "Joy",
-            "neutral": "Neu",
-            "romance": "Rom",
-            "sadness": "Sad",
-            "surprise": "Sur",
-        }
-
         # Provide emotions in sess_dict
         if emo_query:
-            return [x for x in sess_dict.keys()]
+            return [x for x in self.emo_switch.keys()]
 
         # Validate user input, generate emo_list
         if emotion_name:
-            valid_list = [x for x in sess_dict.keys()]
+            valid_list = [x for x in self.emo_switch.keys()]
             if emotion_name not in valid_list:
                 raise ValueError(
                     f"Inappropriate emotion supplied : {emotion_name}"
@@ -573,15 +584,16 @@ class TimingFiles:
         for emo in emo_list:
 
             # Check that emo is found in planned dictionary
-            if emo not in sess_dict.keys():
+            if emo not in self.emo_switch.keys():
                 raise ValueError(f"Unexpected emotion encountered : {emo}")
 
             # Determine timing file name, make an empty file
-            tf_name = (
-                f"mov{sess_dict[emo]}"
-                if task == "movies"
-                else f"sce{sess_dict[emo]}"
-            )
+            # tf_name = (
+            #     f"mov{self.emo_switch[emo]}"
+            #     if task == "movies"
+            #     else f"sce{self.emo_switch[emo]}"
+            # )
+            tf_name = task[:3] + self.emo_switch[emo]
             tf_path = os.path.join(
                 self.subj_tf_dir,
                 f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
@@ -615,13 +627,106 @@ class TimingFiles:
                 out_list.append(tf_path)
         return out_list
 
-    def block_events(self):
-        """Title.
+    def session_blocks(
+        self,
+        subj,
+        sess,
+        task,
+    ):
+        """Title
 
-        Desc.
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        task : str
+            [movies | scenarios]
+            Name of task
+
+        Returns
+        -------
+
+        Notes
+        -----
 
         """
-        pass
+        # Validate task name
+        valid_task = ["movies", "scenarios"]
+        if task not in valid_task:
+            raise ValueError(f"Inappropriate task name specified : {task}")
+
+        # Identify unique emotions in dataframe
+        trial_type_value = task[:-1]
+        idx_sess = self.df_events.index[
+            self.df_events["trial_type"] == trial_type_value
+        ].tolist()
+        emo_all = self.df_events.loc[idx_sess, "emotion"].tolist()
+        emo_list = np.unique(np.array(emo_all)).tolist()
+
+        # Generate timing files for all events in emo_list
+        out_list = []
+        block_dict = {}
+        for emo in emo_list:
+
+            # Check that emo is found in planned dictionary
+            if emo not in self.emo_switch.keys():
+                raise ValueError(f"Unexpected emotion encountered : {emo}")
+
+            # Determine timing file name, make an empty file
+            tf_name = "blk" + task.capitalize()[0] + self.emo_switch[emo]
+            tf_path = os.path.join(
+                self.subj_tf_dir,
+                f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
+            )
+            open(tf_path, "w").close()
+
+            #
+            dur_list = []
+
+            # Get emo info for each run
+            for run in self.events_run:
+
+                # Identify index of emotions, account for emotion
+                # not occurring in current run, make appropriate
+                # AFNI line for event.
+                idx_emo = self.df_events.index[
+                    (self.df_events["emotion"] == emo)
+                    & (self.df_events["run"] == run)
+                ].tolist()
+
+                if not idx_emo:
+                    line_content = "*"
+                else:
+                    onset = self.df_events.loc[idx_emo, "onset"].tolist()
+                    duration = self.df_events.loc[idx_emo, "duration"].tolist()
+
+                    block_onset = onset[0]
+                    line_content = onset[0]
+                    block_end = onset[-1] + duration[-1]
+                    dur_list.append(block_end - block_onset)
+
+                # Append line to timing file
+                with open(tf_path, "a") as tf:
+                    tf.writelines(f"{line_content}\n")
+
+            #
+            block_dict[tf_name] = math.ceil(statistics.mean(dur_list)) + 14
+
+            # Check for content in timing file
+            if os.stat(tf_path).st_size == 0:
+                raise RuntimeError(f"Empty file detected : {tf_path}")
+            else:
+                out_list.append(tf_path)
+
+        # write block_dict out to json
+        out_json = os.path.join(self.subj_tf_dir, "block_durations.json")
+        with open(out_json, "w") as jf:
+            json.dump(block_dict, jf)
+
+        #
+        return out_list
 
 
 class MakeMasks:

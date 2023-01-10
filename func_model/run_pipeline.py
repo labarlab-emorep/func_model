@@ -103,13 +103,39 @@ def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
     return sess_tfs
 
 
-def afni_mixed_tfs():
+def afni_mixed_tfs(subj, sess, subj_work, subj_sess_raw):
     """Title.
 
-    Desc.
+    TODO - could probalby just use afni_univ_tfs and then generate
+    one more set of TFs from TimingFiles.block_events
 
     """
-    pass
+    # Find events files
+    sess_events = sorted(glob.glob(f"{subj_sess_raw}/func/*events.tsv"))
+    if not sess_events:
+        raise FileNotFoundError(
+            f"Expected BIDs events files in {subj_sess_raw}"
+        )
+
+    # Identify and validate task name
+    task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
+    task_valid = ["movies", "scenarios"]
+    if task not in task_valid:
+        raise ValueError(f"Expected task names movies|scenarios, found {task}")
+
+    #
+    sess_tfs = afni_univ_tfs(subj, sess, subj_work, subj_sess_raw)
+
+    #
+    make_tf = afni.TimingFiles(subj_work, sess_events)
+    tf_blk = make_tf.session_blocks(subj, sess, task)
+
+    # Setup output dict
+    for tf_path in tf_blk:
+        h_key = os.path.basename(tf_path).split("desc-")[1].split("_")[0]
+        sess_tfs[h_key] = tf_path
+
+    return sess_tfs
 
 
 def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
