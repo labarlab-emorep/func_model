@@ -659,12 +659,7 @@ class MakeMasks:
     """
 
     def __init__(
-        self,
-        subj_work,
-        proj_deriv,
-        anat_dict,
-        func_dict,
-        sing_afni,
+        self, subj_work, proj_deriv, anat_dict, func_dict, sing_afni,
     ):
         """Initialize object.
 
@@ -992,11 +987,7 @@ class MakeMasks:
 
 
 def smooth_epi(
-    subj_work,
-    proj_deriv,
-    func_preproc,
-    sing_afni,
-    blur_size=3,
+    subj_work, proj_deriv, func_preproc, sing_afni, blur_size=3,
 ):
     """Spatially smooth EPI files.
 
@@ -1510,12 +1501,7 @@ class WriteDecon:
     """
 
     def __init__(
-        self,
-        subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-        sing_afni,
+        self, subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
     ):
         """Initialize object.
 
@@ -2033,13 +2019,7 @@ class RunReml:
     """
 
     def __init__(
-        self,
-        subj_work,
-        proj_deriv,
-        sess_anat,
-        sess_func,
-        sing_afni,
-        log_dir,
+        self, subj_work, proj_deriv, sess_anat, sess_func, sing_afni, log_dir,
     ):
         """Initialize object.
 
@@ -2103,9 +2083,9 @@ class RunReml:
             BIDS subject identifier
         sess : str
             BIDS session identifier
-        decon_cmd : str
+        decon_cmd : str, afni.WriteDecon.build_decon.decon_cmd
             Bash 3dDeconvolve command
-        decon_name : str
+        decon_name : str, afni.WriteDecon.build_decon.decon_name
             Output prefix for 3dDeconvolve files
 
         Returns
@@ -2127,10 +2107,7 @@ class RunReml:
 
         # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
-            decon_cmd,
-            f"dcn{subj[6:]}s{sess[-1]}",
-            self.log_dir,
-            mem_gig=10,
+            decon_cmd, f"dcn{subj[6:]}s{sess[-1]}", self.log_dir, mem_gig=10,
         )
         if not os.path.exists(out_path):
             time.sleep(300)
@@ -2217,7 +2194,7 @@ class RunReml:
             BIDS subject identfier
         sess : str
             BIDS session identifier
-        reml_path : path
+        reml_path : path, afni.WriteDecon.generate_reml
             Location of 3dREMLfit script
         decon_name : str
             Output prefix for 3dDeconvolve files
@@ -2298,31 +2275,37 @@ class RunReml:
 
 
 class ProjectRest:
-    """Title.
+    """Project a correlation matrix for resting state fMRI data.
 
-    Desc.
+    Execute generated 3ddeconvolve to produce a no-censor x-matrix,
+    project correlation matrix accounting for WM and CSF nuissance,
+    and conduct a seed-based correlation analysis.
 
     Attributes
     ----------
-    subj
-    sess
-    subj_work
-    log_dir
-    afni_prep
-
+    afni_prep : list
+        First part of subprocess call for AFNI singularity
+    log_dir : path
+        Output location for log files and scripts
+    reg_matrix : path
+        Location of AFNI regression matrix
+    sess : str
+        BIDs session identifier
+    subj : str
+        BIDs subject identifier
+    subj_work : path
+        Location of working directory for intermediates
+    xmat_path : path
+        Location of X.<decon_name>.nocensor.xmat.1D
 
     Methods
     -------
     gen_matrix(decon_cmd, decon_name)
-    anaticor(
-        decon_name,
-        epi_mask,
-        xmat_path,
-        anat_dict,
-        func_dict,
-        proj_deriv,
-        sing_afni,
-    )
+        Execute 3ddeconvolve to make no-censor matrix
+    anaticor(decon_name, epi_masked, anat_dict, func_dict)
+        Generate regression matrix using anaticor method
+    seed_corr(anat_dict)
+        Generate seed-based correlation matrix
 
     """
 
@@ -2362,14 +2345,14 @@ class ProjectRest:
 
         Parameters
         ----------
-        decon_cmd : str
+        decon_cmd : str, afni.WriteDecon.build_decon.decon_cmd
             Bash 3dDeconvolve command
-        decon_name : str
+        decon_name : str, afni.WriteDecon.build_decon.decon_name
             Output prefix for 3dDeconvolve files
 
-        Returns
-        -------
-        path
+        Attributes
+        ----------
+        xmat_path : path
             Location of X.<decon_name>.nocensor.xmat.1D
 
         Raises
@@ -2379,13 +2362,13 @@ class ProjectRest:
 
         """
         # generate x-matrices
-        xmat_path = os.path.join(
+        self.xmat_path = os.path.join(
             self.subj_work, f"X.{decon_name}.nocensor.xmat.1D"
         )
-        if os.path.exists(xmat_path):
-            return xmat_path
+        if os.path.exists(self.xmat_path):
+            return
 
-        # Execute decon_cmd, wait for singularity to close
+        # Execute decon_cmd, wait for singularity to close, and check
         print("\tRunning 3dDeconvolve for resting data")
         _, _ = submit.submit_sbatch(
             decon_cmd,
@@ -2394,30 +2377,20 @@ class ProjectRest:
             mem_gig=6,
         )
         time.sleep(300)
-
-        # Check
-        if not os.path.exists(xmat_path):
-            raise FileNotFoundError(f"Expected to find {xmat_path}")
-        return xmat_path
+        if not os.path.exists(self.xmat_path):
+            raise FileNotFoundError(f"Expected to find {self.xmat_path}")
 
     def anaticor(
-        self,
-        decon_name,
-        epi_masked,
-        xmat_path,
-        anat_dict,
-        func_dict,
+        self, decon_name, epi_masked, anat_dict, func_dict,
     ):
         """Project resting state correlation matrix.
 
         Parameters
         ----------
-        decon_name : str
+        decon_name : str, afni.WriteDecon.build_decon.decon_name
             Output prefix for 3dDeconvolve files
-        epi_masked : path
+        epi_masked : path, afni.WriteDecon.build_decon.epi_masked
             Location of masked EPI data
-        xmat_path : path
-            Location of nocensor x-matrix
         anat_dict : dict
             Contains reference names (key) and paths (value) to
             preprocessed anatomical files.
@@ -2435,17 +2408,18 @@ class ProjectRest:
         reg_matrix : path
             Location of AFNI regression matrix
 
-        Returns
-        -------
-        path
-            Location of AFNI regression matrix
-
         Raises
         ------
         FileNotFoundError
             Missing regression matrix
 
         """
+        # Check for x-matrix attribute
+        if not hasattr(self, "xmat_path"):
+            raise AttributeError(
+                "Attribute xmat_path required, execute ProjectRest.gen_xmatrix"
+            )
+
         # Validate dict keys
         for _key in ["func-scaled", "mot-cens"]:
             if _key not in func_dict:
@@ -2498,7 +2472,7 @@ class ProjectRest:
             f"-censor {func_dict['mot-cens']}",
             "-cenmode ZERO",
             f"-dsort {blur_path}",
-            f"-ort {xmat_path}",
+            f"-ort {self.xmat_path}",
             f"-prefix {out_path}",
         ]
         bash_cmd = " ".join(self.afni_prep + bash_list)
@@ -2514,43 +2488,62 @@ class ProjectRest:
         if not os.path.exists(f"{out_path}.HEAD"):
             raise FileNotFoundError(f"Expected to find {out_path}.HEAD")
         self.reg_matrix = out_path
-        return out_path
 
     def seed_corr(self, anat_dict, coord_dict={"rPCC": "4 -54 24"}):
-        """Title.
+        """Project a seed-based correlation matrix.
 
-        Desc.
+        Construct a seed from coordinates, extract mean timeseries of seed,
+        and use seed timeseries to project correlation matrix. Fisher
+        Z-transfrom correlation matrix.
 
         Parameters
         ----------
-        anat_dict
-        coord_dict
+        anat_dict : dict
+            Contains reference names (key) and paths (value) to
+            preprocessed anatomical files.
+            Required keys:
+            -   [mask-int] = path to intersection mask
+        coord_dict : dict, optional
+            keys = seed name, value = coordinate
 
         Returns
         -------
         dict
+            Keys = seed names
+            Values = path to Z-transformed correlation files
 
         Raises
         ------
+        AttributeError
+            Missing reg_matrix
+        KeyError
+            Missing mask-int key in anat_dict
 
         """
+        # Check for attributes and keys
+        if not hasattr(self, "reg_matrix"):
+            raise AttributeError(
+                "Attribute reg_matrix required, execute ProjectRest.anaticor"
+            )
+        if "mask-int" not in anat_dict:
+            raise KeyError("Expected key mask-int in anat_dict")
+
+        # Generate seeds and get timeseries
         print("\tGenerating seed-based correlation matrices")
-
-        # Check for self.reg_matrix
-
-        # Check for mask-int
-
-        #
         seed_dict = self._coord_seed(coord_dict)
+
+        # Find correlation with seeds, z-transform
         corr_dict = {}
         for seed, seed_ts in seed_dict.items():
+
+            # Set output path/name, avoid repeating work
             print(f"\t\tWorking on seed {seed} ...")
             ztrans_file = self.reg_matrix.replace("+tlrc", f"_{seed}_ztrans")
             if os.path.exists(f"{ztrans_file}+tlrc.HEAD"):
                 corr_dict[seed] = f"{ztrans_file}+tlrc.HEAD"
                 continue
 
-            #
+            # Correlation
             corr_file = self.reg_matrix.replace("+tlrc", f"_{seed}_corr")
             if not os.path.exists(f"{corr_file}+tlrc.HEAD"):
                 bash_list = [
@@ -2565,7 +2558,7 @@ class ProjectRest:
                     bash_cmd, f"{corr_file}+tlrc.HEAD", "Corr mat"
                 )
 
-            #
+            # Transform
             bash_list = [
                 "3dcalc",
                 f"-a {corr_file}+tlrc",
@@ -2577,37 +2570,51 @@ class ProjectRest:
                 bash_cmd, f"{ztrans_file}+tlrc.HEAD", "Fisher Z"
             )
             corr_dict[seed] = f"{ztrans_file}+tlrc.HEAD"
-
         return corr_dict
 
-    def _coord_seed(self, coord_dict):
-        """Title.
-
-        Desc.
+    def _coord_seed(self, coord_dict, seed_radius=2):
+        """Generate seed from coordinate and extract average timeseries.
 
         Parameters
         ----------
-        coord_dict
+        coord_dict : dict
+            keys = str, seed name
+            value = str, coordinate
+        seed_radius : int, optional
+            Sphere radius (mm) from coordinate
 
         Returns
         -------
         dict
+            Key = name of seed
+            Value = path to averaged seed timeseries
 
         Raises
         ------
         AttributeError
+            Missing attribute reg_matrix
+        TypeError
+            Improper setup of coord_dict
 
         """
-        print("\t\tBuilding seeds")
-        # Check coord_dict
-
-        # Check for self.reg_matrix
+        # Check coord_dict and attribute
+        for name, coord in coord_dict.items():
+            _coord_list = list(map(int, coord.split()))
+            if not all(isinstance(x, int) for x in _coord_list):
+                raise TypeError(
+                    "Value of coord_dict must be space-separated integers"
+                )
         if not hasattr(self, "reg_matrix"):
-            raise AttributeError("Attribute reg_matrix required")
+            raise AttributeError(
+                "Attribute reg_matrix required, execute ProjectRest.anaticor"
+            )
 
-        #
+        # Build seed and extract timeseries
+        print("\t\tBuilding seeds")
         seed_dict = {}
         for seed, coord in coord_dict.items():
+
+            # Avoid repeating work
             print(f"\t\t\tWorking on seed {seed}")
             seed_ts = os.path.join(
                 self.subj_work, f"seed_{seed}_timeseries.1D"
@@ -2616,7 +2623,7 @@ class ProjectRest:
                 seed_dict[seed] = seed_ts
                 continue
 
-            #
+            # Make seed
             seed_file = os.path.join(self.subj_work, f"seed_{seed}.nii.gz")
             tmp_coord = os.path.join(self.subj_work, f"tmp_seed_{seed}.txt")
             _ = submit.submit_subprocess(
@@ -2626,13 +2633,13 @@ class ProjectRest:
                 "3dUndump",
                 f"-prefix {seed_file}",
                 f"-master {self.reg_matrix}",
-                "-srad 2",
+                f"-srad {seed_radius}",
                 f"-xyz {tmp_coord}",
             ]
             bash_cmd = " ".join(self.afni_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, seed_file, "Make seed")
 
-            #
+            # Get average timeseries, deal with talkative singularity
             seed_long = os.path.join(
                 self.subj_work, f"tmp_seed_{seed}_timeseries.1D"
             )
@@ -2648,25 +2655,77 @@ class ProjectRest:
                 f"tail -n +3 {seed_long} > {seed_ts}", seed_ts, "Tail"
             )
             seed_dict[seed] = seed_ts
-
         return seed_dict
 
 
 class MoveFinal:
-    """Title.
+    """Copy final files from /work to /group.
 
-    Desc.
+    Identify desired files in /work and copy them
+    to /group. Then purge /work.
+
+    Attributes
+    ----------
+    model_name : str
+        Desired AFNI model, for triggering different workflows
+    proj_deriv : path
+        Location of project derivatives
+    sess : str
+        BIDs session identifier
+    sess_anat : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed anatomical files.
+    subj : str
+        BIDs subject identifier
+    subj_work : path
+        Location of working directory for intermediates
+
+    Methods
+    -------
+    copy_files(save_list)
+        Copy list of files from /work to /group
 
     """
 
     def __init__(
         self, subj, sess, proj_deriv, subj_work, sess_anat, model_name
     ):
-        """Title.
+        """Copy files from work to group.
 
-        Desc.
+        Initiate object, construct list of desired files, then
+        copy them to /group. Clean up /work.
+
+        Parameters
+        ----------
+        subj : str
+            BIDs subject identifier
+        sess : str
+            BIDs session identifier
+        proj_deriv : path
+            Location of project derivatives
+        subj_work : path
+            Location of working directory for intermediates
+        sess_anat : dict
+            Contains reference names (key) and paths (value) to
+            preprocessed anatomical files.
+            Required keys:
+            -   [mask-WMe] = path to eroded CSF mask
+            -   [mask-int] = path to intersection mask
+        model_name : str
+            Desired AFNI model, for triggering different workflows
+
+        Raises
+        ------
+        KeyError
+            Missing required key in sess_anat
 
         """
+        # Validate dict keys
+        for _key in ["mask-WMe", "mask-int"]:
+            if _key not in sess_anat:
+                raise KeyError(f"Expected {_key} key in sess_anat")
+
+        # Set attributes
         self.subj = subj
         self.sess = sess
         self.proj_deriv = proj_deriv
@@ -2674,6 +2733,7 @@ class MoveFinal:
         self.sess_anat = sess_anat
         self.model_name = model_name
 
+        # Trigger list construction, copy files
         save_list = (
             self._make_list_rest()
             if model_name == "rest"
@@ -2682,12 +2742,26 @@ class MoveFinal:
         self.copy_files(save_list)
 
     def _make_list_task(self):
-        """Title.
+        """Find AFNI task files for saving.
 
-        Desc.
+        Files found:
+        -   motion_files directory
+        -   timing_files directory
+        -   decon_<model_name>_stats_REML+tlrc.*
+        -   decon_<model_name>.sh
+        -   X.decon_<model_name>.*
+        -   WM, intersection masks
+
+        Returns
+        -------
+        list
+
+        Raises
+        ------
+        FileNotFoundError
+            decon_<model_name>_stats_REML+tlrc.* files were not found
 
         """
-        # Find, specify files/directories for saving
         subj_motion = os.path.join(self.subj_work, "motion_files")
         subj_timing = os.path.join(self.subj_work, "timing_files")
         stat_list = glob.glob(
@@ -2710,12 +2784,25 @@ class MoveFinal:
         return save_list
 
     def _make_list_rest(self):
-        """Title.
+        """Find AFNI rest files for saving.
 
-        Desc.
+        Files found:
+        -   decon_rest_anaticor+tlrc.*
+        -   decon_rest.sh
+        -   X.decon_rest.*
+        -   Seed files
+        -   Intersection mask
+
+        Returns
+        -------
+        list
+
+        Raises
+        ------
+        FileNotFoundError
+            decon_rest_anaticor+tlrc.* files were not found
 
         """
-        # Find, specify files/directories for saving
         stat_list = glob.glob(f"{self.subj_work}/decon_rest_anaticor*+tlrc.*")
         if stat_list:
             seed_list = glob.glob(f"{self.subj_work}/seed_*")
@@ -2730,9 +2817,17 @@ class MoveFinal:
         return save_list
 
     def copy_files(self, save_list):
-        """Title.
+        """Copy desired files from /work to /group.
 
-        Desc.
+        Use bash subprocess of copy for speed, delete
+        files in /work after copy has happened. Files
+        are copied to:
+            <proj_deriv>/model_afni/<subj>/<sess>/func
+
+        Parameters
+        ----------
+        save_list : list
+            Paths to files in /work that should be saved
 
         """
         # Setup save location in group directory
@@ -2757,81 +2852,3 @@ class MoveFinal:
         # Clean up - remove session directory in case
         # other session is still running.
         shutil.rmtree(os.path.dirname(self.subj_work))
-
-
-# def move_final_task(subj, sess, proj_deriv, subj_work, sess_anat, model_name):
-#     """Save certain files and delete intermediates.
-
-#     Copy decon, motion, timing, eroded WM mask, and intersection mask
-#     files to the group location on the DCC. Then clean up the
-#     session intermediates.
-
-#     Files saved to:
-#         <proj_deriv>/model_afni/<subj>/<sess>/func
-
-#     Parameters
-#     ----------
-#     subj : str
-#         BIDS subject identifier
-#     sess : str
-#         BIDS session identifier
-#     proj_deriv : path
-#         Location of project derivatives, "model_afni sub-directory
-#         will be destination of saved files.
-#     subj_work : path
-#         Location of working directory for intermediates
-#     sess_anat : dict
-#         Contains reference names (key) and paths (value) to
-#         preprocessed anatomical files
-#     model_name : str
-#         [univ | indiv]
-#         Desired AFNI model, triggers right methods
-
-#     Returns
-#     -------
-#     bool
-#         Whether all work was completed
-
-#     Raises
-#     ------
-#     FileNotFoundError
-#         Failure to detect decon files in subj_work
-#         Failure to detect desired files in proj_deriv location
-
-#     """
-#     # Setup save location in group directory
-#     subj_final = os.path.join(proj_deriv, "model_afni", subj, sess, "func")
-#     if not os.path.exists(subj_final):
-#         os.makedirs(subj_final)
-
-#     # Find, specify files/directories for saving
-#     subj_motion = os.path.join(subj_work, "motion_files")
-#     subj_timing = os.path.join(subj_work, "timing_files")
-#     stat_list = glob.glob(f"{subj_work}/decon_{model_name}_stats_REML+tlrc.*")
-#     if stat_list:
-#         sh_list = glob.glob(f"{subj_work}/decon_{model_name}*.sh")
-#         x_list = glob.glob(f"{subj_work}/X.decon_{model_name}.*")
-#         save_list = stat_list + sh_list + x_list
-#         save_list.append(sess_anat["mask-WMe"])
-#         save_list.append(sess_anat["mask-int"])
-#         save_list.append(subj_motion)
-#         save_list.append(subj_timing)
-#     else:
-#         raise FileNotFoundError(
-#             f"Missing decon_{model_name} files in {subj_work}"
-#         )
-
-#     # Copy desired files to group location
-#     for h_save in save_list:
-#         bash_cmd = f"cp -r {h_save} {subj_final}"
-#         h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
-#         _ = h_sp.communicate()
-#         h_sp.wait()
-#         chk_save = os.path.join(subj_final, h_save)
-#         if not os.path.exists(chk_save):
-#             raise FileNotFoundError(f"Expected to find {chk_save}")
-
-#     # Clean up - remove session directory in case
-#     # other session is still running.
-#     shutil.rmtree(os.path.dirname(subj_work))
-#     return True

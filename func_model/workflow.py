@@ -38,7 +38,7 @@ def pipeline_afni_task(
     sing_afni : path
         Location of AFNI singularity file
     model_name : str
-        [univ | indiv]
+        [univ]
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -57,7 +57,7 @@ def pipeline_afni_task(
 
     """
     # Validate
-    if model_name not in ["univ", "indiv"]:
+    if model_name not in ["univ"]:
         raise ValueError(f"Unsupported model name : {model_name}")
 
     # Check that session exists for participant
@@ -84,22 +84,13 @@ def pipeline_afni_task(
 
     # Generate deconvolution command
     write_decon = afni.WriteDecon(
-        subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-        sing_afni,
+        subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
     )
     write_decon.build_decon(model_name, sess_tfs=sess_timing)
 
     # Use decon command to make REMl command, execute REML
     make_reml = afni.RunReml(
-        subj_work,
-        proj_deriv,
-        sess_anat,
-        sess_func,
-        sing_afni,
-        log_dir,
+        subj_work, proj_deriv, sess_anat, sess_func, sing_afni, log_dir,
     )
     reml_path = make_reml.generate_reml(
         subj, sess, write_decon.decon_cmd, write_decon.decon_name
@@ -123,7 +114,13 @@ def pipeline_afni_rest(
     model_name,
     log_dir,
 ):
-    """Title.
+    """Conduct AFNI-styled resting state analysis for sanity checking.
+
+    Based on example 11 of afni_proc.py and s17.proc.FT.rest.11
+    of afni_data6. Use 3ddeconvolve to generate a no-censor matrix,
+    then project correlation matrix accounting for WM and CSF
+    timeseries. Then generate a seed-based correlation matrix,
+    the default seed is located in right PCC.
 
     Parameters
     ----------
@@ -148,7 +145,10 @@ def pipeline_afni_rest(
 
     Returns
     -------
-
+    triple
+        [0] = dictionary of z-tranformed correlation matrices
+        [1] = dictionary of anat files
+        [2] = dictionary of func files
 
     Raises
     ------
@@ -170,18 +170,12 @@ def pipeline_afni_rest(
     if not os.path.exists(subj_work):
         os.makedirs(subj_work)
 
-    # Extra pre-processing steps
+    # Extra pre-processing steps, generate deconvolution command
     sess_func, sess_anat = run_pipeline.afni_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
     )
-
-    # Generate deconvolution command
     write_decon = afni.WriteDecon(
-        subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-        sing_afni,
+        subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
     )
     write_decon.build_decon(model_name)
 
@@ -189,21 +183,13 @@ def pipeline_afni_rest(
     proj_reg = afni.ProjectRest(
         subj, sess, subj_work, proj_deriv, sing_afni, log_dir
     )
-    xmat_path = proj_reg.gen_xmatrix(
-        write_decon.decon_cmd, write_decon.decon_name
-    )
-    sess_func["func-proj"] = proj_reg.anaticor(
-        write_decon.decon_name,
-        write_decon.epi_masked,
-        xmat_path,
-        sess_anat,
-        sess_func,
+    proj_reg.gen_xmatrix(write_decon.decon_cmd, write_decon.decon_name)
+    proj_reg.anaticor(
+        write_decon.decon_name, write_decon.epi_masked, sess_anat, sess_func,
     )
 
-    # Seed - sanity check
+    # Seed (sanity check) and clean
     corr_dict = proj_reg.seed_corr(sess_anat)
-
-    # Clean
     afni.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
     return (corr_dict, sess_anat, sess_func)
 

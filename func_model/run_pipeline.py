@@ -75,6 +75,8 @@ def afni_univ_tfs(subj, sess, subj_work, subj_sess_raw):
 def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
     """Make timing files for sanity check modeling individual events.
 
+    DEPRECATED.
+
     This "indiv" approach requires the same timing files as "univ", so wrap
     the afni_univ_tfs method and return that output.
 

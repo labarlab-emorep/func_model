@@ -9,7 +9,8 @@ directory.
 Model names:
     - univ = A standard univariate model yielding a single averaged
         beta-coefficient for each event type (-stim_times_AM1)
-    - rest = Conduct a resting-state analysis
+    - rest = Conduct a resting-state analysis referencing example
+        11 of afni_proc.py.
 
 Output logs are written to:
     /work/$(whoami)/EmoRep/logs/func-afni_model-<model-name>_<timestamp>
@@ -18,6 +19,7 @@ Examples
 --------
 model_afni -s sub-ER0009
 model_afni --model-name indiv -s sub-ER0009 sub-ER0016
+model_afni --model-name rest -s sub-ER0016 sub-ER0024
 
 """
 # %%
@@ -44,7 +46,7 @@ def _get_args():
         default="univ",
         help=textwrap.dedent(
             """\
-            [univ | indiv | rest]
+            [univ | rest]
             AFNI model name/type, for triggering different workflows
             (default : %(default)s)
             """
