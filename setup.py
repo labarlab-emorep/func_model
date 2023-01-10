@@ -10,4 +10,9 @@ setup(
             "model_afni=func_model.cli.model_afni:main",
         ]
     },
+    install_requires=[
+        "numpy>=1.22.3",
+        "pandas>=1.4.4",
+        "setuptools>=65.5.0",
+    ],
 )
