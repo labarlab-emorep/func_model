@@ -231,7 +231,7 @@ def pipeline_fsl_task(
         print(f"Directory not detected : {subj_sess_raw}\n\tSkipping.")
 
     # Setup output directory
-    subj_work = os.path.join(work_deriv, "model_afni-task", subj, sess, "func")
+    subj_work = os.path.join(work_deriv, "model_fsl-task", subj, sess, "func")
     if not os.path.exists(subj_work):
         os.makedirs(subj_work)
 
@@ -249,4 +249,7 @@ def pipeline_fsl_task(
         raise ValueError(f"Expected task names movies|scenarios, found {task}")
 
     # Make condition files
-    make_cf = fsl.ConditionFiles()
+    make_cf = fsl.ConditionFiles(subj, sess, task, subj_work, sess_events)
+    for run_num in make_cf.run_list:
+        make_cf.session_events(run_num)
+        make_cf.common_events(run_num)
