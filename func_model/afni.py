@@ -1,4 +1,4 @@
-"""Methods for AFNI."""
+"""Methods for AFNI-based pipelines."""
 import os
 import json
 import glob
@@ -132,10 +132,6 @@ class TimingFiles:
         subj_tf_dir : path
             Output location for writing subject, session
             timing files
-
-
-        emo_switch : dict
-
 
         Raises
         ------

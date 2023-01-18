@@ -1,8 +1,9 @@
 """Pipelines supporting AFNI and FSL."""
 # %%
 import os
+import glob
 from func_model import run_pipeline
-from func_model import afni
+from func_model import afni, fsl
 
 
 # %%
@@ -210,10 +211,42 @@ def pipeline_afni_rest(
     return (corr_dict, sess_anat, sess_func)
 
 
-def pipeline_fsl():
+def pipeline_fsl_task(
+    subj,
+    sess,
+    proj_rawdata,
+    proj_deriv,
+    work_deriv,
+    model_name,
+    log_dir,
+):
     """Title.
 
     Desc.
 
     """
-    pass
+    # Check that session exists for participant
+    subj_sess_raw = os.path.join(proj_rawdata, subj, sess)
+    if not os.path.exists(subj_sess_raw):
+        print(f"Directory not detected : {subj_sess_raw}\n\tSkipping.")
+
+    # Setup output directory
+    subj_work = os.path.join(work_deriv, "model_afni-task", subj, sess, "func")
+    if not os.path.exists(subj_work):
+        os.makedirs(subj_work)
+
+    # Find events files
+    sess_events = sorted(glob.glob(f"{subj_sess_raw}/func/*events.tsv"))
+    if not sess_events:
+        raise FileNotFoundError(
+            f"Expected BIDs events files in {subj_sess_raw}"
+        )
+
+    # Identify and validate task name
+    task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
+    task_valid = ["movies", "scenarios"]
+    if task not in task_valid:
+        raise ValueError(f"Expected task names movies|scenarios, found {task}")
+
+    # Make condition files
+    make_cf = fsl.ConditionFiles()
