@@ -29,11 +29,11 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="univ",
+        default="task",
         help=textwrap.dedent(
             """\
-            [univ | rest | mixed]
-            AFNI model name/type, for triggering different workflows
+            [task]
+            FSL model name/type, for triggering different workflows
             (default : %(default)s)
             """
         ),
@@ -82,8 +82,7 @@ def main():
     model_name = args.model_name
 
     # Check model_name
-    model_valid = afni.valid_models(model_name)
-    if not model_valid:
+    if model_name not in ["task"]:
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
@@ -93,7 +92,6 @@ def main():
 
     # Get environmental vars
     # TODO check for FSL
-    # sing_afni = os.environ["SING_AFNI"]
     user_name = os.environ["USER"]
 
     # Setup work directory, for intermediates
@@ -142,4 +140,3 @@ if __name__ == "__main__":
         print("\tHint: $labar_env emorep\n")
         sys.exit(1)
     main()
-

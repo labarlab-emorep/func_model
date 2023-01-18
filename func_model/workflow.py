@@ -2,6 +2,8 @@
 # %%
 import os
 import glob
+import shutil
+import subprocess
 from func_model import run_pipeline
 from func_model import afni, fsl
 
@@ -217,7 +219,6 @@ def pipeline_fsl_task(
     proj_rawdata,
     proj_deriv,
     work_deriv,
-    model_name,
     log_dir,
 ):
     """Title.
@@ -267,3 +268,14 @@ def pipeline_fsl_task(
         )
     for conf_path in sess_confounds:
         _ = fsl.confounds(conf_path, subj_work)
+
+    # clean up
+    # TODO move to fsl method
+    cp_dir = os.path.join(work_deriv, "model_fsl-task", subj)
+    final_dir = os.path.join(proj_deriv, "model_fsl")
+    h_sp = subprocess.Popen(
+        f"cp -r {cp_dir} {final_dir}", shell=True, stdout=subprocess.PIPE
+    )
+    _ = h_sp.communicate()
+    h_sp.wait()
+    shutil.rmtree(cp_dir)

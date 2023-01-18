@@ -234,7 +234,7 @@ def schedule_fsl(
     work_deriv : path
         Parent location for writing pipeline intermediates
     model_name : str
-        [univ | rest | mixed]
+        [task]
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -247,8 +247,7 @@ def schedule_fsl(
 
     """
     # Setup software derivatives dirs, for working
-    pipe_name = "rest" if model_name == "rest" else "task"
-    work_fsl = os.path.join(work_deriv, f"model_fsl-{pipe_name}")
+    work_fsl = os.path.join(work_deriv, f"model_fsl-{model_name}")
     if not os.path.exists(work_fsl):
         os.makedirs(work_fsl)
 
@@ -271,13 +270,12 @@ def schedule_fsl(
         import sys
         from func_model import workflow
 
-        _, _, _ = workflow.pipeline_fsl_{pipe_name}(
+        _, _, _ = workflow.pipeline_fsl_{model_name}(
             "{subj}",
             "{sess}",
             "{proj_rawdata}",
             "{proj_deriv}",
             "{work_deriv}",
-            "{model_name}",
             "{log_dir}",
         )
 
