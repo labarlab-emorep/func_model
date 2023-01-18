@@ -253,3 +253,17 @@ def pipeline_fsl_task(
     for run_num in make_cf.run_list:
         make_cf.session_events(run_num)
         make_cf.common_events(run_num)
+
+    # Find confounds files, extract relevant columns
+    fmriprep_subj_sess = os.path.join(
+        proj_deriv, "pre_processing/fmriprep", subj, sess
+    )
+    sess_confounds = sorted(
+        glob.glob(f"{fmriprep_subj_sess}/func/*task-{task}*timeseries.tsv")
+    )
+    if not sess_confounds:
+        raise FileNotFoundError(
+            f"Expected fMRIPrep confounds files in {fmriprep_subj_sess}"
+        )
+    for conf_path in sess_confounds:
+        _ = fsl.confounds(conf_path, subj_work)

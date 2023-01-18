@@ -163,3 +163,44 @@ class ConditionFiles:
             com_onset = self.df_run.loc[idx_com, "onset"].tolist()
             com_duration = self.df_run.loc[idx_com, "duration"].tolist()
             _ = self._write_cond(com_onset, com_duration, com_name, run_num)
+
+
+# %%
+def confounds(conf_path, subj_work, na_value="n/a"):
+    """Title.
+
+    Desc.
+
+    """
+    out_dir = os.path.join(subj_work, "confounds_files")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    col_list = [
+        "csf",
+        "white_matter",
+        "dvars",
+        "trans_x",
+        "trans_x_derivative1",
+        "trans_y",
+        "trans_y_derivative1",
+        "trans_z",
+        "trans_z_derivative1",
+        "rot_x",
+        "rot_x_derivative1",
+        "rot_y",
+        "rot_y_derivative1",
+        "rot_z",
+        "rot_z_derivative1",
+    ]
+    df = pd.read_csv(conf_path, sep="\t", na_values=na_value)
+    mot_cols = [x for x in df.columns if "motion_outlier" in x]
+    col_list += mot_cols
+    df_out = df[col_list]
+
+    out_name = os.path.basename(conf_path).replace(".tsv", ".txt")
+    out_path = os.path.join(out_dir, out_name)
+    df_out.to_csv(out_path, index=False, sep="\t", na_rep=na_value)
+    return df_out
+
+
+# %%
