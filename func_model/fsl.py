@@ -182,8 +182,7 @@ class ConditionFiles:
         duration including the following replay trial.
 
         Condition files follow a BIDS naming scheme, with a description field
-        in the format combEmoReplay, where Emo is the first three characters
-        of the emotion category. Output files are written to:
+        in the format combEmotionReplay. Output files are written to:
             <subj_work>/condition_files
 
         Parameters
@@ -237,7 +236,7 @@ class ConditionFiles:
             emo_duration = [
                 round(j - i, 2) for i, j in zip(emo_onset, emo_offset)
             ]
-            t_emo = emo.title()[:3]
+            t_emo = emo.title()
             _ = self._write_cond(
                 emo_onset, emo_duration, f"comb{t_emo}Replay", run_num
             )
@@ -249,8 +248,7 @@ class ConditionFiles:
         scenarios) and the following replay, organized by emotion and run.
 
         Condition files follow a BIDS naming scheme, with a description field
-        in the format [stim|replay]Emo, where Emo is the first three
-        characters of the emotion category. Output files are written to:
+        in the format [stim|replay]Emotion. Output files are written to:
             <subj_work>/condition_files
 
         Parameters
@@ -301,7 +299,7 @@ class ConditionFiles:
             ].tolist()
 
             # Write condition files
-            t_emo = emo.title()[:3]
+            t_emo = emo.title()
             _ = self._write_cond(
                 stim_onset, stim_duration, f"stim{t_emo}", run_num
             )
