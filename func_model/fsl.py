@@ -106,7 +106,7 @@ class ConditionFiles:
         for idx, _ in enumerate(events_data):
             events_data[idx]["run"] = self._events_run[idx]
         self._df_events = pd.concat(events_data).reset_index(drop=True)
-        self.run_list = self._df_events["run"].unique()
+        self.run_list = [int(x) for x in self._df_events["run"].unique()]
 
     def _get_run_df(self, run_num):
         """Extract run data.
