@@ -68,35 +68,24 @@ class TimingFiles:
     and then generate AFNI-style timing files (row number == run number)
     with onset or onset:duration information for each line.
 
-    Attributes
-    ----------
-    df_events : pd.DataFrame
-        Combined events data into single dataframe
-    events_run : list
-        Run identifier extracted from event file name
-    sess_events : list
-        Paths to subject, session BIDS events files sorted
-        by run number
-    subj_tf_dir : path
-        Output location for writing subject, session
-        timing files
+    Timing files are written to:
+        <subj_work>/timing_files
 
     Methods
     -------
-    common_events(subj, sess, task, marry=True, common_name=None)
-        Generate timing files for common events
+    common_events(subj, sess, task)
+        Generate and return timing files for common events
         (replay, judge, and wash)
-    select_events(subj, sess, task, marry=True, select_name=None)
-        Generate timing files for selection trials
+    select_events(subj, sess, task)
+        Generate and return timing files for selection trials
         (emotion, intensity)
-    session_events(
-        subj, sess, task, marry=True, emotion_name=None, emo_query=False
-    )
-        Generate timing files for movie or scenario emotions
+    session_events(subj, sess, task)
+        Generate and return timing files for movie or scenario emotions
+    session_blocks(subj, sess, task)
+        Generate and return timing files for movie/scenario emotion blocks
 
     Notes
     -----
-    -   Timing files are written to self.subj_tf_dir.
     -   All timing files use a 6 character camel-case identifier in
         the description field of the BIDS file name, the first
         3 characters specify the type of event and last 3
@@ -126,10 +115,12 @@ class TimingFiles:
 
         Attributes
         ----------
-        sess_events : list
+        _emo_switch : dict
+            Switch for matching emotion names to AFNI length
+        _sess_events : list
             Paths to subject, session BIDS events files sorted
             by run number
-        subj_tf_dir : path
+        _subj_tf_dir : path
             Output location for writing subject, session
             timing files
 
@@ -147,15 +138,15 @@ class TimingFiles:
             raise ValueError("Cannot make timing files from 0 events.tsv")
 
         # Set attributes, make output location
-        self.sess_events = sess_events
-        self.subj_tf_dir = os.path.join(subj_work, "timing_files")
-        if not os.path.exists(self.subj_tf_dir):
-            os.makedirs(self.subj_tf_dir)
+        self._sess_events = sess_events
+        self._subj_tf_dir = os.path.join(subj_work, "timing_files")
+        if not os.path.exists(self._subj_tf_dir):
+            os.makedirs(self._subj_tf_dir)
 
         # Set switch for naming emotion timing files
-        #   key = value in self.df_events["emotion"]
+        #   key = value in self._df_events["emotion"]
         #   value = AFNI-style description
-        self.emo_switch = {
+        self._emo_switch = {
             "amusement": "Amu",
             "anger": "Ang",
             "anxiety": "Anx",
@@ -181,9 +172,9 @@ class TimingFiles:
 
         Attributes
         ----------
-        df_events : pd.DataFrame
+        _df_events : pd.DataFrame
             Column names == events files, run column added
-        events_run : list
+        _events_run : list
             Run identifier extracted from event file name
 
         Raises
@@ -194,17 +185,17 @@ class TimingFiles:
         """
         # Read-in events files, construct list of dataframes. Determine
         # run info from file name.
-        events_data = [pd.read_table(x) for x in self.sess_events]
-        self.events_run = [
-            int(x.split("_run-")[1].split("_")[0]) for x in self.sess_events
+        events_data = [pd.read_table(x) for x in self._sess_events]
+        self._events_run = [
+            int(x.split("_run-")[1].split("_")[0]) for x in self._sess_events
         ]
-        if len(events_data) != len(self.events_run):
+        if len(events_data) != len(self._events_run):
             raise ValueError("Number of runs and events files differ")
 
         # Add run info to listed dataframes, construct session dataframe
         for idx, _ in enumerate(events_data):
-            events_data[idx]["run"] = self.events_run[idx]
-        self.df_events = pd.concat(events_data).reset_index(drop=True)
+            events_data[idx]["run"] = self._events_run[idx]
+        self._df_events = pd.concat(events_data).reset_index(drop=True)
 
     def _check_run(self, current_run, count_run, line_content):
         """Manage cases of missing run data.
@@ -219,7 +210,7 @@ class TimingFiles:
         Parameters
         ----------
         current_run : int
-            Derived from self.events_run
+            Derived from self._events_run
         count_run : int
             Counter to track iteration number
         line_content : str
@@ -242,13 +233,13 @@ class TimingFiles:
     def _onset_duration(self, idx_event, marry):
         """Extract onset and duration information.
 
-        Pull onset, duration values from self.df_events for
+        Pull onset, duration values from self._df_events for
         indicies supplied with idx_event.
 
         Parameters
         ----------
         idx_event : list
-            Indicies of self.df_events for behavior of interest
+            Indicies of self._df_events for behavior of interest
         marry : bool
             Whether to return AFNI-styled married onset:duration,
             or just onset times.
@@ -259,8 +250,8 @@ class TimingFiles:
             Event onset or onset:duration times
 
         """
-        onset = self.df_events.loc[idx_event, "onset"].tolist()
-        duration = self.df_events.loc[idx_event, "duration"].tolist()
+        onset = self._df_events.loc[idx_event, "onset"].tolist()
+        duration = self._df_events.loc[idx_event, "duration"].tolist()
         if marry:
             return [f"{ons}:{dur}" for ons, dur in zip(onset, duration)]
         else:
@@ -310,7 +301,7 @@ class TimingFiles:
 
         Notes
         -----
-        Timing files written to self.subj_tf_dir
+        Timing files written to self._subj_tf_dir
 
         """
         print("\tMaking timing files for common events")
@@ -320,7 +311,7 @@ class TimingFiles:
             raise TypeError("Argument 'marry' is bool")
 
         # Set basic trial types
-        #   key = value in self.df_events["trial_types"]
+        #   key = value in self._df_events["trial_types"]
         #   value = AFNI-style description
         common_dict = {
             "replay": "comRep",
@@ -351,18 +342,18 @@ class TimingFiles:
 
             # Make an empty file
             tf_path = os.path.join(
-                self.subj_tf_dir,
+                self._subj_tf_dir,
                 f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
             # Get event info for each run
-            for run in self.events_run:
+            for run in self._events_run:
 
                 # Identify index of events, make an AFNI line for events
-                idx_event = self.df_events.index[
-                    (self.df_events["trial_type"] == event)
-                    & (self.df_events["run"] == run)
+                idx_event = self._df_events.index[
+                    (self._df_events["trial_type"] == event)
+                    & (self._df_events["run"] == run)
                 ].tolist()
                 ons_dur = self._onset_duration(idx_event, marry)
                 line_content = " ".join(ons_dur)
@@ -425,7 +416,7 @@ class TimingFiles:
 
         Notes
         -----
-        Timing files written to self.subj_tf_dir
+        Timing files written to self._subj_tf_dir
 
         """
         print("\tMaking timing files for selection trials")
@@ -465,18 +456,18 @@ class TimingFiles:
 
             # Make an empty file
             tf_path = os.path.join(
-                self.subj_tf_dir,
+                self._subj_tf_dir,
                 f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
             # Get event info for each run
-            for run in self.events_run:
+            for run in self._events_run:
 
                 # Identify index of events, make an AFNI line for events
-                idx_select = self.df_events.index[
-                    (self.df_events["trial_type"] == select)
-                    & (self.df_events["run"] == run)
+                idx_select = self._df_events.index[
+                    (self._df_events["trial_type"] == select)
+                    & (self._df_events["run"] == run)
                 ]
                 ons_dur = self._onset_duration(idx_select, marry)
                 line_content = " ".join(ons_dur)
@@ -537,7 +528,7 @@ class TimingFiles:
 
         Notes
         -----
-        Timing files written to self.subj_tf_dir
+        Timing files written to self._subj_tf_dir
 
         """
         print("\tMaking timing files for session-specific trials")
@@ -555,11 +546,11 @@ class TimingFiles:
 
         # Provide emotions in sess_dict
         if emo_query:
-            return [x for x in self.emo_switch.keys()]
+            return [x for x in self._emo_switch.keys()]
 
         # Validate user input, generate emo_list
         if emotion_name:
-            valid_list = [x for x in self.emo_switch.keys()]
+            valid_list = [x for x in self._emo_switch.keys()]
             if emotion_name not in valid_list:
                 raise ValueError(
                     f"Inappropriate emotion supplied : {emotion_name}"
@@ -569,10 +560,10 @@ class TimingFiles:
 
             # Identify unique emotions in dataframe
             trial_type_value = task[:-1]
-            idx_sess = self.df_events.index[
-                self.df_events["trial_type"] == trial_type_value
+            idx_sess = self._df_events.index[
+                self._df_events["trial_type"] == trial_type_value
             ].tolist()
-            emo_all = self.df_events.loc[idx_sess, "emotion"].tolist()
+            emo_all = self._df_events.loc[idx_sess, "emotion"].tolist()
             emo_list = np.unique(np.array(emo_all)).tolist()
 
         # Generate timing files for all events in emo_list
@@ -589,22 +580,22 @@ class TimingFiles:
             #     if task == "movies"
             #     else f"sce{self.emo_switch[emo]}"
             # )
-            tf_name = task[:3] + self.emo_switch[emo]
+            tf_name = task[:3] + self._emo_switch[emo]
             tf_path = os.path.join(
-                self.subj_tf_dir,
+                self._subj_tf_dir,
                 f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
             # Get emo info for each run
-            for run in self.events_run:
+            for run in self._events_run:
 
                 # Identify index of emotions, account for emotion
                 # not occurring in current run, make appropriate
                 # AFNI line for event.
-                idx_emo = self.df_events.index[
-                    (self.df_events["emotion"] == emo)
-                    & (self.df_events["run"] == run)
+                idx_emo = self._df_events.index[
+                    (self._df_events["emotion"] == emo)
+                    & (self._df_events["run"] == run)
                 ].tolist()
                 if not idx_emo:
                     line_content = "*"
@@ -629,7 +620,13 @@ class TimingFiles:
         sess,
         task,
     ):
-        """Title
+        """Generate timing files for session-specific stimulus blocks.
+
+        Ouput timing file will use the 1D extension, use a BIDs-ish naming
+        convention (sub-*_sess-*_task-*_desc-*_events.1D), and write the BIDS
+        description field with in a blk[Mov|Sce]Emotion format, using 3
+        characters to identify the emotion. For example, blkMovFea = movie
+        block with fear stimuli, blkSceCal = scenario with calmness stimuli.
 
         Parameters
         ----------
@@ -643,9 +640,12 @@ class TimingFiles:
 
         Returns
         -------
+        list
+            Paths to generated timing files
 
         Notes
         -----
+        Timing files written to self._subj_tf_dir
 
         """
         # Validate task name
@@ -655,10 +655,10 @@ class TimingFiles:
 
         # Identify unique emotions in dataframe
         trial_type_value = task[:-1]
-        idx_sess = self.df_events.index[
-            self.df_events["trial_type"] == trial_type_value
+        idx_sess = self._df_events.index[
+            self._df_events["trial_type"] == trial_type_value
         ].tolist()
-        emo_all = self.df_events.loc[idx_sess, "emotion"].tolist()
+        emo_all = self._df_events.loc[idx_sess, "emotion"].tolist()
         emo_list = np.unique(np.array(emo_all)).tolist()
 
         # Generate timing files for all events in emo_list
@@ -667,36 +667,36 @@ class TimingFiles:
         for emo in emo_list:
 
             # Check that emo is found in planned dictionary
-            if emo not in self.emo_switch.keys():
+            if emo not in self._emo_switch.keys():
                 raise ValueError(f"Unexpected emotion encountered : {emo}")
 
             # Determine timing file name, make an empty file
-            tf_name = "blk" + task.capitalize()[0] + self.emo_switch[emo]
+            tf_name = "blk" + task.capitalize()[0] + self._emo_switch[emo]
             tf_path = os.path.join(
-                self.subj_tf_dir,
+                self._subj_tf_dir,
                 f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
-            #
-            dur_list = []
-
             # Get emo info for each run
-            for run in self.events_run:
+            dur_list = []
+            for run in self._events_run:
 
                 # Identify index of emotions, account for emotion
                 # not occurring in current run, make appropriate
                 # AFNI line for event.
-                idx_emo = self.df_events.index[
-                    (self.df_events["emotion"] == emo)
-                    & (self.df_events["run"] == run)
+                idx_emo = self._df_events.index[
+                    (self._df_events["emotion"] == emo)
+                    & (self._df_events["run"] == run)
                 ].tolist()
 
                 if not idx_emo:
                     line_content = "*"
                 else:
-                    onset = self.df_events.loc[idx_emo, "onset"].tolist()
-                    duration = self.df_events.loc[idx_emo, "duration"].tolist()
+                    onset = self._df_events.loc[idx_emo, "onset"].tolist()
+                    duration = self._df_events.loc[
+                        idx_emo, "duration"
+                    ].tolist()
 
                     block_onset = onset[0]
                     line_content = onset[0]
@@ -707,7 +707,7 @@ class TimingFiles:
                 with open(tf_path, "a") as tf:
                     tf.writelines(f"{line_content}\n")
 
-            #
+            # Add extra time for HRF duration
             block_dict[tf_name] = math.ceil(statistics.mean(dur_list)) + 14
 
             # Check for content in timing file
@@ -716,12 +716,10 @@ class TimingFiles:
             else:
                 out_list.append(tf_path)
 
-        # write block_dict out to json
-        out_json = os.path.join(self.subj_tf_dir, "block_durations.json")
+        # Write block_dict out to json
+        out_json = os.path.join(self._subj_tf_dir, "block_durations.json")
         with open(out_json, "w") as jf:
             json.dump(block_dict, jf)
-
-        #
         return out_list
 
 
@@ -731,35 +729,11 @@ class MakeMasks:
     Make masks required by, suggested for AFNI-style deconvolutions
     and group analyses.
 
-    Attributes
-    ----------
-    anat_dict : dict
-        Contains reference names (key) and paths (value) to
-        preprocessed anatomical files.
-    func_dict : dict
-        Contains reference names (key) and paths (value) to
-        preprocessed functional files.
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    sess : str
-        BIDS session identifier
-    sing_afni : path
-        Location of AFNI singularity file
-    sing_prep : list
-        First part of subprocess call for AFNI singularity
-    subj : str
-        BIDS subject identifier
-    subj_work : path
-        Location of working directory for intermediates
-    task : str
-        BIDS task identifier
-
     Methods
     -------
-    intersect(c_frac=0.5, nbr_type="NN2", nbr_num=17)
+    intersect()
         Generate an anatomical-functional intersection mask
-    tissue(thresh=0.5)
+    tissue()
         Make eroded tissue masks
     minimum()
         Mask voxels with some meaningful signal across all
@@ -801,9 +775,9 @@ class MakeMasks:
 
         Attributes
         ----------
-        sing_prep : list
+        _sing_prep : list
             First part of subprocess call for AFNI singularity call
-        task : str
+        _task : str
             BIDS task identifier
 
         Raises
@@ -822,13 +796,13 @@ class MakeMasks:
             raise KeyError("Expected func-preproc key in func_dict")
 
         # Set attributes
-        self.subj_work = subj_work
-        self.proj_deriv = proj_deriv
-        self.anat_dict = anat_dict
-        self.func_dict = func_dict
-        self.sing_afni = sing_afni
-        self.sing_prep = _prepend_afni_sing(
-            self.proj_deriv, self.subj_work, self.sing_afni
+        self._subj_work = subj_work
+        self._proj_deriv = proj_deriv
+        self._anat_dict = anat_dict
+        self._func_dict = func_dict
+        self._sing_afni = sing_afni
+        self._sing_prep = _prepend_afni_sing(
+            self._proj_deriv, self._subj_work, self._sing_afni
         )
 
         try:
@@ -842,9 +816,9 @@ class MakeMasks:
                 + "required by afni.MakeMasks. "
                 + f"\n\tFound : {_file_name}"
             )
-        self.subj = subj
-        self.sess = sess
-        self.task = task
+        self._subj = subj
+        self._sess = sess
+        self._task = task
 
     def intersect(self, c_frac=0.5, nbr_type="NN2", nbr_num=17):
         """Create an func-anat intersection mask.
@@ -894,17 +868,17 @@ class MakeMasks:
 
         # Setup output path, avoid repeating work
         out_path = (
-            f"{self.subj_work}/{self.subj}_"
-            + f"{self.sess}_{self.task}_desc-intersect_mask.nii.gz"
+            f"{self._subj_work}/{self._subj}_"
+            + f"{self._sess}_{self._task}_desc-intersect_mask.nii.gz"
         )
         if os.path.exists(out_path):
             return out_path
 
         # Make binary masks for each preprocessed func file
         auto_list = []
-        for run_file in self.func_dict["func-preproc"]:
+        for run_file in self._func_dict["func-preproc"]:
             h_name = "tmp_autoMask_" + os.path.basename(run_file)
-            h_out = os.path.join(self.subj_work, h_name)
+            h_out = os.path.join(self._subj_work, h_name)
             if not os.path.exists(h_out):
                 bash_list = [
                     "3dAutomask",
@@ -914,13 +888,13 @@ class MakeMasks:
                     f"-prefix {h_out}",
                     run_file,
                 ]
-                bash_cmd = " ".join(self.sing_prep + bash_list)
+                bash_cmd = " ".join(self._sing_prep + bash_list)
                 _ = submit.submit_subprocess(bash_cmd, h_out, "Automask")
             auto_list.append(h_out)
 
         # Generate a union mask from the preprocessed masks
         union_out = os.path.join(
-            self.subj_work, f"tmp_{self.task}_union.nii.gz"
+            self._subj_work, f"tmp_{self._task}_union.nii.gz"
         )
         if not os.path.exists(union_out):
             bash_list = [
@@ -929,18 +903,18 @@ class MakeMasks:
                 "-union",
                 f"-prefix {union_out}",
             ]
-            bash_cmd = " ".join(self.sing_prep + bash_list)
+            bash_cmd = " ".join(self._sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, union_out, "Union")
 
         # Make anat-func intersection mask from the union and
         # fmriprep brain mask.
         bash_list = [
             "3dmask_tool",
-            f"-input {union_out} {self.anat_dict['mask-brain']}",
+            f"-input {union_out} {self._anat_dict['mask-brain']}",
             "-inter",
             f"-prefix {out_path}",
         ]
-        bash_cmd = " ".join(self.sing_prep + bash_list)
+        bash_cmd = " ".join(self._sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Intersect")
         return out_path
 
@@ -982,16 +956,16 @@ class MakeMasks:
 
             # Setup final path, avoid repeating work
             out_tiss = os.path.join(
-                self.subj_work,
-                f"{self.subj}_{self.sess}_label-{tiss}e_mask.nii.gz",
+                self._subj_work,
+                f"{self._subj}_{self._sess}_label-{tiss}e_mask.nii.gz",
             )
             if os.path.exists(out_tiss):
                 out_dict[tiss] = out_tiss
                 continue
 
             # Binarize probabilistic tissue mask
-            in_path = self.anat_dict[f"mask-prob{tiss}"]
-            bin_path = os.path.join(self.subj_work, f"tmp_{tiss}_bin.nii.gz")
+            in_path = self._anat_dict[f"mask-prob{tiss}"]
+            bin_path = os.path.join(self._subj_work, f"tmp_{tiss}_bin.nii.gz")
             bash_list = [
                 "c3d",
                 in_path,
@@ -1010,7 +984,7 @@ class MakeMasks:
                 "-dilate_input -1",
                 f"-prefix {out_tiss}",
             ]
-            bash_cmd = " ".join(self.sing_prep + bash_list)
+            bash_cmd = " ".join(self._sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, bin_path, f"Erode {tiss}")
 
             # Add path to eroded tissue mask
@@ -1036,19 +1010,19 @@ class MakeMasks:
 
         # Setup file path, avoid repeating work
         out_path = (
-            f"{self.subj_work}/{self.subj}_"
-            + f"{self.sess}_{self.task}_desc-minval_mask.nii.gz"
+            f"{self._subj_work}/{self._subj}_"
+            + f"{self._sess}_{self._task}_desc-minval_mask.nii.gz"
         )
         if os.path.exists(out_path):
             return out_path
 
         # Make minimum value mask for each run
         min_list = []
-        for run_file in self.func_dict["func-preproc"]:
+        for run_file in self._func_dict["func-preproc"]:
 
             # Mask epi voxels that have some data
             h_name_bin = "tmp_bin_" + os.path.basename(run_file)
-            h_out_bin = os.path.join(self.subj_work, h_name_bin)
+            h_out_bin = os.path.join(self._subj_work, h_name_bin)
             bash_list = [
                 "3dcalc",
                 "-overwrite",
@@ -1056,36 +1030,36 @@ class MakeMasks:
                 "-expr 1",
                 f"-prefix {h_out_bin}",
             ]
-            bash_cmd = " ".join(self.sing_prep + bash_list)
+            bash_cmd = " ".join(self._sing_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, h_out_bin, "Binary EPI")
 
             # Make a mask for >min values
             h_name_min = "tmp_min_" + os.path.basename(run_file)
-            h_out_min = os.path.join(self.subj_work, h_name_min)
+            h_out_min = os.path.join(self._subj_work, h_name_min)
             bash_list = [
                 "3dTstat",
                 "-min",
                 f"-prefix {h_out_min}",
                 h_out_bin,
             ]
-            bash_cmd = " ".join(self.sing_prep + bash_list)
+            bash_cmd = " ".join(self._sing_prep + bash_list)
             min_list.append(
                 submit.submit_subprocess(bash_cmd, h_out_min, "Minimum EPI")
             )
 
         # Average the minimum masks across runs
         h_name_mean = (
-            f"tmp_{self.subj}_{self.sess}_{self.task}"
+            f"tmp_{self._subj}_{self._sess}_{self._task}"
             + "_desc-mean_mask.nii.gz"
         )
-        h_out_mean = os.path.join(self.subj_work, h_name_mean)
+        h_out_mean = os.path.join(self._subj_work, h_name_mean)
         bash_list = [
             "3dMean",
             "-datum short",
             f"-prefix {h_out_mean}",
             f"{' '.join(min_list)}",
         ]
-        bash_cmd = " ".join(self.sing_prep + bash_list)
+        bash_cmd = " ".join(self._sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, h_out_mean, "Mean EPI")
 
         # Generate mask of non-zero voxels
@@ -1095,7 +1069,7 @@ class MakeMasks:
             "-expr 'step(a-0.999)'",
             f"-prefix {out_path}",
         ]
-        bash_cmd = " ".join(self.sing_prep + bash_list)
+        bash_cmd = " ".join(self._sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "MinVal EPI")
         return out_path
 
@@ -1261,33 +1235,15 @@ class MotionCensor:
     Mine fMRIPrep timeseries.tsv files for required information,
     and generate files in a format AFNI can use in 3dDeconvolve.
 
-    Attributes
-    ----------
-    func_motion : list
-        Locations of timeseries.tsv files produced by fMRIPrep
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    out_dir : path
-        Output directory for motion, censor files
-    out_str : str
-        Basic output file name
-    sing_afni : path
-        Location of AFNI singularity file
-    sing_prep : list
-        First part of subprocess call for AFNI singularity
-    subj_work : path
-        Location of working directory for intermediates
-
     Methods
     -------
-    mean_motion
+    mean_motion()
         Make average motion file for 6 dof
-    deriv_motion
+    deriv_motion()
         Make derivative motion file for 6 dof
-    censor_volumes(thresh=0.3)
+    censor_volumes()
         Determine which volumes to censor
-    count_motion
+    count_motion()
         Determine number, proportion of censored volumes
 
     Notes
@@ -1321,11 +1277,11 @@ class MotionCensor:
 
         Attributes
         ----------
-        out_dir : path
+        _out_dir : path
             Output directory for motion, censor files
-        out_str : str
+        _out_str : str
             Basic output file name
-        sing_prep : list
+        _sing_prep : list
             First part of subprocess call for AFNI singularity
 
         Raises
@@ -1336,7 +1292,7 @@ class MotionCensor:
             Improper naming convention of motion timeseries file
 
         """
-        # Validate args
+        # Validate args and setup
         if not isinstance(func_motion, list):
             raise TypeError("func_motion requires list type")
 
@@ -1351,18 +1307,17 @@ class MotionCensor:
                 + "subject, session, task, run, description, and suffix.ext "
                 + "BIDS fields are required by afni.MotionCensor."
             )
-        self.out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
-        self.proj_deriv = proj_deriv
-        self.func_motion = func_motion
-        self.subj_work = subj_work
-        self.sing_afni = sing_afni
-        self.out_dir = os.path.join(subj_work, "motion_files")
-        if not os.path.exists(self.out_dir):
-            os.makedirs(self.out_dir)
-
-        self.sing_prep = _prepend_afni_sing(
-            self.proj_deriv, self.subj_work, self.sing_afni
+        self._out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
+        self._proj_deriv = proj_deriv
+        self._func_motion = func_motion
+        self._subj_work = subj_work
+        self._sing_afni = sing_afni
+        self._sing_prep = _prepend_afni_sing(
+            self._proj_deriv, self._subj_work, self._sing_afni
         )
+        self._out_dir = os.path.join(subj_work, "motion_files")
+        if not os.path.exists(self._out_dir):
+            os.makedirs(self._out_dir)
 
     def _write_df(self, df_out, name, col_names=None):
         """Write dataframe to output location.
@@ -1386,7 +1341,7 @@ class MotionCensor:
 
         """
         out_path = os.path.join(
-            self.out_dir, self.out_str.replace("confounds", name)
+            self._out_dir, self._out_str.replace("confounds", name)
         )
         df_out.to_csv(
             out_path,
@@ -1429,7 +1384,7 @@ class MotionCensor:
 
         # Extract relevant columns for each run
         mean_cat = []
-        for mot_path in self.func_motion:
+        for mot_path in self._func_motion:
             df = pd.read_csv(mot_path, sep="\t")
             df_mean = df[labels_mean]
             df_mean = df_mean.round(6)
@@ -1438,7 +1393,7 @@ class MotionCensor:
         # Combine runs, write out
         df_mean_all = pd.concat(mean_cat, ignore_index=True)
         mean_out = self._write_df(df_mean_all, "mean")
-        self.mean_path = mean_out
+        self._mean_path = mean_out
         return mean_out
 
     def deriv_motion(self):
@@ -1467,7 +1422,7 @@ class MotionCensor:
 
         # Extract relevant columns for each run
         deriv_cat = []
-        for mot_path in self.func_motion:
+        for mot_path in self._func_motion:
             df = pd.read_csv(mot_path, sep="\t")
             df_drv = df[labels_deriv]
             df_drv = df_drv.fillna(0)
@@ -1503,35 +1458,35 @@ class MotionCensor:
 
         Notes
         -----
-        -   Requires self.mean_path, will trigger method.
+        -   Requires self._mean_path, will trigger method.
 
         """
         # Check for required attribute, trigger
-        if not hasattr(self, "mean_path"):
+        if not hasattr(self, "_mean_path"):
             self.mean_motion()
 
         # Setup output path, avoid repeating work
         out_path = os.path.join(
-            self.out_dir, self.out_str.replace("confounds", "censor")
+            self._out_dir, self._out_str.replace("confounds", "censor")
         )
         if os.path.exists(out_path):
-            self.df_censor = pd.read_csv(out_path, header=None)
+            self._df_censor = pd.read_csv(out_path, header=None)
             return out_path
 
         # Find significant motion events
         print("\tMaking censor file")
         bash_list = [
             "1d_tool.py",
-            f"-infile {self.mean_path}",
+            f"-infile {self._mean_path}",
             "-derivative",
             "-collapse_cols weighted_enorm",
             "-weight_vec 1 1 1 57.3 57.3 57.3",
             f"-moderate_mask -{thresh} {thresh}",
             f"-write_censor {out_path}",
         ]
-        bash_cmd = " ".join(self.sing_prep + bash_list)
+        bash_cmd = " ".join(self._sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Censor")
-        self.df_censor = pd.read_csv(out_path, header=None)
+        self._df_censor = pd.read_csv(out_path, header=None)
         return out_path
 
     def count_motion(self):
@@ -1547,19 +1502,19 @@ class MotionCensor:
 
         Notes
         -----
-        -   Requires self.df_censor, will trigger method.
-        -   Writes totals to self.out_dir/info_censored_volumes.json
+        -   Requires self._df_censor, will trigger method.
+        -   Writes totals to self._out_dir/info_censored_volumes.json
 
         """
         print("\tCounting censored volumes")
 
         # Check for required attribute, trigger
-        if not hasattr(self, "df_censor"):
+        if not hasattr(self, "_df_censor"):
             self.censor_volumes()
 
         # Quick calculations
-        num_vol = self.df_censor[0].sum()
-        num_tot = len(self.df_censor)
+        num_vol = self._df_censor[0].sum()
+        num_tot = len(self._df_censor)
         cen_dict = {
             "total_volumes": int(num_tot),
             "included_volumes": int(num_vol),
@@ -1567,7 +1522,7 @@ class MotionCensor:
         }
 
         # Write out and return
-        out_path = os.path.join(self.out_dir, "info_censored_volumes.json")
+        out_path = os.path.join(self._out_dir, "info_censored_volumes.json")
         with open(out_path, "w") as jfile:
             json.dump(cen_dict, jfile)
         return out_path
@@ -1581,39 +1536,22 @@ class WriteDecon:
 
     Attributes
     ----------
-    afni_prep : list
-        First part of subprocess call for AFNI singularity
-    anat_dict : dict
-        Contains reference names (key) and paths (value) to
-        preprocessed anatomical files.
-    func_dict : dict
-        Contains reference names (key) and paths (value) to
-        preprocessed functional files.
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories.
-    sing_afni : path
-        Location of AFNI singularity file
-    subj_work : path
-        Location of working directory for intermediates
-    tf_dict : dict, optional
-        When model_name = univ | indiv.
-        Contains reference names (key) and paths (value) to
-        session AFNI-style timing files.
+    decon_cmd : str
+        Generated 3dDeconvolve command
+    decon_name : str
+        Prefix for output deconvolve files
+    epi_masked : path
+        Location of masked EPI data
 
     Methods
     -------
-    build_decon(model_name, sess_tfs=None)
+    build_decon(model_name)
         Trigger the appropriate method for the current pipeline, e.g.
         build_decon(model_name="univ") causes the method "write_univ"
         to be executed.
-    write_univ(basis_func="dur_mod, decon_name="decon_univ")
+    write_univ()
         Write a univariate 3dDeconvolve command for sanity checks
-    write_indiv()
-        Deprecated.
-        Write a univariate, individual modulated 3dDeconvolve command
-        for sanity checks
-    write_rest(decon_name="decon_rest")
+    write_rest()
         Setup for and write a resting-state 3dDeconvolve command
 
     """
@@ -1655,7 +1593,7 @@ class WriteDecon:
 
         Attributes
         ----------
-        afni_prep : list
+        _afni_prep : list
             First part of subprocess call for AFNI singularity
 
         Raises
@@ -1675,15 +1613,13 @@ class WriteDecon:
             raise ValueError("Expected list of paths to scaled EPI files.")
 
         print("\nInitializing WriteDecon")
-        self.proj_deriv = proj_deriv
-        self.subj_work = subj_work
-        self.func_dict = sess_func
-        self.anat_dict = sess_anat
-        self.sing_afni = sing_afni
-
-        # Start singulartiy call
-        self.afni_prep = _prepend_afni_sing(
-            self.proj_deriv, self.subj_work, self.sing_afni
+        self._proj_deriv = proj_deriv
+        self._subj_work = subj_work
+        self._func_dict = sess_func
+        self._anat_dict = sess_anat
+        self._sing_afni = sing_afni
+        self._afni_prep = _prepend_afni_sing(
+            self._proj_deriv, self._subj_work, self._sing_afni
         )
 
     def build_decon(self, model_name, sess_tfs=None):
@@ -1704,7 +1640,7 @@ class WriteDecon:
 
         Attributes
         ----------
-        tf_dict : dict, optional
+        _tf_dict : dict, optional
             When model_name = univ | mixed
             Contains reference names (key) and paths (value) to
             session AFNI-style timing files.
@@ -1728,7 +1664,7 @@ class WriteDecon:
                 raise ValueError(
                     f"Argument sess_tfs required with model_name={model_name}"
                 )
-            self.tf_dict = sess_tfs
+            self._tf_dict = sess_tfs
 
         # Find, trigger appropriate method
         write_meth = getattr(self, f"write_{model_name}")
@@ -1779,7 +1715,7 @@ class WriteDecon:
         # Build regressor for each behavior
         print("\t\tBuilding behavior regressors ...")
         model_beh = []
-        for tf_name, tf_path in self.tf_dict.items():
+        for tf_name, tf_path in self._tf_dict.items():
             count_beh += 1
             model_beh.append(model_meth[basis_func](count_beh, tf_path))
             model_beh.append(f"-stim_label {count_beh} {tf_name}")
@@ -1821,11 +1757,11 @@ class WriteDecon:
 
         # Determine input variables for 3dDeconvolve
         print("\tBuilding 3dDeconvolve command ...")
-        epi_preproc = " ".join(self.func_dict["func-scaled"])
-        reg_motion_mean = self.func_dict["mot-mean"]
-        reg_motion_deriv = self.func_dict["mot-deriv"]
-        motion_censor = self.func_dict["mot-cens"]
-        mask_int = self.anat_dict["mask-int"]
+        epi_preproc = " ".join(self._func_dict["func-scaled"])
+        reg_motion_mean = self._func_dict["mot-mean"]
+        reg_motion_deriv = self._func_dict["mot-deriv"]
+        motion_censor = self._func_dict["mot-cens"]
+        mask_int = self._anat_dict["mask-int"]
 
         # Build behavior regressors, get stimts count
         reg_events, count_beh = self._build_behavior(0, basis_func)
@@ -1846,17 +1782,17 @@ class WriteDecon:
             f"-num_stimts {count_beh}",
             reg_events,
             "-jobs 1",
-            f"-x1D {self.subj_work}/X.{decon_name}.xmat.1D",
-            f"-xjpeg {self.subj_work}/X.{decon_name}.jpg",
-            f"-x1D_uncensored {self.subj_work}/X.{decon_name}.jpg",
-            f"-bucket {self.subj_work}/{decon_name}_stats",
-            f"-cbucket {self.subj_work}/{decon_name}_cbucket",
-            f"-errts {self.subj_work}/{decon_name}_errts",
+            f"-x1D {self._subj_work}/X.{decon_name}.xmat.1D",
+            f"-xjpeg {self._subj_work}/X.{decon_name}.jpg",
+            f"-x1D_uncensored {self._subj_work}/X.{decon_name}.jpg",
+            f"-bucket {self._subj_work}/{decon_name}_stats",
+            f"-cbucket {self._subj_work}/{decon_name}_cbucket",
+            f"-errts {self._subj_work}/{decon_name}_errts",
         ]
-        decon_cmd = " ".join(self.afni_prep + decon_list)
+        decon_cmd = " ".join(self._afni_prep + decon_list)
 
         # Write script for review, records
-        decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
+        decon_script = os.path.join(self._subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
             script.write(decon_cmd)
         self.decon_cmd = decon_cmd
@@ -1875,9 +1811,9 @@ class WriteDecon:
         self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
 
     def write_mixed(self):
-        """Title.
+        """Write an AFNI 3dDeconvolve command for mixed modelling.
 
-        Desc.
+        Regressors include event and block designs.
 
         """
         pass
@@ -1907,10 +1843,10 @@ class WriteDecon:
         pcomp_path = self._run_pca()
 
         # Unpack dictionaries for readability
-        epi_path = self.func_dict["func-scaled"][0]
-        censor_path = self.func_dict["mot-cens"]
-        reg_motion_mean = self.func_dict["mot-mean"]
-        reg_motion_deriv = self.func_dict["mot-deriv"]
+        epi_path = self._func_dict["func-scaled"][0]
+        censor_path = self._func_dict["mot-cens"]
+        reg_motion_mean = self._func_dict["mot-mean"]
+        reg_motion_deriv = self._func_dict["mot-deriv"]
 
         # Build deconvolve command, write script for review.
         # This will load effects of no interest on fitts sub-brick, and
@@ -1926,18 +1862,18 @@ class WriteDecon:
             f"-ortvec {reg_motion_deriv} mot_deriv",
             "-polort A",
             "-fout -tout",
-            f"-x1D {self.subj_work}/X.{decon_name}.xmat.1D",
-            f"-xjpeg {self.subj_work}/X.{decon_name}.jpg",
+            f"-x1D {self._subj_work}/X.{decon_name}.xmat.1D",
+            f"-xjpeg {self._subj_work}/X.{decon_name}.jpg",
             "-x1D_uncensored",
-            f"{self.subj_work}/X.{decon_name}.nocensor.xmat.1D",
-            f"-fitts {self.subj_work}/{decon_name}_fitts",
-            f"-errts {self.subj_work}/{decon_name}_errts",
-            f"-bucket {self.subj_work}/{decon_name}_stats",
+            f"{self._subj_work}/X.{decon_name}.nocensor.xmat.1D",
+            f"-fitts {self._subj_work}/{decon_name}_fitts",
+            f"-errts {self._subj_work}/{decon_name}_errts",
+            f"-bucket {self._subj_work}/{decon_name}_stats",
         ]
-        decon_cmd = " ".join(self.afni_prep + decon_list)
+        decon_cmd = " ".join(self._afni_prep + decon_list)
 
         # Write script for review/records
-        decon_script = os.path.join(self.subj_work, f"{decon_name}.sh")
+        decon_script = os.path.join(self._subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
             script.write(decon_cmd)
 
@@ -1962,13 +1898,13 @@ class WriteDecon:
         """
         # Setup output paths/names, avoid repeating work
         mask_name = "tmp_masked_" + os.path.basename(
-            self.func_dict["func-scaled"][0]
+            self._func_dict["func-scaled"][0]
         )
-        epi_masked = os.path.join(self.subj_work, mask_name)
-        out_name = os.path.basename(self.func_dict["mot-cens"]).replace(
+        epi_masked = os.path.join(self._subj_work, mask_name)
+        out_name = os.path.basename(self._func_dict["mot-cens"]).replace(
             "censor", "csfPC"
         )
-        out_path = os.path.join(self.subj_work, out_name)
+        out_path = os.path.join(self._subj_work, out_name)
         if os.path.exists(epi_masked) and os.path.exists(out_path):
             self.epi_masked = epi_masked
             return out_path
@@ -1977,12 +1913,12 @@ class WriteDecon:
         print("\t\tConducting CSF PCA")
         bash_list = [
             "3dcalc",
-            f"-a {self.func_dict['func-scaled'][0]}",
-            f"-b {self.anat_dict['mask-min']}",
+            f"-a {self._func_dict['func-scaled'][0]}",
+            f"-b {self._anat_dict['mask-min']}",
             "-expr 'a*b'",
             f"-prefix {epi_masked}",
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, epi_masked, "Mask rest")
 
         # Get protocol info, calculate polynomial order
@@ -1993,23 +1929,23 @@ class WriteDecon:
 
         # Split censor file into runs
         out_cens = os.path.join(
-            self.subj_work,
-            f"tmp_{os.path.basename(self.func_dict['mot-cens'])}",
+            self._subj_work,
+            f"tmp_{os.path.basename(self._func_dict['mot-cens'])}",
         )
         bash_list = [
             "1d_tool.py",
             f"-set_run_lengths {epi_info['sum_vol']}",
             "-select_runs 1",
-            f"-infile {self.func_dict['mot-cens']}",
+            f"-infile {self._func_dict['mot-cens']}",
             f"-write {out_cens}",
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_cens, "Cens rest")
 
         # Censor EPI data
         out_proj = os.path.join(
-            self.subj_work,
-            f"tmp_proj_{os.path.basename(self.func_dict['func-scaled'][0])}",
+            self._subj_work,
+            f"tmp_proj_{os.path.basename(self._func_dict['func-scaled'][0])}",
         )
         bash_list = [
             "3dTproject",
@@ -2019,32 +1955,32 @@ class WriteDecon:
             "-cenmode KILL",
             f"-input {epi_masked}",
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_proj, "Proj rest")
 
         # Conduct PCA
-        out_pcomp = os.path.join(self.subj_work, "tmp_pcomp")
+        out_pcomp = os.path.join(self._subj_work, "tmp_pcomp")
         bash_list = [
             "3dpc",
-            f"-mask {self.anat_dict['mask-CSe']}",
+            f"-mask {self._anat_dict['mask-CSe']}",
             "-pcsave 3",
             f"-prefix {out_pcomp}",
             out_proj,
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(
             bash_cmd, f"{out_pcomp}_vec.1D", "Pcomp rest"
         )
 
         # Account for censoring in PCA output
-        tmp_out = os.path.join(self.subj_work, "test_" + out_name)
+        tmp_out = os.path.join(self._subj_work, "test_" + out_name)
         bash_list = [
             "1d_tool.py",
             f"-censor_fill_parent {out_cens}",
             f"-infile {out_pcomp}_vec.1D",
             f"-write {tmp_out}",
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, tmp_out, "Split rest1")
 
         # Finalize PCA file
@@ -2055,7 +1991,7 @@ class WriteDecon:
             f"-infile {tmp_out}",
             f"-write {out_path}",
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Split rest")
         self.epi_masked = epi_masked
         return out_path
@@ -2075,7 +2011,7 @@ class WriteDecon:
         # Find TR length
         bash_cmd = f"""
             fslhd \
-                {self.func_dict["func-scaled"][0]} | \
+                {self._func_dict["func-scaled"][0]} | \
                 grep 'pixdim4' | \
                 awk '{{print $2}}'
         """
@@ -2087,12 +2023,12 @@ class WriteDecon:
         # Get number of volumes and length (seconds) of each run
         run_len = []
         num_vol = []
-        for epi_file in self.func_dict["func-scaled"]:
+        for epi_file in self._func_dict["func-scaled"]:
 
             # Extract number of volumes
             bash_cmd = f"""
                 fslhd \
-                    {self.func_dict["func-scaled"][0]} | \
+                    {self._func_dict["func-scaled"][0]} | \
                     grep dim4 | \
                     head -n 1 | \
                     awk '{{print $2}}'
@@ -2122,24 +2058,7 @@ class RunReml:
     """Run 3dREMLfit deconvolution.
 
     Setup for and execute 3dREMLfit command generated by
-    3dDeconvolve (afni.WriteDecon.generate_decon_<foo>).
-
-    Attributes
-    ----------
-    afni_prep : list
-        First part of subprocess call for AFNI singularity
-    log_dir : path
-        Output location for log files and scripts
-    sess_anat : dict
-        Contains reference names (key) and paths (value) to
-        preprocessed anatomical files
-    sess_func : dict
-        Contains reference names (key) and paths (value) to
-        preprocessed functional files
-    sing_afni : path
-        Location of AFNI singularity file
-    subj_work : path
-        Location of working directory for intermediates
+    3dDeconvolve (afni.WriteDecon.build_decon).
 
     Methods
     -------
@@ -2185,7 +2104,7 @@ class RunReml:
 
         Attributes
         ----------
-        afni_prep : list
+        _afni_prep : list
             First part of subprocess call for AFNI singularity
 
         Raises
@@ -2202,12 +2121,12 @@ class RunReml:
             raise KeyError("Expected func-scaled key in sess_func")
 
         print("\nInitializing RunDecon")
-        self.subj_work = subj_work
-        self.sess_anat = sess_anat
-        self.sess_func = sess_func
-        self.sing_afni = sing_afni
-        self.log_dir = log_dir
-        self.afni_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+        self._subj_work = subj_work
+        self._sess_anat = sess_anat
+        self._sess_func = sess_func
+        self._sing_afni = sing_afni
+        self._log_dir = log_dir
+        self._afni_prep = _prepend_afni_sing(proj_deriv, subj_work, sing_afni)
 
     def generate_reml(self, subj, sess, decon_cmd, decon_name):
         """Generate matrices and 3dREMLfit command.
@@ -2239,7 +2158,9 @@ class RunReml:
         """
         # Setup output file, avoid repeating work
         print("\tRunning 3dDeconvolve command ...")
-        out_path = os.path.join(self.subj_work, f"{decon_name}_stats.REML_cmd")
+        out_path = os.path.join(
+            self._subj_work, f"{decon_name}_stats.REML_cmd"
+        )
         if os.path.exists(out_path):
             return out_path
 
@@ -2247,7 +2168,7 @@ class RunReml:
         _, _ = submit.submit_sbatch(
             decon_cmd,
             f"dcn{subj[6:]}s{sess[-1]}",
-            self.log_dir,
+            self._log_dir,
             mem_gig=10,
         )
         if not os.path.exists(out_path):
@@ -2279,34 +2200,34 @@ class RunReml:
         print("\tMaking nuissance mask")
 
         # Setup output location and name, avoid repeating work
-        h_name = os.path.basename(self.sess_anat["mask-WMe"])
+        h_name = os.path.basename(self._sess_anat["mask-WMe"])
         out_path = os.path.join(
-            self.subj_work, h_name.replace("label-WMe", "desc-nuiss")
+            self._subj_work, h_name.replace("label-WMe", "desc-nuiss")
         )
         if os.path.exists(out_path):
             return out_path
 
         # Concatenate EPI runs
-        out_tcat = os.path.join(self.subj_work, "tmp_tcat_all-runs.nii.gz")
+        out_tcat = os.path.join(self._subj_work, "tmp_tcat_all-runs.nii.gz")
         bash_list = [
             "3dTcat",
             f"-prefix {out_tcat}",
-            " ".join(self.sess_func["func-scaled"]),
+            " ".join(self._sess_func["func-scaled"]),
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_tcat, "Tcat runs")
 
         # Make eroded mask in EPI time
-        out_erode = os.path.join(self.subj_work, "tmp_eroded_all-runs.nii.gz")
+        out_erode = os.path.join(self._subj_work, "tmp_eroded_all-runs.nii.gz")
         bash_list = [
             "3dcalc",
             f"-a {out_tcat}",
-            f"-b {self.sess_anat['mask-WMe']}",
+            f"-b {self._sess_anat['mask-WMe']}",
             "-expr 'a*bool(b)'",
             "-datum float",
             f"-prefix {out_erode}",
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_erode, "Erode")
 
         # Generate blurred WM file
@@ -2317,9 +2238,8 @@ class RunReml:
             f"-prefix {out_path}",
             out_erode,
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Nuiss")
-
         return out_path
 
     def exec_reml(self, subj, sess, reml_path, decon_name):
@@ -2357,7 +2277,7 @@ class RunReml:
             return out_path
 
         # Extract reml command from generated reml_path
-        tail_path = os.path.join(self.subj_work, "decon_reml.txt")
+        tail_path = os.path.join(self._subj_work, "decon_reml.txt")
         bash_cmd = f"tail -n 6 {reml_path} > {tail_path}"
         _ = submit.submit_subprocess(bash_cmd, tail_path, "Tail")
 
@@ -2396,8 +2316,8 @@ class RunReml:
 
         # Write script for review/records, then run
         print("\tRunning 3dREMLfit")
-        bash_cmd = " ".join(self.afni_prep + reml_list)
-        reml_script = os.path.join(self.subj_work, f"{decon_name}_reml.sh")
+        bash_cmd = " ".join(self._afni_prep + reml_list)
+        reml_script = os.path.join(self._subj_work, f"{decon_name}_reml.sh")
         with open(reml_script, "w") as script:
             script.write(bash_cmd)
 
@@ -2405,7 +2325,7 @@ class RunReml:
         _, _ = submit.submit_sbatch(
             bash_cmd,
             f"rml{subj[6:]}s{sess[-1]}",
-            self.log_dir,
+            self._log_dir,
             num_hours=wall_time,
             num_cpus=6,
             mem_gig=8,
@@ -2421,23 +2341,6 @@ class ProjectRest:
     Execute generated 3ddeconvolve to produce a no-censor x-matrix,
     project correlation matrix accounting for WM and CSF nuissance,
     and conduct a seed-based correlation analysis.
-
-    Attributes
-    ----------
-    afni_prep : list
-        First part of subprocess call for AFNI singularity
-    log_dir : path
-        Output location for log files and scripts
-    reg_matrix : path
-        Location of AFNI regression matrix
-    sess : str
-        BIDs session identifier
-    subj : str
-        BIDs subject identifier
-    subj_work : path
-        Location of working directory for intermediates
-    xmat_path : path
-        Location of X.<decon_name>.nocensor.xmat.1D
 
     Methods
     -------
@@ -2466,21 +2369,21 @@ class ProjectRest:
 
         Attributes
         ----------
-        afni_prep : list
+        _afni_prep : list
             First part of subprocess call for AFNI singularity
 
         """
         print("\nInitializing ProjectRest")
-        self.subj = subj
-        self.sess = sess
-        self.subj_work = subj_work
-        self.log_dir = log_dir
-        self.afni_prep = _prepend_afni_sing(
-            proj_deriv, self.subj_work, sing_afni
+        self._subj = subj
+        self._sess = sess
+        self._subj_work = subj_work
+        self._log_dir = log_dir
+        self._afni_prep = _prepend_afni_sing(
+            proj_deriv, self._subj_work, sing_afni
         )
 
     def gen_xmatrix(self, decon_cmd, decon_name):
-        """Execute generated 3dDeconvolve command to x-files.
+        """Execute generated 3dDeconvolve command to make x-files.
 
         Cue 90's theme.
 
@@ -2493,7 +2396,7 @@ class ProjectRest:
 
         Attributes
         ----------
-        xmat_path : path
+        _xmat_path : path
             Location of X.<decon_name>.nocensor.xmat.1D
 
         Raises
@@ -2503,23 +2406,23 @@ class ProjectRest:
 
         """
         # generate x-matrices
-        self.xmat_path = os.path.join(
-            self.subj_work, f"X.{decon_name}.nocensor.xmat.1D"
+        self._xmat_path = os.path.join(
+            self._subj_work, f"X.{decon_name}.nocensor.xmat.1D"
         )
-        if os.path.exists(self.xmat_path):
+        if os.path.exists(self._xmat_path):
             return
 
         # Execute decon_cmd, wait for singularity to close, and check
         print("\tRunning 3dDeconvolve for resting data")
         _, _ = submit.submit_sbatch(
             decon_cmd,
-            f"dcn{self.subj[6:]}s{self.sess[-1]}",
-            self.log_dir,
+            f"dcn{self._subj[6:]}s{self._sess[-1]}",
+            self._log_dir,
             mem_gig=6,
         )
         time.sleep(300)
-        if not os.path.exists(self.xmat_path):
-            raise FileNotFoundError(f"Expected to find {self.xmat_path}")
+        if not os.path.exists(self._xmat_path):
+            raise FileNotFoundError(f"Expected to find {self._xmat_path}")
 
     def anaticor(
         self,
@@ -2550,7 +2453,7 @@ class ProjectRest:
 
         Attributes
         ----------
-        reg_matrix : path
+        _reg_matrix : path
             Location of AFNI regression matrix
 
         Raises
@@ -2576,14 +2479,14 @@ class ProjectRest:
             raise ValueError("Expected list of paths to scaled EPI files.")
 
         # Setup output path/name, avoid repeating work
-        out_path = os.path.join(self.subj_work, f"{decon_name}_anaticor+tlrc")
+        out_path = os.path.join(self._subj_work, f"{decon_name}_anaticor+tlrc")
         if os.path.exists(f"{out_path}.HEAD"):
-            self.reg_matrix = out_path
+            self._reg_matrix = out_path
             return out_path
 
         # Get WM signal
         print("\tProjecting correlation matrix")
-        comb_path = os.path.join(self.subj_work, "tmp_epi-mask_WMe.nii.gz")
+        comb_path = os.path.join(self._subj_work, "tmp_epi-mask_WMe.nii.gz")
         if not os.path.exists(comb_path):
             bash_list = [
                 "3dcalc",
@@ -2593,11 +2496,11 @@ class ProjectRest:
                 "-datum float",
                 f"-prefix {comb_path}",
             ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
+            bash_cmd = " ".join(self._afni_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, comb_path, "Comb mask")
 
         # Smooth WM signal
-        blur_path = os.path.join(self.subj_work, "tmp_epi-blur.nii.gz")
+        blur_path = os.path.join(self._subj_work, "tmp_epi-blur.nii.gz")
         if not os.path.exists(blur_path):
             bash_list = [
                 "3dmerge",
@@ -2606,7 +2509,7 @@ class ProjectRest:
                 f"-prefix {blur_path}",
                 comb_path,
             ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
+            bash_cmd = " ".join(self._afni_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, blur_path, "Blur mask")
 
         # Project regression matrix, include WM as nuissance
@@ -2617,14 +2520,14 @@ class ProjectRest:
             f"-censor {func_dict['mot-cens']}",
             "-cenmode ZERO",
             f"-dsort {blur_path}",
-            f"-ort {self.xmat_path}",
+            f"-ort {self._xmat_path}",
             f"-prefix {out_path}",
         ]
-        bash_cmd = " ".join(self.afni_prep + bash_list)
+        bash_cmd = " ".join(self._afni_prep + bash_list)
         _, _ = submit.submit_sbatch(
             bash_cmd,
-            f"pro{self.subj[6:]}s{self.sess[-1]}",
-            self.log_dir,
+            f"pro{self._subj[6:]}s{self._sess[-1]}",
+            self._log_dir,
             mem_gig=8,
         )
         time.sleep(300)
@@ -2632,7 +2535,7 @@ class ProjectRest:
         # Check
         if not os.path.exists(f"{out_path}.HEAD"):
             raise FileNotFoundError(f"Expected to find {out_path}.HEAD")
-        self.reg_matrix = out_path
+        self._reg_matrix = out_path
 
     def seed_corr(self, anat_dict, coord_dict={"rPCC": "4 -54 24"}):
         """Project a seed-based correlation matrix.
@@ -2683,22 +2586,22 @@ class ProjectRest:
 
             # Set output path/name, avoid repeating work
             print(f"\t\tWorking on seed {seed} ...")
-            ztrans_file = self.reg_matrix.replace("+tlrc", f"_{seed}_ztrans")
+            ztrans_file = self._reg_matrix.replace("+tlrc", f"_{seed}_ztrans")
             if os.path.exists(f"{ztrans_file}+tlrc.HEAD"):
                 corr_dict[seed] = f"{ztrans_file}+tlrc.HEAD"
                 continue
 
             # Correlation
-            corr_file = self.reg_matrix.replace("+tlrc", f"_{seed}_corr")
+            corr_file = self._reg_matrix.replace("+tlrc", f"_{seed}_corr")
             if not os.path.exists(f"{corr_file}+tlrc.HEAD"):
                 bash_list = [
                     "3dTcorr1D",
                     f"-mask {anat_dict['mask-int']}",
                     f"-prefix {corr_file}",
-                    self.reg_matrix,
+                    self._reg_matrix,
                     seed_ts,
                 ]
-                bash_cmd = " ".join(self.afni_prep + bash_list)
+                bash_cmd = " ".join(self._afni_prep + bash_list)
                 _ = submit.submit_subprocess(
                     bash_cmd, f"{corr_file}+tlrc.HEAD", "Corr mat"
                 )
@@ -2710,7 +2613,7 @@ class ProjectRest:
                 "-expr 'log((1+a)/(1-a))/2'",
                 f"-prefix {ztrans_file}",
             ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
+            bash_cmd = " ".join(self._afni_prep + bash_list)
             _ = submit.submit_subprocess(
                 bash_cmd, f"{ztrans_file}+tlrc.HEAD", "Fisher Z"
             )
@@ -2762,39 +2665,39 @@ class ProjectRest:
             # Avoid repeating work
             print(f"\t\t\tWorking on seed {seed}")
             seed_ts = os.path.join(
-                self.subj_work, f"seed_{seed}_timeseries.1D"
+                self._subj_work, f"seed_{seed}_timeseries.1D"
             )
             if os.path.exists(seed_ts):
                 seed_dict[seed] = seed_ts
                 continue
 
             # Make seed
-            seed_file = os.path.join(self.subj_work, f"seed_{seed}.nii.gz")
-            tmp_coord = os.path.join(self.subj_work, f"tmp_seed_{seed}.txt")
+            seed_file = os.path.join(self._subj_work, f"seed_{seed}.nii.gz")
+            tmp_coord = os.path.join(self._subj_work, f"tmp_seed_{seed}.txt")
             _ = submit.submit_subprocess(
                 f"echo {coord} > {tmp_coord} ", tmp_coord, "Echo"
             )
             bash_list = [
                 "3dUndump",
                 f"-prefix {seed_file}",
-                f"-master {self.reg_matrix}",
+                f"-master {self._reg_matrix}",
                 f"-srad {seed_radius}",
                 f"-xyz {tmp_coord}",
             ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
+            bash_cmd = " ".join(self._afni_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, seed_file, "Make seed")
 
             # Get average timeseries, deal with talkative singularity
             seed_long = os.path.join(
-                self.subj_work, f"tmp_seed_{seed}_timeseries.1D"
+                self._subj_work, f"tmp_seed_{seed}_timeseries.1D"
             )
             bash_list = [
                 "3dROIstats",
                 "-quiet",
                 f"-mask {seed_file}",
-                f"{self.reg_matrix} > {seed_long}",
+                f"{self._reg_matrix} > {seed_long}",
             ]
-            bash_cmd = " ".join(self.afni_prep + bash_list)
+            bash_cmd = " ".join(self._afni_prep + bash_list)
             _ = submit.submit_subprocess(bash_cmd, seed_long, "Seed TS")
             _ = submit.submit_subprocess(
                 f"tail -n +3 {seed_long} > {seed_ts}", seed_ts, "Tail"
@@ -2808,22 +2711,6 @@ class MoveFinal:
 
     Identify desired files in /work and copy them
     to /group. Then purge /work.
-
-    Attributes
-    ----------
-    model_name : str
-        Desired AFNI model, for triggering different workflows
-    proj_deriv : path
-        Location of project derivatives
-    sess : str
-        BIDs session identifier
-    sess_anat : dict
-        Contains reference names (key) and paths (value) to
-        preprocessed anatomical files.
-    subj : str
-        BIDs subject identifier
-    subj_work : path
-        Location of working directory for intermediates
 
     Methods
     -------
@@ -2871,12 +2758,12 @@ class MoveFinal:
                 raise KeyError(f"Expected {_key} key in sess_anat")
 
         # Set attributes
-        self.subj = subj
-        self.sess = sess
-        self.proj_deriv = proj_deriv
-        self.subj_work = subj_work
-        self.sess_anat = sess_anat
-        self.model_name = model_name
+        self._subj = subj
+        self._sess = sess
+        self._proj_deriv = proj_deriv
+        self._subj_work = subj_work
+        self._sess_anat = sess_anat
+        self._model_name = model_name
 
         # Trigger list construction, copy files
         save_list = (
@@ -2907,24 +2794,26 @@ class MoveFinal:
             decon_<model_name>_stats_REML+tlrc.* files were not found
 
         """
-        subj_motion = os.path.join(self.subj_work, "motion_files")
-        subj_timing = os.path.join(self.subj_work, "timing_files")
+        subj_motion = os.path.join(self._subj_work, "motion_files")
+        subj_timing = os.path.join(self._subj_work, "timing_files")
         stat_list = glob.glob(
-            f"{self.subj_work}/decon_{self.model_name}_stats_REML+tlrc.*"
+            f"{self._subj_work}/decon_{self._model_name}_stats_REML+tlrc.*"
         )
         if stat_list:
             sh_list = glob.glob(
-                f"{self.subj_work}/decon_{self.model_name}*.sh"
+                f"{self._subj_work}/decon_{self._model_name}*.sh"
             )
-            x_list = glob.glob(f"{self.subj_work}/X.decon_{self.model_name}.*")
+            x_list = glob.glob(
+                f"{self._subj_work}/X.decon_{self._model_name}.*"
+            )
             save_list = stat_list + sh_list + x_list
-            save_list.append(self.sess_anat["mask-WMe"])
-            save_list.append(self.sess_anat["mask-int"])
+            save_list.append(self._sess_anat["mask-WMe"])
+            save_list.append(self._sess_anat["mask-int"])
             save_list.append(subj_motion)
             save_list.append(subj_timing)
         else:
             raise FileNotFoundError(
-                f"Missing decon_{self.model_name} files in {self.subj_work}"
+                f"Missing decon_{self._model_name} files in {self._subj_work}"
             )
         return save_list
 
@@ -2948,16 +2837,16 @@ class MoveFinal:
             decon_rest_anaticor+tlrc.* files were not found
 
         """
-        stat_list = glob.glob(f"{self.subj_work}/decon_rest_anaticor*+tlrc.*")
+        stat_list = glob.glob(f"{self._subj_work}/decon_rest_anaticor*+tlrc.*")
         if stat_list:
-            seed_list = glob.glob(f"{self.subj_work}/seed_*")
-            x_list = glob.glob(f"{self.subj_work}/X.decon_rest.*")
+            seed_list = glob.glob(f"{self._subj_work}/seed_*")
+            x_list = glob.glob(f"{self._subj_work}/X.decon_rest.*")
             save_list = stat_list + seed_list + x_list
-            save_list.append(self.sess_anat["mask-int"])
-            save_list.append(f"{self.subj_work}/decon_rest.sh")
+            save_list.append(self._sess_anat["mask-int"])
+            save_list.append(f"{self._subj_work}/decon_rest.sh")
         else:
             raise FileNotFoundError(
-                f"Missing decon_rest files in {self.subj_work}"
+                f"Missing decon_rest files in {self._subj_work}"
             )
         return save_list
 
@@ -2977,7 +2866,7 @@ class MoveFinal:
         """
         # Setup save location in group directory
         subj_final = os.path.join(
-            self.proj_deriv, "model_afni", self.subj, self.sess, "func"
+            self._proj_deriv, "model_afni", self._subj, self._sess, "func"
         )
         if not os.path.exists(subj_final):
             os.makedirs(subj_final)
@@ -2996,4 +2885,4 @@ class MoveFinal:
 
         # Clean up - remove session directory in case
         # other session is still running.
-        shutil.rmtree(os.path.dirname(self.subj_work))
+        shutil.rmtree(os.path.dirname(self._subj_work))
