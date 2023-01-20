@@ -1,6 +1,6 @@
 """CLI for initiating FSL regressions.
 
-
+Desc.
 
 Examples
 --------
@@ -17,7 +17,6 @@ import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model import submit
-from func_model import afni
 
 
 # %%
