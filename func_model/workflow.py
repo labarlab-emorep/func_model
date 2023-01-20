@@ -278,4 +278,4 @@ def pipeline_fsl_task(
     )
     _ = h_sp.communicate()
     h_sp.wait()
-    shutil.rmtree(cp_dir)
+    # shutil.rmtree(cp_dir)
