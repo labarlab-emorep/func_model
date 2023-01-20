@@ -181,8 +181,9 @@ class ConditionFiles:
         run, and then condition files for each emotion are generated, with
         duration including the following replay trial.
 
-        Condition files follow a BIDS naming scheme, with event type in
-        the description field. Output files are written to:
+        Condition files follow a BIDS naming scheme, with a description field
+        in the format combEmoReplay, where Emo is the first three characters
+        of the emotion category. Output files are written to:
             <subj_work>/condition_files
 
         Parameters
@@ -242,9 +243,27 @@ class ConditionFiles:
             )
 
     def session_separate_events(self, run_num):
-        """Title.
+        """Generate separate stimulus and replay conditions for each run.
 
-        Desc.
+        Make condition files for each session-specific stimulus (videos,
+        scenarios) and the following replay, organized by emotion and run.
+
+        Condition files follow a BIDS naming scheme, with a description field
+        in the format [stim|replay]Emo, where Emo is the first three
+        characters of the emotion category. Output files are written to:
+            <subj_work>/condition_files
+
+        Parameters
+        ----------
+        run_num : int
+            Run number
+
+        Raises
+        ------
+        TypeError
+            run_num is not int
+        ValueError
+            Index and position lists are not equal
 
         """
         # Validate run_num, get data
@@ -253,30 +272,35 @@ class ConditionFiles:
         print(f"\tBuilding session conditions for run : {run_num}")
         self._get_run_df(run_num)
 
-        #
-        idx_stim = np.where(_df_run["trial_type"] == _task[:-1])[0]
-        idx_replay = np.where(_df_run["trial_type"] == "replay")[0]
-        idx_emo_all = np.where(_df_run["emotion"].notnull())[0]
-        pos_emo_all = _df_run.loc[idx_emo_all, "emotion"].tolist()
+        # As in session_combined_events, use list position and index to
+        # align replay with the appropriate emotion.
+        idx_stim = np.where(self._df_run["trial_type"] == self._task[:-1])[0]
+        idx_replay = np.where(self._df_run["trial_type"] == "replay")[0]
+        idx_emo_all = np.where(self._df_run["emotion"].notnull())[0]
+        pos_emo_all = self._df_run.loc[idx_emo_all, "emotion"].tolist()
 
-        #
-        emo_list = _df_run["emotion"].unique()
+        # Get unique emotions and clean.
+        emo_list = self._df_run["emotion"].unique()
         emo_list = [x for x in emo_list if x == x]
         for emo in emo_list:
 
-            #
+            # Identify the position of the emotion in pos_emo_all
             print(f"\t\tBuilding separate conditions for emotion : {emo}")
             pos_emo = [i for i, j in enumerate(pos_emo_all) if j == emo]
 
-            #
-            stim_onset = _df_run.loc[idx_stim[pos_emo], "onset"].tolist()
-            stim_duration = _df_run.loc[idx_stim[pos_emo], "duration"].tolist()
-            replay_onset = _df_run.loc[idx_replay[pos_emo], "onset"].tolist()
-            replay_duration = _df_run.loc[
+            # Use emotion position to extract appropriate onset and duration
+            stim_onset = self._df_run.loc[idx_stim[pos_emo], "onset"].tolist()
+            stim_duration = self._df_run.loc[
+                idx_stim[pos_emo], "duration"
+            ].tolist()
+            replay_onset = self._df_run.loc[
+                idx_replay[pos_emo], "onset"
+            ].tolist()
+            replay_duration = self._df_run.loc[
                 idx_replay[pos_emo], "duration"
             ].tolist()
 
-            #
+            # Write condition files
             t_emo = emo.title()[:3]
             _ = self._write_cond(
                 stim_onset, stim_duration, f"stim{t_emo}", run_num
