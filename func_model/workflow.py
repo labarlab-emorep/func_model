@@ -252,7 +252,7 @@ def pipeline_fsl_task(
     # Make condition files
     make_cf = fsl.ConditionFiles(subj, sess, task, subj_work, sess_events)
     for run_num in make_cf.run_list:
-        make_cf.session_events(run_num)
+        make_cf.session_separate_events(run_num)
         make_cf.common_events(run_num)
 
     # Find confounds files, extract relevant columns

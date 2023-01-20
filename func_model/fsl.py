@@ -18,6 +18,10 @@ class ConditionFiles:
     Condition files are written to:
         <subj_work>/condition_files
 
+    Attributes
+    ----------
+    run_list
+
     Methods
     -------
     session_events(run_num)
@@ -74,6 +78,8 @@ class ConditionFiles:
 
         Attributes
         ----------
+        run_list : list
+            List of run integers
         _df_events : pd.DataFrame
             Column names == events files, run column added
         _events_run : list
@@ -100,7 +106,7 @@ class ConditionFiles:
         for idx, _ in enumerate(events_data):
             events_data[idx]["run"] = self._events_run[idx]
         self._df_events = pd.concat(events_data).reset_index(drop=True)
-        self._run_list = self._df_events["run"].unique()
+        self.run_list = self._df_events["run"].unique()
 
     def _get_run_df(self, run_num):
         """Extract run data.
@@ -168,15 +174,15 @@ class ConditionFiles:
         df.to_csv(out_path, index=False, header=False, sep="\t")
         return df
 
-    def session_events(self, run_num):
-        """Make condition files for session-specific stimuli for run.
+    def session_combined_events(self, run_num):
+        """Generate combined stimulus+replay conditions for each run.
 
         Session-specific events (scenarios, videos) are extract for each
-        run, and then condition files for each emotion are generated.
-        Condition files follow a BIDS naming scheme, with event type in
-        the description field.
+        run, and then condition files for each emotion are generated, with
+        duration including the following replay trial.
 
-        Output files are written to:
+        Condition files follow a BIDS naming scheme, with event type in
+        the description field. Output files are written to:
             <subj_work>/condition_files
 
         Parameters
@@ -219,7 +225,7 @@ class ConditionFiles:
         for emo in emo_list:
 
             # Find onset, offset index of emotion trials
-            print(f"\t\tBuilding conditions for emotion : {emo}")
+            print(f"\t\tBuilding combined conditions for emotion : {emo}")
             pos_emo = [i for i, j in enumerate(pos_emo_all) if j == emo]
             idx_emo_on = idx_onset[pos_emo]
             idx_emo_off = idx_offset[pos_emo]
@@ -230,7 +236,54 @@ class ConditionFiles:
             emo_duration = [
                 round(j - i, 2) for i, j in zip(emo_onset, emo_offset)
             ]
-            _ = self._write_cond(emo_onset, emo_duration, emo, run_num)
+            t_emo = emo.title()[:3]
+            _ = self._write_cond(
+                emo_onset, emo_duration, f"comb{t_emo}Replay", run_num
+            )
+
+    def session_separate_events(self, run_num):
+        """Title.
+
+        Desc.
+
+        """
+        # Validate run_num, get data
+        if not isinstance(run_num, int):
+            raise TypeError("Expected int type for run_num")
+        print(f"\tBuilding session conditions for run : {run_num}")
+        self._get_run_df(run_num)
+
+        #
+        idx_stim = np.where(_df_run["trial_type"] == _task[:-1])[0]
+        idx_replay = np.where(_df_run["trial_type"] == "replay")[0]
+        idx_emo_all = np.where(_df_run["emotion"].notnull())[0]
+        pos_emo_all = _df_run.loc[idx_emo_all, "emotion"].tolist()
+
+        #
+        emo_list = _df_run["emotion"].unique()
+        emo_list = [x for x in emo_list if x == x]
+        for emo in emo_list:
+
+            #
+            print(f"\t\tBuilding separate conditions for emotion : {emo}")
+            pos_emo = [i for i, j in enumerate(pos_emo_all) if j == emo]
+
+            #
+            stim_onset = _df_run.loc[idx_stim[pos_emo], "onset"].tolist()
+            stim_duration = _df_run.loc[idx_stim[pos_emo], "duration"].tolist()
+            replay_onset = _df_run.loc[idx_replay[pos_emo], "onset"].tolist()
+            replay_duration = _df_run.loc[
+                idx_replay[pos_emo], "duration"
+            ].tolist()
+
+            #
+            t_emo = emo.title()[:3]
+            _ = self._write_cond(
+                stim_onset, stim_duration, f"stim{t_emo}", run_num
+            )
+            _ = self._write_cond(
+                replay_onset, replay_duration, f"replay{t_emo}", run_num
+            )
 
     def common_events(self, run_num):
         """Make condition files for common events for run.
