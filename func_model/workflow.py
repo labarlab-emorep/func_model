@@ -1,8 +1,11 @@
 """Pipelines supporting AFNI and FSL."""
 # %%
 import os
+import glob
+import shutil
+import subprocess
 from func_model import run_pipeline
-from func_model import afni
+from func_model import afni, fsl
 
 
 # %%
@@ -38,7 +41,7 @@ def pipeline_afni_task(
     sing_afni : path
         Location of AFNI singularity file
     model_name : str
-        [univ]
+        [univ | mixed]
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -57,7 +60,7 @@ def pipeline_afni_task(
 
     """
     # Validate
-    if model_name not in ["univ"]:
+    if model_name not in ["univ", "mixed"]:
         raise ValueError(f"Unsupported model name : {model_name}")
 
     # Check that session exists for participant
@@ -84,13 +87,22 @@ def pipeline_afni_task(
 
     # Generate deconvolution command
     write_decon = afni.WriteDecon(
-        subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sing_afni,
     )
     write_decon.build_decon(model_name, sess_tfs=sess_timing)
 
     # Use decon command to make REMl command, execute REML
     make_reml = afni.RunReml(
-        subj_work, proj_deriv, sess_anat, sess_func, sing_afni, log_dir,
+        subj_work,
+        proj_deriv,
+        sess_anat,
+        sess_func,
+        sing_afni,
+        log_dir,
     )
     reml_path = make_reml.generate_reml(
         subj, sess, write_decon.decon_cmd, write_decon.decon_name
@@ -175,7 +187,11 @@ def pipeline_afni_rest(
         subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
     )
     write_decon = afni.WriteDecon(
-        subj_work, proj_deriv, sess_func, sess_anat, sing_afni,
+        subj_work,
+        proj_deriv,
+        sess_func,
+        sess_anat,
+        sing_afni,
     )
     write_decon.build_decon(model_name)
 
@@ -185,7 +201,10 @@ def pipeline_afni_rest(
     )
     proj_reg.gen_xmatrix(write_decon.decon_cmd, write_decon.decon_name)
     proj_reg.anaticor(
-        write_decon.decon_name, write_decon.epi_masked, sess_anat, sess_func,
+        write_decon.decon_name,
+        write_decon.epi_masked,
+        sess_anat,
+        sess_func,
     )
 
     # Seed (sanity check) and clean
@@ -194,10 +213,69 @@ def pipeline_afni_rest(
     return (corr_dict, sess_anat, sess_func)
 
 
-def pipeline_fsl():
+def pipeline_fsl_task(
+    subj,
+    sess,
+    proj_rawdata,
+    proj_deriv,
+    work_deriv,
+    log_dir,
+):
     """Title.
 
     Desc.
 
     """
-    pass
+    # Check that session exists for participant
+    subj_sess_raw = os.path.join(proj_rawdata, subj, sess)
+    if not os.path.exists(subj_sess_raw):
+        print(f"Directory not detected : {subj_sess_raw}\n\tSkipping.")
+
+    # Setup output directory
+    subj_work = os.path.join(work_deriv, "model_fsl-task", subj, sess, "func")
+    if not os.path.exists(subj_work):
+        os.makedirs(subj_work)
+
+    # Find events files
+    sess_events = sorted(glob.glob(f"{subj_sess_raw}/func/*events.tsv"))
+    if not sess_events:
+        raise FileNotFoundError(
+            f"Expected BIDs events files in {subj_sess_raw}"
+        )
+
+    # Identify and validate task name
+    task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
+    task_valid = ["movies", "scenarios"]
+    if task not in task_valid:
+        raise ValueError(f"Expected task names movies|scenarios, found {task}")
+
+    # Make condition files
+    make_cf = fsl.ConditionFiles(subj, sess, task, subj_work, sess_events)
+    for run_num in make_cf.run_list:
+        make_cf.session_separate_events(run_num)
+        make_cf.common_events(run_num)
+
+    # Find confounds files, extract relevant columns
+    fmriprep_subj_sess = os.path.join(
+        proj_deriv, "pre_processing/fmriprep", subj, sess
+    )
+    sess_confounds = sorted(
+        glob.glob(f"{fmriprep_subj_sess}/func/*task-{task}*timeseries.tsv")
+    )
+    if not sess_confounds:
+        raise FileNotFoundError(
+            f"Expected fMRIPrep confounds files in {fmriprep_subj_sess}"
+        )
+    for conf_path in sess_confounds:
+        _ = fsl.confounds(conf_path, subj_work)
+
+    # clean up
+    # TODO move to fsl method
+    cp_dir = os.path.join(work_deriv, "model_fsl-task", subj)
+    final_dir = os.path.join(proj_deriv, "model_fsl")
+    h_sp = subprocess.Popen(
+        f"cp -r {cp_dir} {final_dir}", shell=True, stdout=subprocess.PIPE
+    )
+    _ = h_sp.communicate()
+    h_sp.wait()
+    # shutil.rmtree(cp_dir)
