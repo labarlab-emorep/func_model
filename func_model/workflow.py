@@ -213,6 +213,36 @@ def pipeline_afni_rest(
     return (corr_dict, sess_anat, sess_func)
 
 
+# %%
+def pipeline_afni_extract(proj_dir, subj_list, comb_all):
+    """Title.
+
+    Desc.
+
+    """
+    proj_deriv = os.path.join(proj_dir, "derivatives", "model_afni")
+    for subj in subj_list:
+        sess_list = [
+            os.path.basename(x)
+            for x in glob.glob(f"{proj_deriv}/{subj}/ses-*")
+        ]
+        sess_list.sort()
+        for sess in sess_list:
+            search_path = os.path.join(proj_deriv, subj, sess, "func")
+            decon_list = glob.glob(
+                f"{search_path}/decon_univ_stats_REML+tlrc.HEAD"
+            )
+            if not decon_list:
+                continue
+            else:
+                decon_path = decon_list[0]
+
+            #
+            task_path = glob.glob(f"{search_path}/timing_files/*_events.1D")[0]
+            _, _, task, _, _ = os.path.basename(task_path).split("_")
+
+
+# %%
 def pipeline_fsl_task(
     subj,
     sess,

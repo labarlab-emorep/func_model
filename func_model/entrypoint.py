@@ -8,8 +8,9 @@ def main():
     The package func_model consists of two sub-packages that
     can be accessed from their respective entrypoints (below).
 
-        model_afni : Conduct AFNI-style deconvolution (in development)
-        model_fsl  : Conduct FSL-style first- and second-level regressions (in development)
+        model_afni   : Conduct AFNI-style deconvolution (in development)
+        model_fsl    : Conduct FSL-style first- and second-level regressions (in development)
+        extract_afni : Extract emotion beta values from deconvolve AFNI as a matrix (in development)
 
     """
     )

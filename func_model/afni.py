@@ -1,4 +1,5 @@
 """Methods for AFNI-based pipelines."""
+# %%
 import os
 import json
 import glob
@@ -9,9 +10,11 @@ import statistics
 import subprocess
 import pandas as pd
 import numpy as np
+import nibabel as nib
 from func_model import submit
 
 
+# %%
 def _prepend_afni_sing(proj_deriv, subj_work, sing_afni):
     """Supply singularity call for AFNI.
 
@@ -2886,3 +2889,153 @@ class MoveFinal:
         # Clean up - remove session directory in case
         # other session is still running.
         shutil.rmtree(os.path.dirname(self._subj_work))
+
+
+# %%
+class ExtractTaskBetas:
+    """Title.
+
+    Desc.
+
+    """
+
+    def __init__(self, proj_dir, subj, sess, task, decon_path):
+        """Title.
+
+        Desc.
+
+        """
+        out_dir = os.path.dirname(decon_path)
+
+    def _get_labels(self):
+        """Title.
+
+        Desc.
+
+        """
+        #
+        out_label = os.path.join(out_dir, "tmp_labels.txt")
+        bash_list = ["3dinfo", "-label", decon_path, f"> {out_label}"]
+        bash_cmd = " ".join(bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_label, "Get labels")
+
+        #
+        with open(out_label, "r") as lf:
+            label_str = lf.read()
+        label_list = [x for x in label_str.split("|")]
+        if label_list[0] != "Full_Fstat":
+            raise ValueError("Error in extracting decon labels.")
+
+        #
+        stim_label = [
+            x
+            for x in label_list
+            if task.split("-")[1][:3] in x and "Fstat" not in x
+        ]
+
+    def _split_decon(self):
+        """Title.
+
+        Desc.
+
+        """
+        self._get_labels()
+
+        #
+        emo_switch = {
+            "Amu": "amusement",
+            "Ang": "anger",
+            "Anx": "anxiety",
+            "Awe": "awe",
+            "Cal": "calmness",
+            "Cra": "craving",
+            "Dis": "disgust",
+            "Exc": "excitement",
+            "Fea": "fear",
+            "Hor": "horror",
+            "Joy": "joy",
+            "Neu": "neutral",
+            "Rom": "romance",
+            "Sad": "sadness",
+            "Sur": "surprise",
+        }
+
+        #
+        beta_list = []
+        for sub_label in stim_label:
+            out_file = (
+                f"{subj}_{sess}_{task}_desc-"
+                + f"{emo_switch[sub_label[3:6]]}_beta.nii.gz"
+            )
+            out_path = os.path.join(out_dir, out_file)
+            if os.path.exists(out_path):
+                beta_list.append(out_path)
+                continue
+
+            #
+            out_label = os.path.join(out_dir, "tmp_label_int.txt")
+            bash_list = [
+                "3dinfo",
+                "-label2index",
+                sub_label,
+                decon_path,
+                f"> {out_label}",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_label, "Label int")
+
+            #
+            with open(out_label, "r") as lf:
+                label_int = lf.read().strip()
+            if len(label_int) > 2:
+                raise ValueError(f"Problem extract label int for {sub_label}")
+
+            #
+            bash_list = [
+                "3dTcat",
+                f"-prefix {out_path}",
+                f"{decon_path}[{label_int}]",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_label, "Split decon")
+            beta_list.append(out_path)
+        return beta_list
+
+    def make_matrix(self):
+        """Title.
+
+        Desc.
+
+        """
+
+        def _flatten_array(arr: np.ndarray) -> np.ndarray:
+            """Flatten array and keep index."""
+            idx_val = []
+            for x in np.arange(arr.shape[0]):
+                for y in np.arange(arr.shape[1]):
+                    for z in np.arange(arr.shape[2]):
+                        idx_val.append([(x, y, z), arr[x][y][z]])
+            idx_val_arr = np.array(idx_val, dtype=object)
+            return np.transpose(idx_val_arr)
+
+        # test_arr = np.array(
+        #     [
+        #         [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+        #         [[11, 22, 33], [44, 55, 66], [77, 88, 99]],
+        #         [[111, 222, 333], [444, 555, 666], [777, 888, 999]],
+        #     ]
+        # )
+
+        beta_list = self._split_decon()
+        for beta_path in beta_list:
+            img = nib.load(beta_path)
+            img_data = img.get_fdata()
+            img_flat = _flatten_array(img_data)
+
+    def comb_matrices(self):
+        """Title.
+
+        Desc.
+
+        """
+        pass
