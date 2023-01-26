@@ -2892,56 +2892,158 @@ class MoveFinal:
 
 
 # %%
+def group_mask(proj_deriv, subj_list, out_dir):
+    """Generate a group intersection mask.
+
+    Make a union mask of all participant intersection masks. Output
+    file is written to:
+        <out_dir>/group_intersection_mask.nii.gz
+
+    Parameters
+    ----------
+    proj_deriv : path
+        Location of project derivatives directory
+    subj_list : list
+        Subjects to include in the mask
+    out_dir : path
+        Desired output location
+
+    Returns
+    -------
+    path
+        Location of group intersection mask
+
+    Raises
+    ------
+    ValueError
+        If not participant intersection masks are encountered
+
+    """
+    # Setup output path
+    out_path = os.path.join(out_dir, "group_intersection_mask.nii.gz")
+    if os.path.exists(out_path):
+        return out_path
+
+    # Identify intersection masks
+    mask_list = []
+    for subj in subj_list:
+        for sess in ["ses-day2", "ses-day3"]:
+            mask_path = os.path.join(
+                proj_deriv,
+                "model_afni",
+                subj,
+                sess,
+                "func",
+                f"{subj}_{sess}_desc-intersect_mask.nii.gz",
+            )
+            if os.path.exists(mask_path):
+                mask_list.append(mask_path)
+    if not mask_list:
+        raise ValueError("Failed to find masks in model_afni")
+
+    # Make group intersection mask
+    bash_list = [
+        "3dmask_tool",
+        "-frac 1",
+        f"-prefix {out_path}",
+        f"-input {' '.join(mask_list)}",
+    ]
+    bash_cmd = " ".join(bash_list)
+    _ = submit.submit_subprocess(bash_cmd, out_path, "Group Mask")
+    return out_path
+
+
+# %%
 class ExtractTaskBetas:
     """Title.
 
     Desc.
 
+    Attributes
+    ----------
+
+    Methods
+    -------
+    make_mask_matrix
+    make_func_matrix
+    comb_matrices
+
     """
 
-    def __init__(self, proj_dir, subj, sess, task, decon_path):
-        """Title.
+    def __init__(self, proj_dir, out_dir, float_prec=4):
+        """Initialize.
 
-        Desc.
+        Parameters
+        ----------
+        proj_dir : path
+            Location of project directory
+        out_dir : path
+            Location of project output location
+        float_prec : int, optional
+            Desired float point precision of dataframes
+
+        Raises
+        ------
+        TypeError
+            Unexpected type for float_prec
 
         """
-        out_dir = os.path.dirname(decon_path)
+        if not isinstance(float_prec, int):
+            raise TypeError("Expected float_prec type int")
+
+        print("Initializing ExtractTaskBetas")
+        self._proj_dir = proj_dir
+        self.out_dir = out_dir
+        self._float_prec = float_prec
 
     def _get_labels(self):
         """Title.
 
         Desc.
 
-        """
-        #
-        out_label = os.path.join(out_dir, "tmp_labels.txt")
-        bash_list = ["3dinfo", "-label", decon_path, f"> {out_label}"]
-        bash_cmd = " ".join(bash_list)
-        _ = submit.submit_subprocess(bash_cmd, out_label, "Get labels")
+        Attributes
+        ----------
+        _stim_label
 
-        #
+        """
+        print(f"\t\tGetting sub-brick labels for {self._subj}, {self._sess}")
+
+        # Extract sub-brick label info
+        out_label = os.path.join(self._subj_out_dir, "tmp_labels.txt")
+        if not os.path.exists(out_label):
+            bash_list = [
+                "3dinfo",
+                "-label",
+                self._decon_path,
+                f"> {out_label}",
+            ]
+            bash_cmd = " ".join(bash_list)
+            _ = submit.submit_subprocess(bash_cmd, out_label, "Get labels")
+
         with open(out_label, "r") as lf:
             label_str = lf.read()
         label_list = [x for x in label_str.split("|")]
         if label_list[0] != "Full_Fstat":
             raise ValueError("Error in extracting decon labels.")
 
-        #
-        stim_label = [
+        # Identify labels relevant to task
+        self._stim_label = [
             x
             for x in label_list
-            if task.split("-")[1][:3] in x and "Fstat" not in x
+            if self._task.split("-")[1][:3] in x and "Fstat" not in x
         ]
+        self._stim_label.sort()
 
     def _split_decon(self):
         """Title.
 
         Desc.
 
-        """
-        self._get_labels()
+        Attributes
+        ----------
+        _beta_dict
 
-        #
+        """
         emo_switch = {
             "Amu": "amusement",
             "Ang": "anger",
@@ -2961,24 +3063,27 @@ class ExtractTaskBetas:
         }
 
         #
-        beta_list = []
-        for sub_label in stim_label:
+        self._get_labels()
+        beta_dict = {}
+        for sub_label in self._stim_label:
+            emo_long = emo_switch[sub_label[3:6]]
             out_file = (
-                f"{subj}_{sess}_{task}_desc-"
-                + f"{emo_switch[sub_label[3:6]]}_beta.nii.gz"
+                f"tmp_{self._subj}_{self._sess}_{self._task}_"
+                + f"desc-{emo_long}_beta.nii.gz"
             )
-            out_path = os.path.join(out_dir, out_file)
+            out_path = os.path.join(self._subj_out_dir, out_file)
             if os.path.exists(out_path):
-                beta_list.append(out_path)
+                beta_dict[emo_long] = out_path
                 continue
 
             #
-            out_label = os.path.join(out_dir, "tmp_label_int.txt")
+            print(f"\t\tExtracting sub-brick for {emo_long}")
+            out_label = os.path.join(self._subj_out_dir, "tmp_label_int.txt")
             bash_list = [
                 "3dinfo",
                 "-label2index",
                 sub_label,
-                decon_path,
+                self._decon_path,
                 f"> {out_label}",
             ]
             bash_cmd = " ".join(bash_list)
@@ -2994,48 +3099,186 @@ class ExtractTaskBetas:
             bash_list = [
                 "3dTcat",
                 f"-prefix {out_path}",
-                f"{decon_path}[{label_int}]",
+                f"{self._decon_path}[{label_int}]",
+                "> /dev/null 2>&1",
             ]
             bash_cmd = " ".join(bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_label, "Split decon")
-            beta_list.append(out_path)
-        return beta_list
+            beta_dict[emo_long] = out_path
+        self._beta_dict = beta_dict
 
-    def make_matrix(self):
+    def _flatten_array(self, arr: np.ndarray) -> np.ndarray:
+        """Flatten 3D array and keep xyz index."""
+        idx_val = []
+        for x in np.arange(arr.shape[0]):
+            for y in np.arange(arr.shape[1]):
+                for z in np.arange(arr.shape[2]):
+                    idx_val.append(
+                        [
+                            f"({x}, {y}, {z})",
+                            round(arr[x][y][z], self._float_prec),
+                        ]
+                    )
+        idx_val_arr = np.array(idx_val, dtype=object)
+        return np.transpose(idx_val_arr)
+
+    def _arr_to_df(self, arr: np.ndarray) -> pd.DataFrame:
+        """Make dataframe from flat array."""
+        df = pd.DataFrame(np.transpose(arr), columns=["idx", "val"])
+        df = df.set_index("idx")
+        df = df.transpose().reset_index(drop=True)
+        return df
+
+    def _nifti_to_arr(self, nifti_path: str) -> np.ndarray:
+        """Generate flat array of NIfTI voxel values."""
+        img = nib.load(nifti_path)
+        img_data = img.get_fdata()
+        img_flat = self._flatten_array(img_data)
+        return img_flat
+
+    def make_mask_matrix(self, mask_path):
         """Title.
 
         Desc.
 
+        Attributes
+        ----------
+        _rm_cols
+
+        """
+        print("\tFinding coordinates to censor ...")
+        img_flat = self._nifti_to_arr(mask_path)
+        df_mask = self._arr_to_df(img_flat)
+        self._rm_cols = df_mask.columns[df_mask.isin([0.0]).any()]
+
+    def make_func_matrix(self, subj, sess, task, decon_path):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        subj
+        sess
+        task
+        decon_path
+
+        Attributes
+        ----------
+        _subj
+        _sess
+        _task
+        _decon_path
+        _subj_out_dir
+
+        Returns
+        -------
+        pd.DataFrame
+
         """
 
-        def _flatten_array(arr: np.ndarray) -> np.ndarray:
-            """Flatten array and keep index."""
-            idx_val = []
-            for x in np.arange(arr.shape[0]):
-                for y in np.arange(arr.shape[1]):
-                    for z in np.arange(arr.shape[2]):
-                        idx_val.append([(x, y, z), arr[x][y][z]])
-            idx_val_arr = np.array(idx_val, dtype=object)
-            return np.transpose(idx_val_arr)
+        def _id_arr(emo: str) -> np.ndarray:
+            """Return array of identifier information."""
+            return np.array(
+                [
+                    ["subj_id", "task_id", "emo_id"],
+                    [subj.split("-")[-1], task.split("-")[-1], emo],
+                ]
+            )
 
-        # test_arr = np.array(
-        #     [
-        #         [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-        #         [[11, 22, 33], [44, 55, 66], [77, 88, 99]],
-        #         [[111, 222, 333], [444, 555, 666], [777, 888, 999]],
-        #     ]
-        # )
+        # Set attributes
+        if task not in ["task-scenarios", "task-movies"]:
+            raise ValueError(f"Unexpected value for task : {task}")
 
-        beta_list = self._split_decon()
+        print(f"\tGetting betas from {subj}, {sess}")
+        self._subj = subj
+        self._sess = sess
+        self._task = task
+        self._decon_path = decon_path
+        self._subj_out_dir = os.path.dirname(decon_path)
+
+        #
+        out_path = os.path.join(
+            self._subj_out_dir, f"{subj}_{sess}_{task}_desc-emo_betas.tsv"
+        )
+        if os.path.exists(out_path):
+            return out_path
+
+        #
+        self._split_decon()
+
+        #
+        for emo, beta_path in self._beta_dict.items():
+            print(f"\t\tExtracting betas for : {emo}")
+            img_arr = self._nifti_to_arr(beta_path)
+            info_arr = _id_arr(emo)
+            img_arr = np.concatenate((info_arr, img_arr), axis=1)
+
+            #
+            if "df_betas" not in locals() and "df_betas" not in globals():
+                df_betas = self._arr_to_df(img_arr)
+            else:
+                df_tmp = self._arr_to_df(img_arr)
+                df_betas = pd.concat(
+                    [df_betas, df_tmp], axis=0, ignore_index=True
+                )
+                del df_tmp
+            del img_arr
+
+        #
+        print("\tCleaning dataframe ...")
+        if hasattr(self, "_rm_cols"):
+            df_betas = df_betas.drop(self._rm_cols, axis=1)
+
+        #
+        df_betas.to_csv(out_path, index=False, sep="\t")
+        print(f"\t\tWrote : {out_path}")
+        del df_betas
+        tmp_list = glob.glob(f"{self._subj_out_dir}/tmp_*")
+        for rm_file in tmp_list:
+            os.remove(rm_file)
+        return out_path
+
+    def comb_matrices(self, subj_list, proj_deriv):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+        subj_list
+        proj_deriv
+
+        """
+        print("\tCombining participant beta tsv files ...")
+        df_list = sorted(
+            glob.glob(
+                f"{proj_deriv}/model_afni/**/*desc-emo_betas.tsv",
+                recursive=True,
+            )
+        )
+        beta_list = [
+            x
+            for x in df_list
+            if os.path.basename(x).split("_")[0] in subj_list
+        ]
+
+        #
         for beta_path in beta_list:
-            img = nib.load(beta_path)
-            img_data = img.get_fdata()
-            img_flat = _flatten_array(img_data)
+            if (
+                "df_betas_all" not in locals()
+                and "df_betas_all" not in globals()
+            ):
+                df_betas_all = pd.read_csv(beta_path, sep="\t")
+            else:
+                df_tmp = pd.read_csv(beta_path, sep="\t")
+                df_betas_all = pd.concat(
+                    [df_betas_all, df_tmp], axis=0, ignore_index=True
+                )
 
-    def comb_matrices(self):
-        """Title.
-
-        Desc.
-
-        """
-        pass
+        #
+        out_path = os.path.join(
+            self._proj_dir, "analyses/model_afni", "afni_betas.tsv"
+        )
+        df_betas_all.to_csv(out_path, index=False, sep="\t")
+        print(f"\tWrote : {out_path}")

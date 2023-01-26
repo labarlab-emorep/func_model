@@ -38,10 +38,10 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",
+        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion",
         help=textwrap.dedent(
             """\
-            Path to BIDS-formatted project directory
+            Path to experiment-specific project directory
             (default : %(default)s)
             """
         ),
@@ -90,8 +90,8 @@ def main():
         sys.exit(1)
 
     # Setup group project directory, paths
-    proj_deriv = os.path.join(proj_dir, "derivatives")
-    proj_rawdata = os.path.join(proj_dir, "rawdata")
+    # proj_deriv = os.path.join(proj_dir, "derivatives")
+    # proj_rawdata = os.path.join(proj_dir, "rawdata")
 
     # Get environmental vars
     sing_afni = os.environ["SING_AFNI"]

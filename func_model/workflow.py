@@ -214,32 +214,45 @@ def pipeline_afni_rest(
 
 
 # %%
-def pipeline_afni_extract(proj_dir, subj_list, comb_all):
+def pipeline_afni_extract(proj_dir, subj_list, comb_all=True):
     """Title.
 
     Desc.
 
     """
-    proj_deriv = os.path.join(proj_dir, "derivatives", "model_afni")
+    #
+    out_dir = os.path.join(proj_dir, "analyses/model_afni")
+    proj_deriv = os.path.join(proj_dir, "data_scanner_BIDS", "derivatives")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    #
+    mask_path = afni.group_mask(proj_deriv, subj_list, out_dir)
+    get_betas = afni.ExtractTaskBetas(proj_dir, out_dir)
+    get_betas.make_mask_matrix(mask_path)
+
+    #
     for subj in subj_list:
-        sess_list = [
-            os.path.basename(x)
-            for x in glob.glob(f"{proj_deriv}/{subj}/ses-*")
-        ]
-        sess_list.sort()
-        for sess in sess_list:
-            search_path = os.path.join(proj_deriv, subj, sess, "func")
-            decon_list = glob.glob(
-                f"{search_path}/decon_univ_stats_REML+tlrc.HEAD"
+        for sess in ["ses-day2", "ses-day3"]:
+            subj_deriv_func = os.path.join(
+                proj_deriv, "model_afni", subj, sess, "func"
             )
-            if not decon_list:
+            decon_path = os.path.join(
+                subj_deriv_func, "decon_univ_stats_REML+tlrc.HEAD"
+            )
+            if not os.path.exists(decon_path):
                 continue
-            else:
-                decon_path = decon_list[0]
 
             #
-            task_path = glob.glob(f"{search_path}/timing_files/*_events.1D")[0]
+            task_path = glob.glob(
+                f"{subj_deriv_func}/timing_files/*_events.1D"
+            )[0]
             _, _, task, _, _ = os.path.basename(task_path).split("_")
+            _ = get_betas.make_func_matrix(subj, sess, task, decon_path)
+
+    #
+    if comb_all:
+        _ = get_betas.comb_matrices(subj_list)
 
 
 # %%
