@@ -1,4 +1,20 @@
-r"""Title
+"""Extract voxel beta weights from deconvolved files.
+
+Mine AFNI deconvolved files for sub-bricks/behaviors of interest
+and generate a dataframe of voxel beta-coefficients. Dataframes
+may be masked by identifying empty coordinates in a group-level
+mask.
+
+Dataframes are written for each subject in --subj-list/all, and
+a group dataframe can be generated from all subject dataframes.
+
+Subject-level dataframes are titled
+    <subj>_<sess>_<task>_desc-<model_name>_betas.tsv
+and written to:
+    <proj_dir>/data_scanner_BIDS/derivatives/model_afni/<subj>/<sess>/func
+
+The group-level dataframe is written to:
+    <proj_dir>/analyses/model_afni/afni_<model_name>_betas.tsv
 
 Examples
 --------
@@ -36,7 +52,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion",
+        default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
         help=textwrap.dedent(
             """\
             Path to experiment-specific project directory
@@ -91,7 +107,8 @@ def main():
         proj_deriv = os.path.join(
             proj_dir, "data_scanner_BIDS/derivatives/model_afni"
         )
-        subj_list = sorted(glob.glob(f"{proj_deriv}/sub-*"))
+        subj_all = sorted(glob.glob(f"{proj_deriv}/sub-*"))
+        subj_list = [os.path.basename(x) for x in subj_all]
     workflow.pipeline_afni_extract(proj_dir, subj_list, model_name)
 
 
