@@ -2,19 +2,17 @@ r"""Title
 
 Examples
 --------
-extract_afni -s sub-ER0009
+extract_afni --sub-list sub-ER0009 sub-ER0016
+extract_afni --sub-all
 
 """
 # %%
 import os
 import sys
-import time
 import glob
 import textwrap
-from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import submit
-from func_model import afni
+from func_model import workflow
 
 
 # %%
@@ -69,7 +67,7 @@ def _get_args():
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
-        sys.exit(1)
+        sys.exit(0)
 
     return parser
 
@@ -77,10 +75,9 @@ def _get_args():
 # %%
 def main():
     """Setup working environment."""
-
-    # Capture CLI arguments
     args = _get_args().parse_args()
     subj_list = args.sub_list
+    subj_all = args.sub_all
     proj_dir = args.proj_dir
     model_name = args.model_name
 
@@ -89,30 +86,13 @@ def main():
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
-    # Setup group project directory, paths
-    # proj_deriv = os.path.join(proj_dir, "derivatives")
-    # proj_rawdata = os.path.join(proj_dir, "rawdata")
-
-    # Get environmental vars
-    sing_afni = os.environ["SING_AFNI"]
-    user_name = os.environ["USER"]
-
-    # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", user_name, "EmoRep")
-    now_time = datetime.now()
-    # log_dir = os.path.join(
-    #     work_deriv,
-    #     f"logs/func-afni_model-{model_name}_"
-    #     + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
-    # )
-    log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    # # Submit jobs for each participant, session
-    # for subj in subj_list:
-    #     # TODO check for deconvole output
-    #     time.sleep(3)
+    # Make subject list, trigger workflow
+    if subj_all:
+        proj_deriv = os.path.join(
+            proj_dir, "data_scanner_BIDS/derivatives/model_afni"
+        )
+        subj_list = sorted(glob.glob(f"{proj_deriv}/sub-*"))
+    workflow.pipeline_afni_extract(proj_dir, subj_list, model_name)
 
 
 if __name__ == "__main__":

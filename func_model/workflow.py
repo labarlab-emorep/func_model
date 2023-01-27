@@ -2,7 +2,6 @@
 # %%
 import os
 import glob
-import shutil
 import subprocess
 from func_model import run_pipeline
 from func_model import afni, fsl
@@ -214,10 +213,17 @@ def pipeline_afni_rest(
 
 
 # %%
-def pipeline_afni_extract(proj_dir, subj_list, comb_all=True):
+def pipeline_afni_extract(proj_dir, subj_list, model_name, comb_all=True):
     """Title.
 
     Desc.
+
+    Parameters
+    ----------
+    proj_dir
+    subj_list
+    model_name
+    comb_all
 
     """
     #
@@ -229,7 +235,7 @@ def pipeline_afni_extract(proj_dir, subj_list, comb_all=True):
     #
     mask_path = afni.group_mask(proj_deriv, subj_list, out_dir)
     get_betas = afni.ExtractTaskBetas(proj_dir, out_dir)
-    get_betas.make_mask_matrix(mask_path)
+    get_betas.mask_coord(mask_path)
 
     #
     for subj in subj_list:
@@ -238,7 +244,7 @@ def pipeline_afni_extract(proj_dir, subj_list, comb_all=True):
                 proj_deriv, "model_afni", subj, sess, "func"
             )
             decon_path = os.path.join(
-                subj_deriv_func, "decon_univ_stats_REML+tlrc.HEAD"
+                subj_deriv_func, f"decon_{model_name}_stats_REML+tlrc.HEAD"
             )
             if not os.path.exists(decon_path):
                 continue
@@ -248,11 +254,13 @@ def pipeline_afni_extract(proj_dir, subj_list, comb_all=True):
                 f"{subj_deriv_func}/timing_files/*_events.1D"
             )[0]
             _, _, task, _, _ = os.path.basename(task_path).split("_")
-            _ = get_betas.make_func_matrix(subj, sess, task, decon_path)
+            _ = get_betas.make_func_matrix(
+                subj, sess, task, model_name, decon_path
+            )
 
     #
     if comb_all:
-        _ = get_betas.comb_matrices(subj_list)
+        _ = get_betas.comb_matrices(subj_list, model_name, proj_deriv)
 
 
 # %%

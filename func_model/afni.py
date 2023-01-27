@@ -2997,13 +2997,18 @@ class ExtractTaskBetas:
         self._float_prec = float_prec
 
     def _get_labels(self):
-        """Title.
-
-        Desc.
+        """Get sub-brick levels from AFNI deconvolved file.
 
         Attributes
         ----------
-        _stim_label
+        _stim_label : list
+            Full label ID of sub-brick starting with "mov" or "sce",
+            e.g. movFea#0_Coef.
+
+        Raises
+        ------
+        ValueError
+            Trouble parsing output of 3dinfo -label to list
 
         """
         print(f"\t\tGetting sub-brick labels for {self._subj}, {self._sess}")
@@ -3035,13 +3040,17 @@ class ExtractTaskBetas:
         self._stim_label.sort()
 
     def _split_decon(self):
-        """Title.
-
-        Desc.
+        """Split deconvolved files into files by sub-brick.
 
         Attributes
         ----------
-        _beta_dict
+        _beta_dict : dict
+            key = emotion, value = path to sub-brick file
+
+        Raises
+        ------
+        ValueError
+            Sub-brick identifier int has length > 2
 
         """
         emo_switch = {
@@ -3062,10 +3071,12 @@ class ExtractTaskBetas:
             "Sur": "surprise",
         }
 
-        #
+        # Extract desired sub-bricks from deconvolve file by label name
         self._get_labels()
         beta_dict = {}
         for sub_label in self._stim_label:
+
+            # Identify emo string, setup file name
             emo_long = emo_switch[sub_label[3:6]]
             out_file = (
                 f"tmp_{self._subj}_{self._sess}_{self._task}_"
@@ -3076,7 +3087,7 @@ class ExtractTaskBetas:
                 beta_dict[emo_long] = out_path
                 continue
 
-            #
+            # Determine sub-brick integer value
             print(f"\t\tExtracting sub-brick for {emo_long}")
             out_label = os.path.join(self._subj_out_dir, "tmp_label_int.txt")
             bash_list = [
@@ -3089,13 +3100,12 @@ class ExtractTaskBetas:
             bash_cmd = " ".join(bash_list)
             _ = submit.submit_subprocess(bash_cmd, out_label, "Label int")
 
-            #
             with open(out_label, "r") as lf:
                 label_int = lf.read().strip()
             if len(label_int) > 2:
-                raise ValueError(f"Problem extract label int for {sub_label}")
+                raise ValueError(f"Unexpected int length for {sub_label}")
 
-            #
+            # Write sub-brick as new file
             bash_list = [
                 "3dTcat",
                 f"-prefix {out_path}",
@@ -3136,10 +3146,13 @@ class ExtractTaskBetas:
         img_flat = self._flatten_array(img_data)
         return img_flat
 
-    def make_mask_matrix(self, mask_path):
-        """Title.
+    def mask_coord(self, mask_path):
+        """Find coordinates of voxels not in mask.
 
-        Desc.
+        Extract the voxel values from a binary mask
+
+        Parameters
+        ----------
 
         Attributes
         ----------
@@ -3151,7 +3164,7 @@ class ExtractTaskBetas:
         df_mask = self._arr_to_df(img_flat)
         self._rm_cols = df_mask.columns[df_mask.isin([0.0]).any()]
 
-    def make_func_matrix(self, subj, sess, task, decon_path):
+    def make_func_matrix(self, subj, sess, task, model_name, decon_path):
         """Title.
 
         Desc.
@@ -3161,6 +3174,7 @@ class ExtractTaskBetas:
         subj
         sess
         task
+        model_name
         decon_path
 
         Attributes
@@ -3199,7 +3213,8 @@ class ExtractTaskBetas:
 
         #
         out_path = os.path.join(
-            self._subj_out_dir, f"{subj}_{sess}_{task}_desc-emo_betas.tsv"
+            self._subj_out_dir,
+            f"{subj}_{sess}_{task}_desc-{model_name}_betas.tsv",
         )
         if os.path.exists(out_path):
             return out_path
@@ -3239,7 +3254,7 @@ class ExtractTaskBetas:
             os.remove(rm_file)
         return out_path
 
-    def comb_matrices(self, subj_list, proj_deriv):
+    def comb_matrices(self, subj_list, model_name, proj_deriv):
         """Title.
 
         Desc.
@@ -3253,7 +3268,7 @@ class ExtractTaskBetas:
         print("\tCombining participant beta tsv files ...")
         df_list = sorted(
             glob.glob(
-                f"{proj_deriv}/model_afni/**/*desc-emo_betas.tsv",
+                f"{proj_deriv}/model_afni/**/*desc-{model_name}_betas.tsv",
                 recursive=True,
             )
         )
@@ -3265,6 +3280,7 @@ class ExtractTaskBetas:
 
         #
         for beta_path in beta_list:
+            print(f"\t\tAdding {beta_path} ...")
             if (
                 "df_betas_all" not in locals()
                 and "df_betas_all" not in globals()
@@ -3278,7 +3294,10 @@ class ExtractTaskBetas:
 
         #
         out_path = os.path.join(
-            self._proj_dir, "analyses/model_afni", "afni_betas.tsv"
+            self._proj_dir,
+            "analyses/model_afni",
+            f"afni_{model_name}_betas.tsv",
         )
         df_betas_all.to_csv(out_path, index=False, sep="\t")
         print(f"\tWrote : {out_path}")
+        return out_path
