@@ -90,29 +90,9 @@ class TimingFiles:
         # Set attributes, make output location
         self._sess_events = sess_events
         self._subj_tf_dir = os.path.join(subj_work, "timing_files")
+        self._emo_switch = helper.emo_switch()
         if not os.path.exists(self._subj_tf_dir):
             os.makedirs(self._subj_tf_dir)
-
-        # Set switch for naming emotion timing files
-        #   key = value in self._df_events["emotion"]
-        #   value = AFNI-style description
-        self._emo_switch = {
-            "amusement": "Amu",
-            "anger": "Ang",
-            "anxiety": "Anx",
-            "awe": "Awe",
-            "calmness": "Cal",
-            "craving": "Cra",
-            "disgust": "Dis",
-            "excitement": "Exc",
-            "fear": "Fea",
-            "horror": "Hor",
-            "joy": "Joy",
-            "neutral": "Neu",
-            "romance": "Rom",
-            "sadness": "Sad",
-            "surprise": "Sur",
-        }
 
         # Generate dataframe from events files
         self._event_dataframe()
@@ -521,15 +501,10 @@ class TimingFiles:
         for emo in emo_list:
 
             # Check that emo is found in planned dictionary
-            if emo not in self.emo_switch.keys():
+            if emo not in self._emo_switch.keys():
                 raise ValueError(f"Unexpected emotion encountered : {emo}")
 
             # Determine timing file name, make an empty file
-            # tf_name = (
-            #     f"mov{self.emo_switch[emo]}"
-            #     if task == "movies"
-            #     else f"sce{self.emo_switch[emo]}"
-            # )
             tf_name = task[:3] + self._emo_switch[emo]
             tf_path = os.path.join(
                 self._subj_tf_dir,
@@ -1909,9 +1884,10 @@ class ProjectRest:
 
         """
         # Check for x-matrix attribute
-        if not hasattr(self, "xmat_path"):
+        if not hasattr(self, "_xmat_path"):
             raise AttributeError(
-                "Attribute xmat_path required, execute ProjectRest.gen_xmatrix"
+                "Attribute _xmat_path required, execute "
+                + "ProjectRest.gen_xmatrix"
             )
 
         # Validate dict keys
@@ -2015,7 +1991,7 @@ class ProjectRest:
 
         """
         # Check for attributes and keys
-        if not hasattr(self, "reg_matrix"):
+        if not hasattr(self, "_reg_matrix"):
             raise AttributeError(
                 "Attribute reg_matrix required, execute ProjectRest.anaticor"
             )
@@ -2098,7 +2074,7 @@ class ProjectRest:
                 raise TypeError(
                     "Value of coord_dict must be space-separated integers"
                 )
-        if not hasattr(self, "reg_matrix"):
+        if not hasattr(self, "_reg_matrix"):
             raise AttributeError(
                 "Attribute reg_matrix required, execute ProjectRest.anaticor"
             )

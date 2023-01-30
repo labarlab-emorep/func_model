@@ -1,13 +1,11 @@
 """Helper methods for AFNI-based pipelines."""
-# %%
 import os
 import glob
 import shutil
 import subprocess
 
 
-# %%
-def prepend_afni_sing(proj_deriv, subj_work, sing_afni):
+def prepend_afni_sing(proj_deriv, subj_work, sing_afni) -> list:
     """Supply singularity call for AFNI.
 
     Setup singularity call for AFNI in DCC EmoRep environment, used
@@ -23,10 +21,6 @@ def prepend_afni_sing(proj_deriv, subj_work, sing_afni):
     sing_afni : path
         Location of AFNI singularity file
 
-    Returns
-    -------
-    list
-
     """
     return [
         "singularity run",
@@ -38,22 +32,31 @@ def prepend_afni_sing(proj_deriv, subj_work, sing_afni):
     ]
 
 
-def valid_models(model_name):
-    """Return bool of whether model_name is supported.
-
-    Parameters
-    ----------
-    model_name : str
-        [univ | rest | mixed]
-        Desired AFNI model, for triggering different workflows
-
-    Returns
-    -------
-    bool
-
-    """
+def valid_models(model_name: str) -> bool:
+    """Return bool of whether model_name is supported."""
     valid_list = ["univ", "rest", "mixed"]
     return model_name in valid_list
+
+
+def emo_switch() -> dict:
+    """Return events-AFNI emotion mappings."""
+    return {
+        "amusement": "Amu",
+        "anger": "Ang",
+        "anxiety": "Anx",
+        "awe": "Awe",
+        "calmness": "Cal",
+        "craving": "Cra",
+        "disgust": "Dis",
+        "excitement": "Exc",
+        "fear": "Fea",
+        "horror": "Hor",
+        "joy": "Joy",
+        "neutral": "Neu",
+        "romance": "Rom",
+        "sadness": "Sad",
+        "surprise": "Sur",
+    }
 
 
 class MoveFinal:
@@ -236,9 +239,3 @@ class MoveFinal:
         # Clean up - remove session directory in case
         # other session is still running.
         shutil.rmtree(os.path.dirname(self._subj_work))
-
-
-# %%
-
-
-# %%

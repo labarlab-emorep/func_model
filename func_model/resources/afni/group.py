@@ -3,6 +3,7 @@ import os
 import glob
 import pandas as pd
 import numpy as np
+from func_model.resources.afni import helper
 from func_model.resources.general import submit, matrix
 
 
@@ -105,23 +106,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
             Sub-brick identifier int has length > 2
 
         """
-        emo_switch = {
-            "Amu": "amusement",
-            "Ang": "anger",
-            "Anx": "anxiety",
-            "Awe": "awe",
-            "Cal": "calmness",
-            "Cra": "craving",
-            "Dis": "disgust",
-            "Exc": "excitement",
-            "Fea": "fear",
-            "Hor": "horror",
-            "Joy": "joy",
-            "Neu": "neutral",
-            "Rom": "romance",
-            "Sad": "sadness",
-            "Sur": "surprise",
-        }
+        # Invert emo_switch to unpack sub-bricks
+        _emo_switch = helper.emo_switch()
+        emo_switch = {j: i for i, j in _emo_switch.items()}
 
         # Extract desired sub-bricks from deconvolve file by label name
         self._get_labels()

@@ -83,7 +83,7 @@ def afni_task(
         "func_model.resources.afni.run_pipeline",
         fromlist=[f"make_{model_name}_tfs"],
     )
-    tf_pipe = getattr(pipe_mod, f"afni_{model_name}_tfs")
+    tf_pipe = getattr(pipe_mod, f"make_{model_name}_tfs")
     sess_timing = tf_pipe(subj, sess, subj_work, subj_sess_raw)
 
     # Generate deconvolution command
