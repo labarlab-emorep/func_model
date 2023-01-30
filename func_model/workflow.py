@@ -2,7 +2,6 @@
 # %%
 import os
 import glob
-import shutil
 import subprocess
 from func_model import run_pipeline
 from func_model import afni, fsl
@@ -213,6 +212,90 @@ def pipeline_afni_rest(
     return (corr_dict, sess_anat, sess_func)
 
 
+# %%
+def pipeline_afni_extract(
+    proj_dir, subj_list, model_name, group_mask=True, comb_all=True
+):
+    """Extract sub-brick betas and generate dataframe.
+
+    Split AFNI deconvolved files by sub-brick and then extract the
+    beta-coefficient for each behavior of interest from each voxel
+    and generate a dataframe.
+
+    A binary brain mask can be generated and used to reduce the
+    size of the dataframes.
+
+    Output of group_mask and comb_all are written to:
+        <proj_dir>/analyses/model_afni
+
+    Parameters
+    ----------
+    proj_dir : path
+        Location of project directory
+    subj_list : list
+        Subject IDs to include in dataframe
+    model_name : str
+        [univ]
+        Model identifier of deconvolved file
+    group_mask : bool, optional
+        Whether to generate a group intersection mask and then
+        find coordinates to remove from dataframe
+    comb_all : bool, optional
+        Combine all participand beta dataframes into an
+        omnibus one
+
+    Raises
+    ------
+    ValueError
+        Unexpected model_name value
+
+    """
+    if model_name != "univ":
+        raise ValueError("Unexpected model_name")
+
+    # Setup orienting variables
+    out_dir = os.path.join(proj_dir, "analyses/model_afni")
+    proj_deriv = os.path.join(proj_dir, "data_scanner_BIDS", "derivatives")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # Initialize beta extraction
+    get_betas = afni.ExtractTaskBetas(proj_dir, out_dir)
+
+    # Generate mask and identify censor coordinates
+    if group_mask:
+        mask_path = afni.group_mask(proj_deriv, subj_list, out_dir)
+        get_betas.mask_coord(mask_path)
+
+    # Make beta dataframe for each subject
+    for subj in subj_list:
+        for sess in ["ses-day2", "ses-day3"]:
+
+            # Find decon file
+            subj_deriv_func = os.path.join(
+                proj_deriv, "model_afni", subj, sess, "func"
+            )
+            decon_path = os.path.join(
+                subj_deriv_func, f"decon_{model_name}_stats_REML+tlrc.HEAD"
+            )
+            if not os.path.exists(decon_path):
+                continue
+
+            # Identify task, make beta dataframe
+            task_path = glob.glob(
+                f"{subj_deriv_func}/timing_files/*_events.1D"
+            )[0]
+            _, _, task, _, _ = os.path.basename(task_path).split("_")
+            _ = get_betas.make_func_matrix(
+                subj, sess, task, model_name, decon_path
+            )
+
+    # Combine all participant dataframes
+    if comb_all:
+        _ = get_betas.comb_matrices(subj_list, model_name, proj_deriv)
+
+
+# %%
 def pipeline_fsl_task(
     subj,
     sess,

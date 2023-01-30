@@ -294,3 +294,12 @@ def schedule_fsl(
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")
     return (h_out, h_err)
+
+
+def schedule_afni_extract():
+    """Title.
+
+    Desc.
+
+    """
+    pass
