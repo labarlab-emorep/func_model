@@ -3,6 +3,15 @@
 import os
 import pandas as pd
 import numpy as np
+import importlib.resources as pkg_resources
+from func_model import reference_files
+
+
+# %%
+def make_template(file_name="first_level_design_template"):
+    """Title."""
+    with pkg_resources.open_text(reference_files, file_name) as tf:
+        template_file = tf.readlines()
 
 
 # %%
@@ -42,8 +51,7 @@ class ConditionFiles:
         sess : str
             BIDS session identifier
         task : str
-            [movies | scenarios]
-            Task name
+            BIDS task name
         subj_work : path
             Location of working directory for intermediates
         sess_events : list
@@ -59,7 +67,7 @@ class ConditionFiles:
         """
         if len(sess_events) < 1:
             raise ValueError("Cannot make timing files from 0 events.tsv")
-        if task not in ["movies", "scenarios"]:
+        if task not in ["task-movies", "task-scenarios"]:
             raise ValueError(f"Uncexpected task name : {task}")
 
         # Set attributes, make output location, make dataframe
@@ -108,25 +116,8 @@ class ConditionFiles:
         self._df_events = pd.concat(events_data).reset_index(drop=True)
         self.run_list = [int(x) for x in self._df_events["run"].unique()]
 
-    def _get_run_df(self, run_num):
-        """Extract run data.
-
-        Parameters
-        ----------
-        run_num : int
-            Run number
-
-        Attributes
-        ----------
-        _df_run : pd.DataFrame
-            Run-specific data
-
-        Raises
-        ------
-        TypeError
-            run_num is not int
-
-        """
+    def _get_run_df(self, run_num: int):
+        """Set _df_run attribute for run data."""
         if not isinstance(run_num, int):
             raise TypeError("Expected int type for run_num")
         self._df_run = self._df_events[
@@ -167,7 +158,7 @@ class ConditionFiles:
             {"onset": event_onset, "duration": event_duration, "mod": 1}
         )
         out_name = (
-            f"{self._subj}_{self._sess}_task-{self._task}_run-0{run_num}_"
+            f"{self._subj}_{self._sess}_{self._task}_run-0{run_num}_"
             + f"desc-{event_name}_events.txt"
         )
         out_path = os.path.join(self._subj_cf_dir, out_name)
@@ -208,7 +199,8 @@ class ConditionFiles:
         # being an equal length, an emotion can match in pos_emo_all
         # in order to find the onset and offset indices by following
         # the position in the lists.
-        idx_onset = np.where(self._df_run["trial_type"] == self._task[:-1])[0]
+        task_short = self._task.split("-")[-1]
+        idx_onset = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
         idx_offset = np.where(self._df_run["trial_type"] == "fix")[0]
         idx_emo_all = np.where(self._df_run["emotion"].notnull())[0]
         pos_emo_all = self._df_run.loc[idx_emo_all, "emotion"].tolist()
@@ -272,7 +264,8 @@ class ConditionFiles:
 
         # As in session_combined_events, use list position and index to
         # align replay with the appropriate emotion.
-        idx_stim = np.where(self._df_run["trial_type"] == self._task[:-1])[0]
+        task_short = self._task.split("-")[-1]
+        idx_stim = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
         idx_replay = np.where(self._df_run["trial_type"] == "replay")[0]
         idx_emo_all = np.where(self._df_run["emotion"].notnull())[0]
         pos_emo_all = self._df_run.loc[idx_emo_all, "emotion"].tolist()

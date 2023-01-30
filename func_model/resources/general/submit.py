@@ -212,32 +212,14 @@ def schedule_fsl(
     proj_deriv,
     work_deriv,
     model_name,
+    model_level,
     log_dir,
 ):
-    """Write and schedule pipeline.
-
-    Generate a python script that controls preprocessing. Submit
-    the work on schedule resources. Writes parent script to:
-        log_dir/run_model-afni_subj_sess.py
+    """Title.
 
     Parameters
     ----------
-    subj : str
-        BIDS subject identifier
-    sess : str
-        BIDS session identifier
-    proj_rawdata : path
-        Location of BIDS-organized project rawdata
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    work_deriv : path
-        Parent location for writing pipeline intermediates
-    model_name : str
-        [task]
-        Desired AFNI model, for triggering different workflows
-    log_dir : path
-        Output location for log files and scripts
+
 
     Returns
     -------
@@ -257,22 +239,24 @@ def schedule_fsl(
         os.makedirs(proj_fsl)
 
     # Write parent python script
-    wall_time = 20
+    subj_short = subj[6:]
+    sess_short = sess[-1]
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
 
-        #SBATCH --job-name=p{subj[6:]}s{sess[-1]}
-        #SBATCH --output={log_dir}/par{subj[6:]}s{sess[-1]}.txt
-        #SBATCH --time={wall_time}:00:00
+        #SBATCH --job-name=p{subj_short}s{sess_short}
+        #SBATCH --output={log_dir}/par{subj_short}s{sess_short}.txt
+        #SBATCH --time=10:00:00
         #SBATCH --mem=8000
 
         import os
         import sys
         from func_model import workflows
 
-        _, _, _ = workflows.fsl_{model_name}(
+        _, _, _ = workflows.fsl_task(
             "{subj}",
             "{sess}",
+            "{model_name}",
             "{proj_rawdata}",
             "{proj_deriv}",
             "{work_deriv}",
@@ -281,7 +265,10 @@ def schedule_fsl(
 
     """
     sbatch_cmd = textwrap.dedent(sbatch_cmd)
-    py_script = f"{log_dir}/run-fsl_model-{model_name}_{subj}_{sess}.py"
+    py_script = (
+        f"{log_dir}/run-fsl_model-{model_name}_"
+        + f"level-{model_level}_{subj}_{sess}.py"
+    )
     with open(py_script, "w") as ps:
         ps.write(sbatch_cmd)
 
@@ -294,12 +281,3 @@ def schedule_fsl(
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")
     return (h_out, h_err)
-
-
-def schedule_afni_extract():
-    """Title.
-
-    Desc.
-
-    """
-    pass

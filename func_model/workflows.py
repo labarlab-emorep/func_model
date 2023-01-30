@@ -2,10 +2,9 @@
 # %%
 import os
 import glob
-import subprocess
-from func_model.resources.afni import helper, run_pipeline
+from func_model.resources.afni import helper, afni_pipelines
 from func_model.resources.afni import deconvolve, masks, group
-from func_model.resources.fsl import fsl
+from func_model.resources.fsl import fsl, fsl_pipelines
 
 
 # %%
@@ -22,7 +21,7 @@ def afni_task(
     """Conduct AFNI-based deconvolution for sanity checking.
 
     Sanity check - model processing during movie|scenario presenation.
-    Supplies high-level steps, coordinates actual work in run_pipeline
+    Supplies high-level steps, coordinates actual work in afni_pipelines
     and afni modules.
 
     Parameters
@@ -74,13 +73,13 @@ def afni_task(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps
-    sess_func, sess_anat = run_pipeline.extra_preproc(
+    sess_func, sess_anat = afni_pipelines.extra_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni
     )
 
     # Generate timing files - find appropriate pipeline for model_name
     pipe_mod = __import__(
-        "func_model.resources.afni.run_pipeline",
+        "func_model.resources.afni.afni_pipelines",
         fromlist=[f"make_{model_name}_tfs"],
     )
     tf_pipe = getattr(pipe_mod, f"make_{model_name}_tfs")
@@ -184,7 +183,7 @@ def afni_rest(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps, generate deconvolution command
-    sess_func, sess_anat = run_pipeline.extra_preproc(
+    sess_func, sess_anat = afni_pipelines.extra_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
     )
     write_decon = deconvolve.WriteDecon(
@@ -298,9 +297,10 @@ def afni_extract(
 
 
 # %%
-def fsl_task(
+def fsl_task_first(
     subj,
     sess,
+    model_name,
     proj_rawdata,
     proj_deriv,
     work_deriv,
@@ -311,13 +311,17 @@ def fsl_task(
     Desc.
 
     """
+    # check model_namel
+
     # Check that session exists for participant
     subj_sess_raw = os.path.join(proj_rawdata, subj, sess)
     if not os.path.exists(subj_sess_raw):
         print(f"Directory not detected : {subj_sess_raw}\n\tSkipping.")
 
     # Setup output directory
-    subj_work = os.path.join(work_deriv, "model_fsl-task", subj, sess, "func")
+    subj_work = os.path.join(
+        work_deriv, f"model_fsl-{model_name}", subj, sess, "func"
+    )
     if not os.path.exists(subj_work):
         os.makedirs(subj_work)
 
@@ -329,38 +333,55 @@ def fsl_task(
         )
 
     # Identify and validate task name
-    task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
-    task_valid = ["movies", "scenarios"]
-    if task not in task_valid:
-        raise ValueError(f"Expected task names movies|scenarios, found {task}")
+    _task_short = (
+        os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
+    )
+    task = "task-" + _task_short
+    if task not in ["task-movies", "task-scenarios"]:
+        raise ValueError(f"Unexpected task name : {task}")
 
     # Make condition files
     make_cf = fsl.ConditionFiles(subj, sess, task, subj_work, sess_events)
     for run_num in make_cf.run_list:
-        make_cf.session_separate_events(run_num)
         make_cf.common_events(run_num)
+        if model_name == "sep":
+            make_cf.session_separate_events(run_num)
 
     # Find confounds files, extract relevant columns
-    fmriprep_subj_sess = os.path.join(
+    fp_subj_sess = os.path.join(
         proj_deriv, "pre_processing/fmriprep", subj, sess
     )
     sess_confounds = sorted(
-        glob.glob(f"{fmriprep_subj_sess}/func/*task-{task}*timeseries.tsv")
+        glob.glob(f"{fp_subj_sess}/func/*{task}*timeseries.tsv")
     )
     if not sess_confounds:
         raise FileNotFoundError(
-            f"Expected fMRIPrep confounds files in {fmriprep_subj_sess}"
+            f"Expected fMRIPrep confounds files in {fp_subj_sess}"
         )
     for conf_path in sess_confounds:
         _ = fsl.confounds(conf_path, subj_work)
 
-    # clean up
-    # TODO move to fsl method
-    cp_dir = os.path.join(work_deriv, "model_fsl-task", subj)
-    final_dir = os.path.join(proj_deriv, "model_fsl")
-    h_sp = subprocess.Popen(
-        f"cp -r {cp_dir} {final_dir}", shell=True, stdout=subprocess.PIPE
+    #
+    fd_subj_sess = os.path.join(
+        proj_deriv, "pre_processing/fsl_denoise", subj, sess
     )
-    _ = h_sp.communicate()
-    h_sp.wait()
+    sess_preproc = sorted(
+        glob.glob(f"{fd_subj_sess}/func/*tfiltMasked_bold.nii.gz")
+    )
+    if not sess_preproc:
+        raise FileNotFoundError(
+            f"Expected fsl_denoise files in {fd_subj_sess}"
+        )
+    for preproc_path in sess_preproc:
+        pass
+
+    # # clean up
+    # # TODO move to fsl method
+    # cp_dir = os.path.join(work_deriv, "model_fsl-task", subj)
+    # final_dir = os.path.join(proj_deriv, "model_fsl")
+    # h_sp = subprocess.Popen(
+    #     f"cp -r {cp_dir} {final_dir}", shell=True, stdout=subprocess.PIPE
+    # )
+    # _ = h_sp.communicate()
+    # h_sp.wait()
     # shutil.rmtree(cp_dir)

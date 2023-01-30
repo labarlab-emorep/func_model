@@ -2,6 +2,16 @@
 
 Desc.
 
+Model names:
+    - sep = emotion stimulus (scenarios, movies) and replay are
+        modeled separately
+    - both = TODO, emotion stimulus and replay modeled together
+    - rest = TODO, model resting-state data
+
+Level names:
+    - first = first-level GLM
+    - second = TODO, second-level GLM
+
 Examples
 --------
 model_fsl -s sub-ER0009
@@ -26,13 +36,25 @@ def _get_args():
         description=__doc__, formatter_class=RawTextHelpFormatter
     )
     parser.add_argument(
-        "--model-name",
+        "--model-level",
         type=str,
-        default="task",
+        default="first",
         help=textwrap.dedent(
             """\
-            [task]
-            FSL model name/type, for triggering different workflows
+            [first]
+            FSL model level, for triggering different workflows
+            (default : %(default)s)
+            """
+        ),
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default="sep",
+        help=textwrap.dedent(
+            """\
+            [sep]
+            FSL model name, for triggering different workflows
             (default : %(default)s)
             """
         ),
@@ -65,7 +87,7 @@ def _get_args():
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
-        sys.exit(1)
+        sys.exit(0)
 
     return parser
 
@@ -79,10 +101,14 @@ def main():
     subj_list = args.sub_list
     proj_dir = args.proj_dir
     model_name = args.model_name
+    model_level = args.model_level
 
-    # Check model_name
-    if model_name not in ["task"]:
+    # Check model_name, model_level
+    if model_name not in ["sep"]:
         print(f"Unsupported model name : {model_name}")
+        sys.exit(1)
+    if model_level not in ["first"]:
+        print(f"Unsupported model level : {model_level}")
         sys.exit(1)
 
     # Setup group project directory, paths
@@ -90,34 +116,35 @@ def main():
     proj_rawdata = os.path.join(proj_dir, "rawdata")
 
     # Get environmental vars
-    # TODO check for FSL
     user_name = os.environ["USER"]
+    try:
+        os.environ["FSLDIR"]
+    except KeyError:
+        print("Missing required global variable FSLDIR")
+        sys.exit(1)
 
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", user_name, "EmoRep")
     now_time = datetime.now()
-    # log_dir = os.path.join(
-    #     work_deriv,
-    #     f"logs/func-fsl_model-{model_name}_"
-    #     + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
-    # )
-    log_dir = os.path.join(work_deriv, "logs/func_model-fsl_test")
+    log_dir = os.path.join(
+        work_deriv,
+        f"logs/func-fsl_model-{model_name}_"
+        + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
+    )
+    log_dir = os.path.join(
+        work_deriv, f"logs/func-fsl_model-{model_name}_test"
+    )
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
     # Submit jobs for each participant, session
+    deriv_dir = os.path.join(
+        proj_deriv, "derivatives/pre_processing", "fsl_denoise"
+    )
     for subj in subj_list:
-        sess_list = [
-            os.path.basename(x)
-            for x in glob.glob(
-                f"{proj_deriv}/pre_processing/fmriprep/{subj}/ses-*"
-            )
-        ]
-        if not sess_list:
-            print(f"No pre-processed sessions detected for {subj}, skipping")
-            continue
-
-        for sess in sess_list:
+        for sess in ["ses-day2", "ses-day3"]:
+            if not os.path.exists(f"{deriv_dir}/{subj}/{sess}"):
+                continue
             _, _ = submit.schedule_fsl(
                 subj,
                 sess,
