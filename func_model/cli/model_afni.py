@@ -30,8 +30,8 @@ import glob
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import submit
-from func_model import afni
+from func_modelresources.general import submit
+from func_model.resources.afni import afni
 
 
 # %%
