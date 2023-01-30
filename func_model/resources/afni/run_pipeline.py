@@ -7,7 +7,7 @@ from func_model.resources.afni import masks, preprocess, deconvolve
 
 
 # %%
-def afni_univ_tfs(subj, sess, subj_work, subj_sess_raw):
+def make_univ_tfs(subj, sess, subj_work, subj_sess_raw):
     """Make timing files for univariate sanity check.
 
     Generate a set of AFNI-styled timing files in order to
@@ -72,7 +72,7 @@ def afni_univ_tfs(subj, sess, subj_work, subj_sess_raw):
     return sess_tfs
 
 
-def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
+def make_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
     """Make timing files for sanity check modeling individual events.
 
     DEPRECATED.
@@ -99,11 +99,11 @@ def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
         value = path to timing file
 
     """
-    sess_tfs = afni_univ_tfs(subj, sess, subj_work, subj_sess_raw)
+    sess_tfs = make_univ_tfs(subj, sess, subj_work, subj_sess_raw)
     return sess_tfs
 
 
-def afni_mixed_tfs(subj, sess, subj_work, subj_sess_raw):
+def make_mixed_tfs(subj, sess, subj_work, subj_sess_raw):
     """Title.
 
     TODO - could probalby just use afni_univ_tfs and then generate
@@ -124,7 +124,7 @@ def afni_mixed_tfs(subj, sess, subj_work, subj_sess_raw):
         raise ValueError(f"Expected task names movies|scenarios, found {task}")
 
     #
-    sess_tfs = afni_univ_tfs(subj, sess, subj_work, subj_sess_raw)
+    sess_tfs = make_univ_tfs(subj, sess, subj_work, subj_sess_raw)
 
     #
     make_tf = deconvolve.TimingFiles(subj_work, sess_events)
@@ -138,7 +138,7 @@ def afni_mixed_tfs(subj, sess, subj_work, subj_sess_raw):
     return sess_tfs
 
 
-def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
+def extra_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     """Conduct extra preprocessing for AFNI.
 
     Identify required files from fMRIPrep and FSL, then conduct

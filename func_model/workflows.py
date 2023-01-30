@@ -9,7 +9,7 @@ from func_model.resources.fsl import fsl
 
 
 # %%
-def pipeline_afni_task(
+def afni_task(
     subj,
     sess,
     proj_rawdata,
@@ -74,13 +74,14 @@ def pipeline_afni_task(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps
-    sess_func, sess_anat = run_pipeline.afni_preproc(
+    sess_func, sess_anat = run_pipeline.extra_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni
     )
 
     # Generate timing files - find appropriate pipeline for model_name
     pipe_mod = __import__(
-        "func_model.run_pipeline", fromlist=[f"afni_{model_name}_tfs"]
+        "func_model.resources.afni.run_pipeline",
+        fromlist=[f"make_{model_name}_tfs"],
     )
     tf_pipe = getattr(pipe_mod, f"afni_{model_name}_tfs")
     sess_timing = tf_pipe(subj, sess, subj_work, subj_sess_raw)
@@ -116,7 +117,7 @@ def pipeline_afni_task(
     return (sess_timing, sess_anat, sess_func)
 
 
-def pipeline_afni_rest(
+def afni_rest(
     subj,
     sess,
     proj_rawdata,
@@ -183,7 +184,7 @@ def pipeline_afni_rest(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps, generate deconvolution command
-    sess_func, sess_anat = run_pipeline.afni_preproc(
+    sess_func, sess_anat = run_pipeline.extra_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
     )
     write_decon = deconvolve.WriteDecon(
@@ -214,7 +215,7 @@ def pipeline_afni_rest(
 
 
 # %%
-def pipeline_afni_extract(
+def afni_extract(
     proj_dir, subj_list, model_name, group_mask=True, comb_all=True
 ):
     """Extract sub-brick betas and generate dataframe.
@@ -261,7 +262,7 @@ def pipeline_afni_extract(
         os.makedirs(out_dir)
 
     # Initialize beta extraction
-    get_betas = group.ExtractTaskBetas(proj_dir, out_dir)
+    get_betas = group.ExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
     if group_mask:
@@ -293,11 +294,11 @@ def pipeline_afni_extract(
 
     # Combine all participant dataframes
     if comb_all:
-        _ = get_betas.comb_matrices(subj_list, model_name, proj_deriv)
+        _ = group.comb_matrices(subj_list, model_name, proj_deriv, out_dir)
 
 
 # %%
-def pipeline_fsl_task(
+def fsl_task(
     subj,
     sess,
     proj_rawdata,

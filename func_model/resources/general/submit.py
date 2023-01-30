@@ -175,9 +175,9 @@ def schedule_afni(
 
         import os
         import sys
-        from func_model import workflow
+        from func_model import workflows
 
-        _, _, _ = workflow.pipeline_afni_{pipe_name}(
+        _, _, _ = workflows.afni_{pipe_name}(
             "{subj}",
             "{sess}",
             "{proj_rawdata}",
@@ -268,9 +268,9 @@ def schedule_fsl(
 
         import os
         import sys
-        from func_model import workflow
+        from func_model import workflows
 
-        _, _, _ = workflow.pipeline_fsl_{model_name}(
+        _, _, _ = workflows.fsl_{model_name}(
             "{subj}",
             "{sess}",
             "{proj_rawdata}",

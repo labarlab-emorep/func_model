@@ -3,21 +3,15 @@ import os
 import glob
 import pandas as pd
 import numpy as np
-import nibabel as nib
-from func_model.resources.general import submit
+from func_model.resources.general import submit, matrix
 
 
-class ExtractTaskBetas:
+class ExtractTaskBetas(matrix.NiftiArray):
     """Generate dataframe of voxel beta-coefficients.
 
     Split AFNI deconvolve files into desired sub-bricks, and then
     extract all voxel beta weights for sub-labels of interest.
     Convert extracted weights into a dataframe.
-
-    Attributes
-    ----------
-    out_dir : path
-        Group-level output location
 
     Methods
     -------
@@ -25,20 +19,22 @@ class ExtractTaskBetas:
         Find coordinates to censor based on brain mask
     make_func_matrix(subj, sess, task, model_name, decon_path)
         Generate dataframe of voxel beta weights for subject, session
-    comb_matrices(subj_list, model_name, proj_deriv)
-        Combine beta dataframes into single
+
+    Example
+    -------
+    etb_obj = group.ExtractTaskBetas()
+    etb_obj.mask_coord("/path/to/binary/mask/nii")
+    df = etb_obj.make_func_matrix(*args)
 
     """
 
-    def __init__(self, proj_dir, out_dir, float_prec=4):
+    def __init__(self, proj_dir, float_prec=4):
         """Initialize.
 
         Parameters
         ----------
         proj_dir : path
             Location of project directory
-        out_dir : path
-            Location of project output location
         float_prec : int, optional
             Desired float point precision of dataframes
 
@@ -48,13 +44,9 @@ class ExtractTaskBetas:
             Unexpected type for float_prec
 
         """
-        if not isinstance(float_prec, int):
-            raise TypeError("Expected float_prec type int")
-
         print("Initializing ExtractTaskBetas")
+        super().__init__(float_prec)
         self._proj_dir = proj_dir
-        self.out_dir = out_dir
-        self._float_prec = float_prec
 
     def _get_labels(self):
         """Get sub-brick levels from AFNI deconvolved file.
@@ -177,35 +169,6 @@ class ExtractTaskBetas:
             beta_dict[emo_long] = out_path
         self._beta_dict = beta_dict
 
-    def _flatten_array(self, arr: np.ndarray) -> np.ndarray:
-        """Flatten 3D array and keep xyz index."""
-        idx_val = []
-        for x in np.arange(arr.shape[0]):
-            for y in np.arange(arr.shape[1]):
-                for z in np.arange(arr.shape[2]):
-                    idx_val.append(
-                        [
-                            f"({x}, {y}, {z})",
-                            round(arr[x][y][z], self._float_prec),
-                        ]
-                    )
-        idx_val_arr = np.array(idx_val, dtype=object)
-        return np.transpose(idx_val_arr)
-
-    def _arr_to_df(self, arr: np.ndarray) -> pd.DataFrame:
-        """Make dataframe from flat array."""
-        df = pd.DataFrame(np.transpose(arr), columns=["idx", "val"])
-        df = df.set_index("idx")
-        df = df.transpose().reset_index(drop=True)
-        return df
-
-    def _nifti_to_arr(self, nifti_path: str) -> np.ndarray:
-        """Generate flat array of NIfTI voxel values."""
-        img = nib.load(nifti_path)
-        img_data = img.get_fdata()
-        img_flat = self._flatten_array(img_data)
-        return img_flat
-
     def mask_coord(self, mask_path):
         """Identify censoring coordinates from binary brain mask.
 
@@ -225,8 +188,8 @@ class ExtractTaskBetas:
 
         """
         print("\tFinding coordinates to censor ...")
-        img_flat = self._nifti_to_arr(mask_path)
-        df_mask = self._arr_to_df(img_flat)
+        img_flat = self.nifti_to_arr(mask_path)
+        df_mask = self.arr_to_df(img_flat)
         self._rm_cols = df_mask.columns[df_mask.isin([0.0]).any()]
 
     def make_func_matrix(self, subj, sess, task, model_name, decon_path):
@@ -297,15 +260,15 @@ class ExtractTaskBetas:
         # Extract and vectorize voxel betas
         for emo, beta_path in self._beta_dict.items():
             print(f"\t\tExtracting betas for : {emo}")
-            img_arr = self._nifti_to_arr(beta_path)
+            img_arr = self.nifti_to_arr(beta_path)
             info_arr = _id_arr(emo)
             img_arr = np.concatenate((info_arr, img_arr), axis=1)
 
             # Create/update dataframe
             if "df_betas" not in locals() and "df_betas" not in globals():
-                df_betas = self._arr_to_df(img_arr)
+                df_betas = self.arr_to_df(img_arr)
             else:
-                df_tmp = self._arr_to_df(img_arr)
+                df_tmp = self.arr_to_df(img_arr)
                 df_betas = pd.concat(
                     [df_betas, df_tmp], axis=0, ignore_index=True
                 )
@@ -326,68 +289,64 @@ class ExtractTaskBetas:
             os.remove(rm_file)
         return out_path
 
-    def comb_matrices(self, subj_list, model_name, proj_deriv):
-        """Combine participant beta dataframes into master.
 
-        Find beta-coefficient dataframes for participants in subj_list
-        and combine into a single dataframe.
+def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
+    """Combine participant beta dataframes into master.
 
-        Output dataframe is written to:
-            <out_dir>/afni_<model_name>_betas.tsv
+    Find beta-coefficient dataframes for participants in subj_list
+    and combine into a single dataframe.
 
-        Parameters
-        ----------
-        subj_list : list
-            Participants to include in final dataframe
-        model_name : str
-            Model identifier for deconvolution
-        proj_deriv : path
-            Location of project derivatives, will search for dataframes
-            in <proj_deriv>/model_afni/sub-*.
+    Output dataframe is written to:
+        <out_dir>/afni_<model_name>_betas.tsv
 
-        Returns
-        -------
-        path
-            Location of output dataframe
+    Parameters
+    ----------
+    subj_list : list
+        Participants to include in final dataframe
+    model_name : str
+        Model identifier for deconvolution
+    proj_deriv : path
+        Location of project derivatives, will search for dataframes
+        in <proj_deriv>/model_afni/sub-*.
 
-        Raises
-        ------
-        ValueError
-            Missing participant dataframes
+    Returns
+    -------
+    path
+        Location of output dataframe
 
-        """
-        print("\tCombining participant beta tsv files ...")
+    Raises
+    ------
+    ValueError
+        Missing participant dataframes
 
-        # Find desired dataframes
-        df_list = sorted(
-            glob.glob(
-                f"{proj_deriv}/model_afni/**/*desc-{model_name}_betas.tsv",
-                recursive=True,
-            )
+    """
+    print("\tCombining participant beta tsv files ...")
+
+    # Find desired dataframes
+    df_list = sorted(
+        glob.glob(
+            f"{proj_deriv}/model_afni/**/*desc-{model_name}_betas.tsv",
+            recursive=True,
         )
-        if not df_list:
-            raise ValueError("No subject beta-coefficient dataframes found.")
-        beta_list = [
-            x
-            for x in df_list
-            if os.path.basename(x).split("_")[0] in subj_list
-        ]
+    )
+    if not df_list:
+        raise ValueError("No subject beta-coefficient dataframes found.")
+    beta_list = [
+        x for x in df_list if os.path.basename(x).split("_")[0] in subj_list
+    ]
 
-        # Combine dataframes and write out
-        for beta_path in beta_list:
-            print(f"\t\tAdding {beta_path} ...")
-            if (
-                "df_betas_all" not in locals()
-                and "df_betas_all" not in globals()
-            ):
-                df_betas_all = pd.read_csv(beta_path, sep="\t")
-            else:
-                df_tmp = pd.read_csv(beta_path, sep="\t")
-                df_betas_all = pd.concat(
-                    [df_betas_all, df_tmp], axis=0, ignore_index=True
-                )
+    # Combine dataframes and write out
+    for beta_path in beta_list:
+        print(f"\t\tAdding {beta_path} ...")
+        if "df_betas_all" not in locals() and "df_betas_all" not in globals():
+            df_betas_all = pd.read_csv(beta_path, sep="\t")
+        else:
+            df_tmp = pd.read_csv(beta_path, sep="\t")
+            df_betas_all = pd.concat(
+                [df_betas_all, df_tmp], axis=0, ignore_index=True
+            )
 
-        out_path = os.path.join(self.out_dir, f"afni_{model_name}_betas.tsv")
-        df_betas_all.to_csv(out_path, index=False, sep="\t")
-        print(f"\tWrote : {out_path}")
-        return out_path
+    out_path = os.path.join(out_dir, f"afni_{model_name}_betas.tsv")
+    df_betas_all.to_csv(out_path, index=False, sep="\t")
+    print(f"\tWrote : {out_path}")
+    return out_path

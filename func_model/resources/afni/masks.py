@@ -355,12 +355,12 @@ class MakeMasks:
         return out_path
 
 
-def group_mask(proj_deriv, subj_list, out_dir):
+def group_mask(proj_deriv, subj_list, model_name, out_dir):
     """Generate a group intersection mask.
 
     Make a union mask of all participant intersection masks. Output
     file is written to:
-        <out_dir>/group_intersection_mask.nii.gz
+        <out_dir>/group_<model_name>_intersection_mask.nii.gz
 
     Parameters
     ----------
@@ -368,6 +368,9 @@ def group_mask(proj_deriv, subj_list, out_dir):
         Location of project derivatives directory
     subj_list : list
         Subjects to include in the mask
+    model_name : str
+        [univ]
+        Model identifier of deconvolved file
     out_dir : path
         Desired output location
 
@@ -383,7 +386,9 @@ def group_mask(proj_deriv, subj_list, out_dir):
 
     """
     # Setup output path
-    out_path = os.path.join(out_dir, "group_intersection_mask.nii.gz")
+    out_path = os.path.join(
+        out_dir, f"group_{model_name}_intersection_mask.nii.gz"
+    )
     if os.path.exists(out_path):
         return out_path
 
