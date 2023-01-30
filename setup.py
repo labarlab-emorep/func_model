@@ -13,6 +13,7 @@ setup(
         ]
     },
     install_requires=[
+        "nibabel>=4.0.1",
         "numpy>=1.22.3",
         "pandas>=1.4.4",
         "setuptools>=65.5.0",
