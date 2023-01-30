@@ -3,12 +3,13 @@
 import os
 import glob
 import subprocess
-from func_model import run_pipeline
-from func_model import afni, fsl
+from func_model.resources.afni import helper, run_pipeline
+from func_model.resources.afni import deconvolve, masks, group
+from func_model.resources.fsl import fsl
 
 
 # %%
-def pipeline_afni_task(
+def afni_task(
     subj,
     sess,
     proj_rawdata,
@@ -73,19 +74,20 @@ def pipeline_afni_task(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps
-    sess_func, sess_anat = run_pipeline.afni_preproc(
+    sess_func, sess_anat = run_pipeline.extra_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni
     )
 
     # Generate timing files - find appropriate pipeline for model_name
     pipe_mod = __import__(
-        "func_model.run_pipeline", fromlist=[f"afni_{model_name}_tfs"]
+        "func_model.resources.afni.run_pipeline",
+        fromlist=[f"make_{model_name}_tfs"],
     )
-    tf_pipe = getattr(pipe_mod, f"afni_{model_name}_tfs")
+    tf_pipe = getattr(pipe_mod, f"make_{model_name}_tfs")
     sess_timing = tf_pipe(subj, sess, subj_work, subj_sess_raw)
 
     # Generate deconvolution command
-    write_decon = afni.WriteDecon(
+    write_decon = deconvolve.WriteDecon(
         subj_work,
         proj_deriv,
         sess_func,
@@ -95,7 +97,7 @@ def pipeline_afni_task(
     write_decon.build_decon(model_name, sess_tfs=sess_timing)
 
     # Use decon command to make REMl command, execute REML
-    make_reml = afni.RunReml(
+    make_reml = deconvolve.RunReml(
         subj_work,
         proj_deriv,
         sess_anat,
@@ -111,11 +113,11 @@ def pipeline_afni_task(
     )
 
     # Clean
-    afni.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
+    helper.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
     return (sess_timing, sess_anat, sess_func)
 
 
-def pipeline_afni_rest(
+def afni_rest(
     subj,
     sess,
     proj_rawdata,
@@ -182,10 +184,10 @@ def pipeline_afni_rest(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps, generate deconvolution command
-    sess_func, sess_anat = run_pipeline.afni_preproc(
+    sess_func, sess_anat = run_pipeline.extra_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
     )
-    write_decon = afni.WriteDecon(
+    write_decon = deconvolve.WriteDecon(
         subj_work,
         proj_deriv,
         sess_func,
@@ -195,7 +197,7 @@ def pipeline_afni_rest(
     write_decon.build_decon(model_name)
 
     # Project regression matrix
-    proj_reg = afni.ProjectRest(
+    proj_reg = deconvolve.ProjectRest(
         subj, sess, subj_work, proj_deriv, sing_afni, log_dir
     )
     proj_reg.gen_xmatrix(write_decon.decon_cmd, write_decon.decon_name)
@@ -208,12 +210,12 @@ def pipeline_afni_rest(
 
     # Seed (sanity check) and clean
     corr_dict = proj_reg.seed_corr(sess_anat)
-    afni.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
+    helper.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
     return (corr_dict, sess_anat, sess_func)
 
 
 # %%
-def pipeline_afni_extract(
+def afni_extract(
     proj_dir, subj_list, model_name, group_mask=True, comb_all=True
 ):
     """Extract sub-brick betas and generate dataframe.
@@ -260,11 +262,11 @@ def pipeline_afni_extract(
         os.makedirs(out_dir)
 
     # Initialize beta extraction
-    get_betas = afni.ExtractTaskBetas(proj_dir, out_dir)
+    get_betas = group.ExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
     if group_mask:
-        mask_path = afni.group_mask(proj_deriv, subj_list, out_dir)
+        mask_path = masks.group_mask(proj_deriv, subj_list, out_dir)
         get_betas.mask_coord(mask_path)
 
     # Make beta dataframe for each subject
@@ -292,11 +294,11 @@ def pipeline_afni_extract(
 
     # Combine all participant dataframes
     if comb_all:
-        _ = get_betas.comb_matrices(subj_list, model_name, proj_deriv)
+        _ = group.comb_matrices(subj_list, model_name, proj_deriv, out_dir)
 
 
 # %%
-def pipeline_fsl_task(
+def fsl_task(
     subj,
     sess,
     proj_rawdata,

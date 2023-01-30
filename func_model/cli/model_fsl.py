@@ -16,7 +16,7 @@ import glob
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import submit
+from func_model.resources.general import submit
 
 
 # %%

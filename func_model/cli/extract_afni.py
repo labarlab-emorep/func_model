@@ -28,7 +28,7 @@ import sys
 import glob
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import workflow
+from func_model import workflows
 
 
 # %%
@@ -109,7 +109,7 @@ def main():
         )
         subj_all = sorted(glob.glob(f"{proj_deriv}/sub-*"))
         subj_list = [os.path.basename(x) for x in subj_all]
-    workflow.pipeline_afni_extract(proj_dir, subj_list, model_name)
+    workflows.afni_extract(proj_dir, subj_list, model_name)
 
 
 if __name__ == "__main__":

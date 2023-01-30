@@ -30,8 +30,8 @@ import glob
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import submit
-from func_model import afni
+from func_model.resources.general import submit
+from func_model.resources.afni import helper
 
 
 # %%
@@ -96,7 +96,7 @@ def main():
     model_name = args.model_name
 
     # Check model_name
-    model_valid = afni.valid_models(model_name)
+    model_valid = helper.valid_models(model_name)
     if not model_valid:
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
