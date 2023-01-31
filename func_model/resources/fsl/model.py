@@ -1,17 +1,11 @@
-"""Methods for FSL-based pipelines."""
+"""Modeling methods for FSL-based pipelines."""
 # %%
 import os
+import glob
 import pandas as pd
 import numpy as np
 import importlib.resources as pkg_resources
 from func_model import reference_files
-
-
-# %%
-def make_template(file_name="first_level_design_template"):
-    """Title."""
-    with pkg_resources.open_text(reference_files, file_name) as tf:
-        template_file = tf.readlines()
 
 
 # %%
@@ -416,6 +410,169 @@ def confounds(conf_path, subj_work, na_value="n/a"):
     out_path = os.path.join(out_dir, out_name)
     df_out.to_csv(out_path, index=False, sep="\t", na_rep=na_value)
     return df_out
+
+
+# %%
+class MakeFsf:
+    """Title.
+
+    Desc.
+
+    """
+
+    def __init__(
+        self, subj, sess, task, subj_work, proj_deriv, model_name, model_level
+    ):
+        """Title.
+
+        Desc.
+
+        """
+        if model_name not in ["sep"]:
+            raise ValueError()
+        if model_level not in ["first"]:
+            raise ValueError()
+
+        self.subj = subj
+        self.sess = sess
+        self.task = task
+        self.subj_work = subj_work
+        self.proj_deriv = proj_deriv
+        self.model_name = model_name
+        self.model_level = model_level
+
+    def load_template(self):
+        """Title."""
+
+        def _load_file(file_name: str) -> str:
+            """Return FSF template from resources."""
+            with pkg_resources.open_text(reference_files, file_name) as tf:
+                tp_line = tf.read()
+            return tp_line
+
+        self.tp_line_full = _load_file(
+            f"design_template_level-{self.model_level}_"
+            + f"name-{self.model_name}.fsf"
+        )
+        # self.tp_line_short = _load_file(
+        #     f"design_template_level-{self.model_level}_"
+        #     + f"name-{self.model_name}_short.fsf"
+        # )
+
+    def write_second_fsf(self):
+        """Write second-level FSL FSF design."""
+        pass
+
+    def write_first_fsf(
+        self,
+        run,
+        num_vol,
+        preproc_path,
+        confound_path,
+        use_short,
+    ):
+        """Write first-level FSL FSF design.
+
+        Desc.
+
+        """
+        self.run = run
+        self.use_short = use_short
+
+        #
+        _pp_ext = preproc_path.split(".")[-1]
+        if _pp_ext == "gz":
+            pp_file = preproc_path[:-7]
+        elif _pp_ext == "nii":
+            pp_file = preproc_path[:-4]
+
+        #
+        self.field_switch = {
+            "[[subj]]": self.subj,
+            "[[sess]]": self.sess,
+            "[[task]]": self.task,
+            "[[run]]": run,
+            "[[num_vol]]": f"{num_vol}",
+            "[[preproc_path]]": pp_file,
+            "[[conf_path]]": confound_path,
+            "[[subj_work]]": self.subj_work,
+            "[[deriv_dir]]": self.proj_deriv,
+        }
+
+        #
+        write_meth = getattr(self, f"_write_first_{self.model_name}")
+        write_meth()
+
+    def _stim_replay_switch(self):
+        """Title."""
+
+        def _get_desc(file_name: str) -> str:
+            """Return description field from condition filename."""
+            try:
+                _su, _se, _ta, _ru, desc, _su = file_name.split("_")
+            except IndexError:
+                raise ValueError(
+                    "Improperly formatted file name for condition file."
+                )
+            return desc.split("-")[-1]
+
+        def _stim_replay(stim_emo: list, rep_emo: list) -> dict:
+            """Return replacement dict for stim, replay events."""
+            stim_dict = {}
+            replay_dict = {}
+            cnt = 1
+            for stim_path, rep_path in zip(stim_emo, rep_emo):
+                desc_stim = _get_desc(os.path.basename(stim_path))
+                stim_dict[f"[[stim_emo{cnt}_name]]"] = desc_stim
+                stim_dict[f"[[stim_emo{cnt}_path]]"] = stim_path
+
+                desc_rep = _get_desc(os.path.basename(rep_path))
+                replay_dict[f"[[rep_emo{cnt}_name]]"] = desc_rep
+                replay_dict[f"[[rep_emo{cnt}_path]]"] = rep_path
+                cnt += 1
+            stim_dict.update(replay_dict)
+            return stim_dict
+
+        #
+        stim_emo = sorted(
+            glob.glob(
+                f"{self.subj_work}/condition_files/*{self.run}_"
+                + "desc-stim*_events.txt"
+            )
+        )
+        rep_emo = sorted(
+            glob.glob(
+                f"{self.subj_work}/condition_files/*{self.run}_"
+                + "desc-repl*_events.txt"
+            )
+        )
+        emo_dict = _stim_replay(stim_emo, rep_emo)
+        self.field_switch.update(emo_dict)
+
+    def _write_first_sep(self):
+        """Title."""
+
+        # Update field_switch
+        self._stim_replay_switch()
+
+        #
+        if self.use_short:
+            fsf_edit = self.tp_line_short
+        else:
+            fsf_edit = self.tp_line_full
+        for old, new in self.field_switch.items():
+            fsf_edit = fsf_edit.replace(old, new)
+
+        #
+        out_dir = os.path.join(
+            self.subj_work,
+            f"{self.run}_level-{self.model_level}_name-{self.model_name}",
+        )
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        out_path = os.path.join(out_dir, "design.fsf")
+        with open(out_path, "w") as tf:
+            tf.write(fsf_edit)
 
 
 # %%
