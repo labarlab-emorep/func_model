@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import importlib.resources as pkg_resources
 from func_model import reference_files
+from func_model.resources.general import submit
 
 
 # %%
@@ -413,36 +414,50 @@ def confounds(conf_path, subj_work, na_value="n/a"):
 
 
 # %%
-class MakeFsf:
+class MakeFirstFsf:
     """Title.
 
     Desc.
 
+    Attributes
+    ----------
+    write_fsf
+
     """
 
-    def __init__(
-        self, subj, sess, task, subj_work, proj_deriv, model_name, model_level
-    ):
-        """Title.
+    def __init__(self, subj_work, proj_deriv, model_name, model_level):
+        """Initialize.
 
-        Desc.
+        Parameters
+        ----------
+        subj_work
+        proj_deriv
+        model_name
+        model_level
 
         """
         if model_name not in ["sep"]:
-            raise ValueError()
-        if model_level not in ["first"]:
-            raise ValueError()
+            raise ValueError(f"Unexpected value for model_name : {model_name}")
+        if model_level != "first":
+            raise ValueError(
+                f"Unexpected value for model_level : {model_level}"
+            )
 
-        self.subj = subj
-        self.sess = sess
-        self.task = task
-        self.subj_work = subj_work
-        self.proj_deriv = proj_deriv
-        self.model_name = model_name
-        self.model_level = model_level
+        self._subj_work = subj_work
+        self._proj_deriv = proj_deriv
+        self._model_name = model_name
+        self._model_level = model_level
+        self._load_templates()
 
-    def load_template(self):
-        """Title."""
+    def _load_templates(self):
+        """Load full and short FSF templates.
+
+        Attributes
+        ----------
+        _tp_full
+        _tp_short
+
+        """
 
         def _load_file(file_name: str) -> str:
             """Return FSF template from resources."""
@@ -450,61 +465,76 @@ class MakeFsf:
                 tp_line = tf.read()
             return tp_line
 
-        self.tp_line_full = _load_file(
-            f"design_template_level-{self.model_level}_"
-            + f"name-{self.model_name}.fsf"
+        self._tp_full = _load_file(
+            f"design_template_level-{self._model_level}_"
+            + f"name-{self._model_name}_desc-full.fsf"
         )
-        # self.tp_line_short = _load_file(
-        #     f"design_template_level-{self.model_level}_"
-        #     + f"name-{self.model_name}_short.fsf"
-        # )
+        self._tp_short = _load_file(
+            f"design_template_level-{self._model_level}_"
+            + f"name-{self._model_name}_desc-short.fsf"
+        )
 
-    def write_second_fsf(self):
-        """Write second-level FSL FSF design."""
-        pass
-
-    def write_first_fsf(
+    def write_fsf(
         self,
         run,
         num_vol,
         preproc_path,
         confound_path,
+        judge_path,
+        wash_path,
+        emosel_path,
+        emoint_path,
         use_short,
     ):
-        """Write first-level FSL FSF design.
+        """Write first-level FSF design.
 
         Desc.
 
+        Parameters
+        ----------
+        run
+        num_vol
+        preproc_path
+        confound_path
+        use_short
+
+        Attributes
+        ----------
+        _field_switch
+
+        Returns
+        -------
+        path
+
         """
-        self.run = run
-        self.use_short = use_short
+        self._run = run
+        self._use_short = use_short
 
         #
         _pp_ext = preproc_path.split(".")[-1]
-        if _pp_ext == "gz":
-            pp_file = preproc_path[:-7]
-        elif _pp_ext == "nii":
-            pp_file = preproc_path[:-4]
+        pp_file = preproc_path[:-7] if _pp_ext == "gz" else preproc_path[:-4]
 
         #
-        self.field_switch = {
-            "[[subj]]": self.subj,
-            "[[sess]]": self.sess,
-            "[[task]]": self.task,
+        self._field_switch = {
             "[[run]]": run,
             "[[num_vol]]": f"{num_vol}",
             "[[preproc_path]]": pp_file,
             "[[conf_path]]": confound_path,
-            "[[subj_work]]": self.subj_work,
-            "[[deriv_dir]]": self.proj_deriv,
+            "[[judge_path]]": judge_path,
+            "[[wash_path]]": wash_path,
+            "[[emosel_path]]": emosel_path,
+            "[[emoint_path]]": emoint_path,
+            "[[subj_work]]": self._subj_work,
+            "[[deriv_dir]]": self._proj_deriv,
         }
 
         #
-        write_meth = getattr(self, f"_write_first_{self.model_name}")
-        write_meth()
+        write_meth = getattr(self, f"_write_first_{self._model_name}")
+        fsf_path = write_meth()
+        return fsf_path
 
     def _stim_replay_switch(self):
-        """Title."""
+        """Update _field_switch for model sep."""
 
         def _get_desc(file_name: str) -> str:
             """Return description field from condition filename."""
@@ -536,43 +566,79 @@ class MakeFsf:
         #
         stim_emo = sorted(
             glob.glob(
-                f"{self.subj_work}/condition_files/*{self.run}_"
+                f"{self._subj_work}/condition_files/*{self._run}_"
                 + "desc-stim*_events.txt"
             )
         )
+        if not stim_emo:
+            raise ValueError("Failed to find stimEmo events.")
         rep_emo = sorted(
             glob.glob(
-                f"{self.subj_work}/condition_files/*{self.run}_"
+                f"{self._subj_work}/condition_files/*{self._run}_"
                 + "desc-repl*_events.txt"
             )
         )
+        if not rep_emo:
+            raise ValueError("Failed to find repEmo events.")
+
+        #
         emo_dict = _stim_replay(stim_emo, rep_emo)
-        self.field_switch.update(emo_dict)
+        self._field_switch.update(emo_dict)
 
     def _write_first_sep(self):
-        """Title."""
+        """Make first-level FSF for model sep.
+
+        Returns
+        -------
+        path
+
+        """
 
         # Update field_switch
         self._stim_replay_switch()
 
         #
-        if self.use_short:
-            fsf_edit = self.tp_line_short
+        if self._use_short:
+            fsf_edit = self._tp_short
         else:
-            fsf_edit = self.tp_line_full
-        for old, new in self.field_switch.items():
+            fsf_edit = self._tp_full
+        for old, new in self._field_switch.items():
             fsf_edit = fsf_edit.replace(old, new)
 
         #
         out_dir = os.path.join(
-            self.subj_work,
-            f"{self.run}_level-{self.model_level}_name-{self.model_name}",
+            self._subj_work,
+            f"{self._run}_level-{self._model_level}_name-{self._model_name}",
         )
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
         out_path = os.path.join(out_dir, "design.fsf")
         with open(out_path, "w") as tf:
             tf.write(fsf_edit)
+        return out_path
+
+
+# %%
+def run_feat(fsf_path, subj, sess, log_dir):
+    """Title."""
+    # check for output file
+    out_dir = os.path.dirname(fsf_path)
+    out_path = os.path.join(out_dir, "report.html")
+    if os.path.exists(out_path):
+        return
+
+    #
+    job_name = subj[-4:] + "s" + sess[-1] + "feat"
+    _, _ = submit.submit_sbatch(
+        f"feat {fsf_path}",
+        job_name,
+        log_dir,
+        num_hours=4,
+        num_cpus=4,
+        mem_gig=8,
+    )
+    if not os.path.exists(out_path):
+        raise FileNotFoundError(f"Failed to find feat output : {out_path}")
 
 
 # %%

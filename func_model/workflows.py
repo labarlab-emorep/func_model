@@ -329,6 +329,17 @@ def fsl_task_first(
     Desc.
 
     """
+
+    def _get_task() -> str:
+        """Validate and return task field from events file."""
+        search_path = os.path.join(proj_rawdata, subj, sess, "func")
+        event_path = glob.glob(f"{search_path}/*events.tsv")[0]
+        event_file = os.path.basename(event_path)
+        _task = event_file.split("task-")[-1].split("_")[0]
+        if _task not in ["movies", "scenarios"]:
+            raise ValueError(f"Unexpected task name : {_task}")
+        return f"task-{_task}"
+
     # check model_namel, session
     if model_name != "sep":
         raise ValueError(f"Unexpected model name : {model_name}")
@@ -345,22 +356,23 @@ def fsl_task_first(
         os.makedirs(subj_work)
 
     # Make condition and confound files
-    make_reg = fsl.wrap.MakeCondConf(subj, sess, subj_work)
-    task = make_reg.make_condition(model_name, proj_rawdata)
-    make_reg.make_confound(task, proj_deriv)
+    task = _get_task()
+    fsl.wrap.make_condition_files(
+        subj, sess, task, model_name, subj_work, proj_rawdata
+    )
+    fsl.wrap.make_confound_files(subj, sess, task, subj_work, proj_deriv)
 
     # Write design.fsf files
-    fsl.wrap.write_fsf(
+    fsf_list = fsl.wrap.write_first_fsf(
         subj, sess, task, model_name, model_level, subj_work, proj_deriv
     )
 
-    # clean up
-    return
-    cp_dir = os.path.join(work_deriv, f"model_fsl-{model_name}", subj)
-    final_dir = os.path.join(proj_deriv, "model_fsl")
-    h_sp = subprocess.Popen(
-        f"cp -r {cp_dir} {final_dir}", shell=True, stdout=subprocess.PIPE
-    )
-    _ = h_sp.communicate()
-    h_sp.wait()
-    shutil.rmtree(cp_dir)
+    #
+    for fsf_path in fsf_list:
+        fsl.model.run_feat(fsf_path, subj, sess, log_dir)
+
+
+# %%
+def fsl_rest_first():
+    """Title."""
+    pass

@@ -219,7 +219,14 @@ def schedule_fsl(
 
     Parameters
     ----------
-
+    subj
+    sess
+    proj_rawdata
+    proj_deriv
+    work_deriv
+    model_name
+    model_level
+    log_dir
 
     Returns
     -------
@@ -228,15 +235,19 @@ def schedule_fsl(
         [1] subprocess stderr
 
     """
-    # Setup software derivatives dirs, for working
-    work_fsl = os.path.join(work_deriv, f"model_fsl-{model_name}")
-    if not os.path.exists(work_fsl):
-        os.makedirs(work_fsl)
+    # Validate model_name/level
+    # TODO update for other model names, levels
+    if model_name not in ["sep"]:
+        raise ValueError(f"Unexpected value for model_name : {model_name}")
+    if model_level not in ["first"]:
+        raise ValueError(f"Unexpected value for model_level: {model_level}")
 
-    # Setup software derivatives dirs, for storage
-    proj_fsl = os.path.join(proj_deriv, "model_fsl")
-    if not os.path.exists(proj_fsl):
-        os.makedirs(proj_fsl)
+    # Determine workflow method
+    wf_meth = (
+        f"fsl_rest_{model_level}"
+        if model_name == "rest"
+        else f"fsl_task_{model_level}"
+    )
 
     # Write parent python script
     subj_short = subj[6:]
@@ -246,14 +257,14 @@ def schedule_fsl(
 
         #SBATCH --job-name=p{subj_short}s{sess_short}
         #SBATCH --output={log_dir}/par{subj_short}s{sess_short}.txt
-        #SBATCH --time=10:00:00
+        #SBATCH --time=20:00:00
         #SBATCH --mem=8000
 
         import os
         import sys
         from func_model import workflows
 
-        _, _, _ = workflows.fsl_task(
+        _, _, _ = workflows.{wf_meth}(
             "{subj}",
             "{sess}",
             "{model_name}",
@@ -279,5 +290,5 @@ def schedule_fsl(
         stdout=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
-    print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")
+    print(f"{h_out.decode('utf-8')}\tfor {subj}, {sess}")
     return (h_out, h_err)

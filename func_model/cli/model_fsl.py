@@ -53,7 +53,7 @@ def _get_args():
         default="sep",
         help=textwrap.dedent(
             """\
-            [sep]
+            [sep | rest]
             FSL model name, for triggering different workflows
             (default : %(default)s)
             """
@@ -62,7 +62,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",
+        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
         help=textwrap.dedent(
             """\
             Path to BIDS-formatted project directory
@@ -138,13 +138,19 @@ def main():
         os.makedirs(log_dir)
 
     # Submit jobs for each participant, session
-    deriv_dir = os.path.join(
-        proj_deriv, "derivatives/pre_processing", "fsl_denoise"
-    )
     for subj in subj_list:
         for sess in ["ses-day2", "ses-day3"]:
-            if not os.path.exists(f"{deriv_dir}/{subj}/{sess}"):
+
+            # Check for preprocessed data
+            subj_deriv = os.path.join(
+                proj_deriv, "pre_processing", "fsl_denoise", subj, sess, "func"
+            )
+            fsl_pp = glob.glob(f"{subj_deriv}/*tfiltMasked_bold.nii.gz")
+            if not fsl_pp:
+                print(f"No preprocessed files detected for {subj}, {sess}")
                 continue
+
+            # Schedule work
             _, _ = submit.schedule_fsl(
                 subj,
                 sess,
@@ -152,6 +158,7 @@ def main():
                 proj_deriv,
                 work_deriv,
                 model_name,
+                model_level,
                 log_dir,
             )
             time.sleep(3)
