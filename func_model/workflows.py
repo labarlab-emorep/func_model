@@ -329,17 +329,6 @@ def fsl_task_first(
     Desc.
 
     """
-
-    def _get_task() -> str:
-        """Validate and return task field from events file."""
-        search_path = os.path.join(proj_rawdata, subj, sess, "func")
-        event_path = glob.glob(f"{search_path}/*events.tsv")[0]
-        event_file = os.path.basename(event_path)
-        _task = event_file.split("task-")[-1].split("_")[0]
-        if _task not in ["movies", "scenarios"]:
-            raise ValueError(f"Unexpected task name : {_task}")
-        return f"task-{_task}"
-
     # check model_namel, session
     if model_name != "sep":
         raise ValueError(f"Unexpected model name : {model_name}")
@@ -352,24 +341,43 @@ def fsl_task_first(
     subj_work = os.path.join(
         work_deriv, f"model_fsl-{model_name}", subj, sess, "func"
     )
-    if not os.path.exists(subj_work):
-        os.makedirs(subj_work)
+    subj_final = os.path.join(proj_deriv, "model_fsl", subj)
+    for _dir in [subj_work, subj_final]:
+        if not os.path.exists(_dir):
+            os.makedirs(_dir)
 
-    # Make condition and confound files
-    task = _get_task()
+    # Determine and check task name
+    search_path = os.path.join(proj_rawdata, subj, sess, "func")
+    event_path = glob.glob(f"{search_path}/*events.tsv")[0]
+    event_file = os.path.basename(event_path)
+    _task = event_file.split("task-")[-1].split("_")[0]
+    if _task not in ["movies", "scenarios"]:
+        raise ValueError(f"Unexpected task name : {_task}")
+    task = "task-" + _task
+
+    # Make condition, confound, and design files
     fsl.wrap.make_condition_files(
         subj, sess, task, model_name, subj_work, proj_rawdata
     )
     fsl.wrap.make_confound_files(subj, sess, task, subj_work, proj_deriv)
-
-    # Write design.fsf files
     fsf_list = fsl.wrap.write_first_fsf(
         subj, sess, task, model_name, model_level, subj_work, proj_deriv
     )
 
-    #
+    # Run each run model
     for fsf_path in fsf_list:
         fsl.model.run_feat(fsf_path, subj, sess, log_dir)
+
+    # Clean up
+    cp_dir = os.path.dirname(subj_work)
+    bash_cmd = f"cp -r {cp_dir} {subj_final}"
+    h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+    _ = h_sp.communicate()
+    h_sp.wait()
+    chk_save = os.path.join(subj_final, cp_dir)
+    if not os.path.exists(chk_save):
+        raise FileNotFoundError(f"Expected to find {chk_save}")
+    shutil.rmtree(cp_dir)
 
 
 # %%

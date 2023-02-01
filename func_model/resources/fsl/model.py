@@ -1,7 +1,9 @@
 """Modeling methods for FSL-based pipelines."""
 # %%
 import os
+import time
 import glob
+import shutil
 import pandas as pd
 import numpy as np
 import importlib.resources as pkg_resources
@@ -623,7 +625,7 @@ def run_feat(fsf_path, subj, sess, log_dir):
     """Title."""
     # check for output file
     out_dir = os.path.dirname(fsf_path)
-    out_path = os.path.join(out_dir, "report.html")
+    out_path = os.path.join(f"{out_dir}.feat", "report.html")
     if os.path.exists(out_path):
         return
 
@@ -633,12 +635,15 @@ def run_feat(fsf_path, subj, sess, log_dir):
         f"feat {fsf_path}",
         job_name,
         log_dir,
-        num_hours=4,
         num_cpus=4,
         mem_gig=8,
     )
+    time.sleep(30)
+
+    #
     if not os.path.exists(out_path):
         raise FileNotFoundError(f"Failed to find feat output : {out_path}")
+    shutil.rmtree(out_dir)
 
 
 # %%

@@ -264,10 +264,11 @@ def schedule_fsl(
         import sys
         from func_model import workflows
 
-        _, _, _ = workflows.{wf_meth}(
+        workflows.{wf_meth}(
             "{subj}",
             "{sess}",
             "{model_name}",
+            "{model_level}",
             "{proj_rawdata}",
             "{proj_deriv}",
             "{work_deriv}",
