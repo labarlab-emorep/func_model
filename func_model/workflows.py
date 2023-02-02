@@ -366,7 +366,9 @@ def fsl_task_first(
 
     # Run each run model
     for fsf_path in fsf_list:
-        fsl.model.run_feat(fsf_path, subj, sess, log_dir)
+        fsl.model.run_feat(
+            fsf_path, subj, sess, model_name, model_level, log_dir
+        )
 
     # Clean up
     cp_dir = os.path.dirname(subj_work)

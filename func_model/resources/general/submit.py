@@ -257,7 +257,7 @@ def schedule_fsl(
 
         #SBATCH --job-name=p{subj_short}s{sess_short}
         #SBATCH --output={log_dir}/par{subj_short}s{sess_short}.txt
-        #SBATCH --time=20:00:00
+        #SBATCH --time=30:00:00
         #SBATCH --mem=8000
 
         import os

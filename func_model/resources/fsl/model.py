@@ -600,32 +600,32 @@ class MakeFirstFsf:
         self._stim_replay_switch()
 
         #
-        if self._use_short:
-            fsf_edit = self._tp_short
-        else:
-            fsf_edit = self._tp_full
+        fsf_edit = self._tp_short if self._use_short else self._tp_full
         for old, new in self._field_switch.items():
             fsf_edit = fsf_edit.replace(old, new)
 
         #
-        out_dir = os.path.join(
-            self._subj_work,
-            f"{self._run}_level-{self._model_level}_name-{self._model_name}",
-        )
+        out_dir = os.path.join(self._subj_work, "design_files")
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
-        out_path = os.path.join(out_dir, "design.fsf")
+        out_path = os.path.join(out_dir, f"{self._run}_design.fsf")
         with open(out_path, "w") as tf:
             tf.write(fsf_edit)
         return out_path
 
 
 # %%
-def run_feat(fsf_path, subj, sess, log_dir):
+def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
     """Title."""
     # check for output file
-    out_dir = os.path.dirname(fsf_path)
-    out_path = os.path.join(f"{out_dir}.feat", "report.html")
+    fsf_file = os.path.basename(fsf_path)
+    run = fsf_file.split("_")[0]
+    out_dir = os.path.dirname(os.path.dirname(fsf_path))
+    out_path = os.path.join(
+        out_dir,
+        f"{run}_level-{model_level}_name-{model_name}.feat",
+        "report.html",
+    )
     if os.path.exists(out_path):
         return
 
@@ -635,6 +635,7 @@ def run_feat(fsf_path, subj, sess, log_dir):
         f"feat {fsf_path}",
         job_name,
         log_dir,
+        num_hours=4,
         num_cpus=4,
         mem_gig=8,
     )
@@ -643,7 +644,6 @@ def run_feat(fsf_path, subj, sess, log_dir):
     #
     if not os.path.exists(out_path):
         raise FileNotFoundError(f"Failed to find feat output : {out_path}")
-    shutil.rmtree(out_dir)
 
 
 # %%
