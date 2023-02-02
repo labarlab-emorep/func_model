@@ -3,12 +3,10 @@
 import os
 import time
 import glob
-import shutil
 import pandas as pd
 import numpy as np
-import importlib.resources as pkg_resources
-from func_model import reference_files
 from func_model.resources.general import submit
+from func_model.resources import fsl
 
 
 # %%
@@ -64,7 +62,7 @@ class ConditionFiles:
         """
         if len(sess_events) < 1:
             raise ValueError("Cannot make timing files from 0 events.tsv")
-        if task not in ["task-movies", "task-scenarios"]:
+        if not fsl.helper.valid_task(task):
             raise ValueError(f"Uncexpected task name : {task}")
 
         # Set attributes, make output location, make dataframe
@@ -417,62 +415,64 @@ def confounds(conf_path, subj_work, na_value="n/a"):
 
 # %%
 class MakeFirstFsf:
-    """Title.
+    """Generate first-level design FSF files for FSL modelling.
 
-    Desc.
+    Use pre-generated template FSF files to write run-specific
+    first-level design FSF files for planned models.
+
+    Design files are written to:
+        <subj_work>/design_files/<run>_level-first_name-<model_name>.fsf
 
     Attributes
     ----------
     write_fsf
+        Find appropriate method for model name, write run design.fsf
+
+    Example
+    -------
+    make_fsf = model.MakeFirstFsf(**args)
+    for run in [list, of, run, files]:
+        fsf_path = make_fsf.write_fsf(**args)
 
     """
 
-    def __init__(self, subj_work, proj_deriv, model_name, model_level):
+    def __init__(self, subj_work, proj_deriv, model_name):
         """Initialize.
+
+        Read-in long and short templates.
 
         Parameters
         ----------
-        subj_work
-        proj_deriv
-        model_name
-        model_level
+        subj_work : path
+            Output work location for intermediates
+        proj_deriv : path
+            Location of project deriviatives directory
+        model_name : str
+            FSL model name, specifies template selection from
+            func_model.reference_files.
+
+        Raises
+        ------
+        ValueError
+            Inappropriate model name or level
 
         """
-        if model_name not in ["sep"]:
+        if not fsl.helper.valid_name(model_name):
             raise ValueError(f"Unexpected value for model_name : {model_name}")
-        if model_level != "first":
-            raise ValueError(
-                f"Unexpected value for model_level : {model_level}"
-            )
 
         self._subj_work = subj_work
         self._proj_deriv = proj_deriv
         self._model_name = model_name
-        self._model_level = model_level
         self._load_templates()
 
     def _load_templates(self):
-        """Load full and short FSF templates.
-
-        Attributes
-        ----------
-        _tp_full
-        _tp_short
-
-        """
-
-        def _load_file(file_name: str) -> str:
-            """Return FSF template from resources."""
-            with pkg_resources.open_text(reference_files, file_name) as tf:
-                tp_line = tf.read()
-            return tp_line
-
-        self._tp_full = _load_file(
-            f"design_template_level-{self._model_level}_"
+        """Load full, short first-level templates as private attributes."""
+        self._tp_full = fsl.helper.load_reference(
+            "design_template_level-first_"
             + f"name-{self._model_name}_desc-full.fsf"
         )
-        self._tp_short = _load_file(
-            f"design_template_level-{self._model_level}_"
+        self._tp_short = fsl.helper.load_reference(
+            "design_template_level-first_"
             + f"name-{self._model_name}_desc-short.fsf"
         )
 
@@ -490,33 +490,81 @@ class MakeFirstFsf:
     ):
         """Write first-level FSF design.
 
-        Desc.
+        Update select fields of template FSF files according to user input.
+        Wrapper method, identifies and executes appropriate private method
+        from model_name.
 
         Parameters
         ----------
-        run
-        num_vol
-        preproc_path
-        confound_path
-        use_short
+        run : str
+            BIDS run identifier
+        num_vol : int, str
+            Number of EPI volumes
+        preproc_path : path
+            Location and name of preprocessed EPI file
+        confound_path : path
+            Location, name of confounds file
+        judge_path : path
+            Location, name of judgment condition file
+        wash_path : path
+            Location, name of washout condition file
+        emosel_path : path
+            Location, name of emotion selection condition file
+        emoint_path : path
+            Location, name of emotion intensity condition file
+        use_short : bool
+            Whether to use short or full template design
 
         Attributes
         ----------
-        _field_switch
+        _field_switch : dict
+            Find (key) and replace (value) strings for building
+            run-specific design FSF from template.
 
         Returns
         -------
         path
+            Location, name of generated design FSF
+
+        Raises
+        ------
+        FileNotFoundError
+            Missing input file (preproc, condition)
+        TypeError
+            Incorrect input type
+        ValueError
+            Unexpected preproc file extension
 
         """
+        # Validate user input
+        for h_path in [
+            preproc_path,
+            confound_path,
+            judge_path,
+            wash_path,
+            emosel_path,
+            emoint_path,
+        ]:
+            if not os.path.exists(h_path):
+                raise FileNotFoundError(f"Missing expected file : {h_path}")
+        if not isinstance(use_short, bool):
+            raise TypeError("Expected use_short as type bool")
+
+        # Set attrs, variables
         self._run = run
         self._use_short = use_short
 
-        #
         _pp_ext = preproc_path.split(".")[-1]
-        pp_file = preproc_path[:-7] if _pp_ext == "gz" else preproc_path[:-4]
+        if _pp_ext == "gz":
+            pp_file = preproc_path[:-7]
+        elif _pp_ext == "nii":
+            pp_file = preproc_path["-4"]
+        else:
+            raise ValueError(
+                "Expected preproc to have .nii or .nii.gz extension."
+            )
 
-        #
+        # Setup replace dictionary
         self._field_switch = {
             "[[run]]": run,
             "[[num_vol]]": f"{num_vol}",
@@ -530,13 +578,25 @@ class MakeFirstFsf:
             "[[deriv_dir]]": self._proj_deriv,
         }
 
-        #
+        # Find, trigger method
         write_meth = getattr(self, f"_write_first_{self._model_name}")
         fsf_path = write_meth()
         return fsf_path
 
     def _stim_replay_switch(self):
-        """Update _field_switch for model sep."""
+        """Update replace dict for model sep.
+
+        Find replay and stimulus emotion condition files for run,
+        update private method _field_switch for model_name == sep
+        specific conditions.
+
+        Raises
+        ------
+        ValueError
+            Unable to find replay or stimulus emotion condition file for run
+            Found unequal number of replay, stimulus condition files
+
+        """
 
         def _get_desc(file_name: str) -> str:
             """Return description field from condition filename."""
@@ -565,7 +625,7 @@ class MakeFirstFsf:
             stim_dict.update(replay_dict)
             return stim_dict
 
-        #
+        # Find stim and replay emotion condition files
         stim_emo = sorted(
             glob.glob(
                 f"{self._subj_work}/condition_files/*{self._run}_"
@@ -582,33 +642,41 @@ class MakeFirstFsf:
         )
         if not rep_emo:
             raise ValueError("Failed to find repEmo events.")
+        if len(stim_emo) != len(rep_emo):
+            raise ValueError("Stimulus, replay lists unequal length")
 
-        #
+        # Update attr
         emo_dict = _stim_replay(stim_emo, rep_emo)
         self._field_switch.update(emo_dict)
 
     def _write_first_sep(self):
         """Make first-level FSF for model sep.
 
+        Write a design FSF by updating fields in the template FSF for
+        model_name == sep. Write out design files to subject working
+        directory.
+
         Returns
         -------
         path
+            Location, name of design FSF file
 
         """
 
-        # Update field_switch
+        # Update field_switch, make design file
         self._stim_replay_switch()
-
-        #
         fsf_edit = self._tp_short if self._use_short else self._tp_full
         for old, new in self._field_switch.items():
             fsf_edit = fsf_edit.replace(old, new)
 
-        #
+        # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
-        out_path = os.path.join(out_dir, f"{self._run}_design.fsf")
+        out_path = os.path.join(
+            out_dir,
+            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
+        )
         with open(out_path, "w") as tf:
             tf.write(fsf_edit)
         return out_path
@@ -616,8 +684,43 @@ class MakeFirstFsf:
 
 # %%
 def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
-    """Title."""
-    # check for output file
+    """Execute FSL's feat.
+
+    Parameters
+    ----------
+    fsf_path : path
+        Location and name of FSL design.fsf
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    model_name : str
+        FSL model name
+    model_level : str
+        FSL model level
+    log_dir : path
+        Output location for log files
+
+    Returns
+    -------
+    path
+        Location of output report.html
+
+    Raises
+    ------
+    FileNotFoundError
+        Missing report.html
+    ValueError
+        Inappropriate model name or level
+
+    """
+    # Validate model_name/level
+    if not fsl.helper.valid_name(model_name):
+        raise ValueError(f"Unexpected value for model_name : {model_name}")
+    if not fsl.helper.valid_level(model_level):
+        raise ValueError(f"Unexpected value for model_level: {model_level}")
+
+    # Setup, avoid repeating work
     fsf_file = os.path.basename(fsf_path)
     run = fsf_file.split("_")[0]
     out_dir = os.path.dirname(os.path.dirname(fsf_path))
@@ -627,9 +730,9 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
         "report.html",
     )
     if os.path.exists(out_path):
-        return
+        return out_path
 
-    #
+    # Schedule feat job
     job_name = subj[-4:] + "s" + sess[-1] + "feat"
     _, _ = submit.submit_sbatch(
         f"feat {fsf_path}",
@@ -641,9 +744,10 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
     )
     time.sleep(30)
 
-    #
+    # Verify output exists
     if not os.path.exists(out_path):
         raise FileNotFoundError(f"Failed to find feat output : {out_path}")
+    return out_path
 
 
 # %%

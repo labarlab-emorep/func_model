@@ -361,12 +361,12 @@ def fsl_task_first(
     )
     fsl.wrap.make_confound_files(subj, sess, task, subj_work, proj_deriv)
     fsf_list = fsl.wrap.write_first_fsf(
-        subj, sess, task, model_name, model_level, subj_work, proj_deriv
+        subj, sess, task, model_name, subj_work, proj_deriv
     )
 
     # Run each run model
     for fsf_path in fsf_list:
-        fsl.model.run_feat(
+        _ = fsl.model.run_feat(
             fsf_path, subj, sess, model_name, model_level, log_dir
         )
 

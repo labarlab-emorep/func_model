@@ -84,9 +84,7 @@ def make_confound_files(subj, sess, task, subj_work, proj_deriv):
         _ = model.confounds(conf_path, subj_work)
 
 
-def write_first_fsf(
-    subj, sess, task, model_name, model_level, subj_work, proj_deriv
-):
+def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
     """Write first-level FSF design files.
 
     Identify required files and wrap fsl.model.MakeFirstFsf.
@@ -97,7 +95,6 @@ def write_first_fsf(
     sess
     task
     model_name
-    model_level
     subj_work
     proj_deriv
 
@@ -139,9 +136,7 @@ def write_first_fsf(
         )
 
     #
-    make_fsf = model.MakeFirstFsf(
-        subj_work, proj_deriv, model_name, model_level
-    )
+    make_fsf = model.MakeFirstFsf(subj_work, proj_deriv, model_name)
     fsf_list = []
     for preproc_path in sess_preproc:
 
