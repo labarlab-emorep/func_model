@@ -1,7 +1,8 @@
 """Methods for mask construction."""
 import os
+import glob
 from func_model.resources.afni import helper
-from func_model.resources.general import submit
+from func_model.resources.general import submit, matrix
 
 
 class MakeMasks:
@@ -419,4 +420,80 @@ def group_mask(proj_deriv, subj_list, model_name, out_dir):
     ]
     bash_cmd = " ".join(bash_list)
     _ = submit.submit_subprocess(bash_cmd, out_path, "Group Mask")
+    return out_path
+
+
+def tpl_gm(out_dir):
+    """Make a gray matter mask from template priors.
+
+    Make a binary gray matter mask from the Harvard-Oxford cortical
+    and subcortical structural atlas. For more information on atlas,
+    see https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/Atlases.
+
+    Writes output to:
+        <out_dir>/tpl_GM_mask.nii.gz
+
+    Parameters
+    ----------
+    out_dir : path
+        Location of output directory
+
+    Returns
+    -------
+    path
+        Location of generated gray matter mask
+
+    Raises
+    ------
+    FileNotFoundError
+        Missing template priors
+
+    Notes
+    -----
+    Requires templateflow configured in environment and the template
+    tpl-MNI152NLin6Asym.
+
+    """
+    # Orient to template priors
+    try:
+        tplflow_dir = os.environ["SINGULARITYENV_TEMPLATEFLOW_HOME"]
+    except KeyError:
+        raise EnvironmentError(
+            "Expected global variable SINGULARITYENV_TEMPLATEFLOW_HOME"
+        )
+    tpl_dseg = os.path.join(
+        tplflow_dir,
+        "tpl-MNI152NLin6Asym",
+        "tpl-MNI152NLin6Asym_res-02_atlas-HOSPA_desc-th25_dseg.nii.gz",
+    )
+    if not os.path.exists(tpl_dseg):
+        raise FileNotFoundError(
+            f"Missing template segmentation profile : {tpl_dseg}"
+        )
+
+    # Avoid repeating work
+    out_name = "tpl_GM_mask"
+    out_path = os.path.join(out_dir, f"{out_name}.nii.gz")
+    if os.path.exists(out_path):
+        return out_path
+
+    # Find WM, CSF labels
+    c3d_meth = matrix.C3dMethods(out_dir)
+    excl_dict = {1: "lwm", 3: "lcsf", 12: "rwm", 14: "rcsf"}
+    excl_list = []
+    for ex_num, ex_name in excl_dict.items():
+        excl_list.append(
+            c3d_meth.thresh(ex_num, ex_num, 1, 0, tpl_dseg, f"tmp_{ex_name}")
+        )
+
+    # Remove WM, CSF from mask, binarize GM
+    excl_comb = c3d_meth.comb(excl_list, "tmp_excl")
+    excl_bin = c3d_meth.thresh(1, 15, 0, 1, excl_comb, "tmp_excl_bin")
+    final_mult = c3d_meth.mult(tpl_dseg, excl_bin, "tmp_final")
+    out_path = c3d_meth.thresh(1, 30, 1, 0, final_mult, out_name)
+
+    # Clean intermediates
+    tmp_list = glob.glob(f"{out_dir}/tmp_*")
+    for tmp_path in tmp_list:
+        os.remove(tmp_path)
     return out_path

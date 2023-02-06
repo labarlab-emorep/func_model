@@ -1,7 +1,9 @@
 """Resource dealing with NIfTI matrices."""
+import os
 import numpy as np
 import pandas as pd
 import nibabel as nib
+from . import submit
 
 
 class NiftiArray:
@@ -60,3 +62,157 @@ class NiftiArray:
         df = df.set_index("idx")
         df = df.transpose().reset_index(drop=True)
         return df
+
+
+class C3dMethods:
+    """Various c3d-based methods to help processing NIfTI files.
+
+    Methods
+    -------
+    thresh
+        Threshold voxels values between a range
+    comb
+        Combine a stack of images by summation
+    mult
+        Multiply to images
+
+    Examples
+    --------
+    c3d_meth = helper.C3dMethods(out_dir)
+    out_thresh = c3d_meth.thresh(1, 3, 1, 0, foo.nii, "binary")
+    out_sum = c3d_meth.comb([foo.nii, bar.nii], "sum")
+    out_mult = c3d_meth.mult(foo.nii bar.nii "multiply)
+
+    """
+
+    def __init__(self, out_dir):
+        """Initialize.
+
+        Parameters
+        ----------
+        out_dir : path
+            Output location
+
+        Raises
+        -------
+        EnvironmentError
+            Missing c3d in PATH
+
+        """
+        self.out_dir = out_dir
+        if "c3d" not in os.environ["PATH"]:
+            raise EnvironmentError("c3d not found in OS PATH")
+
+    def thresh(
+        self,
+        lb,
+        ub,
+        vin,
+        vout,
+        in_file,
+        out_name,
+    ):
+        """Threshold labelled NIfTI.
+
+        Replace values within a range with one value, and values
+        outside of the range with another.
+
+        Writes a file to:
+            <out_dir>/<out_name>.nii.gz
+
+        Parameters
+        ----------
+        lb : int
+            Lower bound
+        ub : int
+            Upper bound
+        vin : int
+            Output value for voxels within range
+            (lb < vox < ub)
+        vout : int
+            Output value for voxels outside range
+            (vox < lb & ub < vox)
+        in_file : path
+            Input nii file
+        out_name : str
+            Output name
+
+        Returns
+        -------
+        path
+            Location of output file
+
+        """
+        out_path = os.path.join(self.out_dir, f"{out_name}.nii.gz")
+        c3d_cmd = f"""
+            c3d \
+                {in_file} \
+                -thresh {lb} {ub} {vin} {vout} \
+                -o {out_path}
+        """
+        submit.submit_subprocess(c3d_cmd, out_path, "Thresh")
+        return out_path
+
+    def comb(self, in_files, out_name):
+        """Combine multiple NIfTI masks.
+
+        Iteratively sum a list of files (masks) to combine
+        all files.
+
+        Writes a file to:
+            <out_dir>/<out_name>.nii.gz
+
+        Parameters
+        ----------
+        in_files : list
+            Paths to multiple masks
+        out_name : str
+            Output name
+
+        Returns
+        -------
+        path
+            Location of output file
+
+        """
+        out_path = os.path.join(self.out_dir, f"{out_name}.nii.gz")
+        in_list = " ".join(in_files)
+        c3d_cmd = f"""
+            c3d \
+                {in_list} \
+                -accum -add -endaccum \
+                -o {out_path}
+        """
+        submit.submit_subprocess(c3d_cmd, out_path, "Combine")
+        return out_path
+
+    def mult(self, in_a, in_b, out_name):
+        """Multiply two NIfTI files.
+
+        Writes a file to:
+            <out_dir>/<out_name>.nii.gz
+
+        Parameters
+        ----------
+        in_a : path
+            Location of file A
+        in_b : path
+            Location of file B
+        out_name : str
+            Output name
+
+        Returns
+        -------
+        path
+            Location of output file
+
+        """
+        out_path = os.path.join(self.out_dir, f"{out_name}.nii.gz")
+        c3d_cmd = f"""
+            c3d \
+                {in_a} {in_b} \
+                -multiply \
+                -o {out_path}
+        """
+        submit.submit_subprocess(c3d_cmd, out_path, "Combine")
+        return out_path

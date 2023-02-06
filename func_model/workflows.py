@@ -229,7 +229,7 @@ def afni_rest(
 
 # %%
 def afni_extract(
-    proj_dir, subj_list, model_name, group_mask=True, comb_all=True
+    proj_dir, subj_list, model_name, group_mask="template", comb_all=True
 ):
     """Extract sub-brick betas and generate dataframe.
 
@@ -252,22 +252,26 @@ def afni_extract(
     model_name : str
         [univ]
         Model identifier of deconvolved file
-    group_mask : bool, optional
-        Whether to generate a group intersection mask and then
-        find coordinates to remove from dataframe
+    group_mask : str, optional
+        [template | intersection]
+        Generate a group-level mask, used to identify and remove
+        voxels of no interest from beta dataframe
     comb_all : bool, optional
-        Combine all participand beta dataframes into an
+        Combine all participant beta dataframes into an
         omnibus one
 
     Raises
     ------
     ValueError
         Unexpected model_name value
+        Unexpected group_mask value
 
     """
     # Validate and setup
     if model_name != "univ":
         raise ValueError("Unexpected model_name")
+    if group_mask not in ["template", "intersection"]:
+        raise ValueError("unexpected group_mask parameter")
     out_dir = os.path.join(proj_dir, "analyses/model_afni")
     proj_deriv = os.path.join(proj_dir, "data_scanner_BIDS", "derivatives")
     if not os.path.exists(out_dir):
@@ -277,9 +281,11 @@ def afni_extract(
     get_betas = afni.group.ExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
-    if group_mask:
+    if group_mask == "template":
+        mask_path = afni.masks.tpl_gm(out_dir)
+    elif group_mask == "intersection":
         mask_path = afni.masks.group_mask(proj_deriv, subj_list, out_dir)
-        get_betas.mask_coord(mask_path)
+    get_betas.mask_coord(mask_path)
 
     # Make beta dataframe for each subject
     for subj in subj_list:
