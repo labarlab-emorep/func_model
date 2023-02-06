@@ -16,6 +16,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Methods
     -------
+    split_decon(emo_name=None)
+        Split deconvolve file into each relevant sub-brick
     mask_coord()
         Find coordinates to censor based on brain mask
     make_func_matrix(subj, sess, task, model_name, decon_path)
@@ -67,12 +69,12 @@ class ExtractTaskBetas(matrix.NiftiArray):
         print(f"\tGetting sub-brick labels for {self.subj}, {self.sess}")
 
         # Extract sub-brick label info
-        out_label = os.path.join(self._subj_out_dir, "tmp_labels.txt")
+        out_label = os.path.join(self.subj_out_dir, "tmp_labels.txt")
         if not os.path.exists(out_label):
             bash_list = [
                 "3dinfo",
                 "-label",
-                self._decon_path,
+                self.decon_path,
                 f"> {out_label}",
             ]
             bash_cmd = " ".join(bash_list)
@@ -92,8 +94,14 @@ class ExtractTaskBetas(matrix.NiftiArray):
         ]
         self._stim_label.sort()
 
-    def _split_decon(self):
+    def split_decon(self, emo_name=None):
         """Split deconvolved files into files by sub-brick.
+
+        Parameters
+        ----------
+        emo_name: str, optional
+            Long name of emotion, for restricting beta extraction
+            to single emotion
 
         Attributes
         ----------
@@ -117,23 +125,25 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
             # Identify emo string, setup file name
             emo_long = emo_switch[sub_label[3:6]]
+            if emo_name and emo_long != emo_name:
+                continue
             out_file = (
                 f"tmp_{self.subj}_{self.sess}_{self.task}_"
                 + f"desc-{emo_long}_beta.nii.gz"
             )
-            out_path = os.path.join(self._subj_out_dir, out_file)
+            out_path = os.path.join(self.subj_out_dir, out_file)
             if os.path.exists(out_path):
                 beta_dict[emo_long] = out_path
                 continue
 
             # Determine sub-brick integer value
             print(f"\t\tExtracting sub-brick for {emo_long}")
-            out_label = os.path.join(self._subj_out_dir, "tmp_label_int.txt")
+            out_label = os.path.join(self.subj_out_dir, "tmp_label_int.txt")
             bash_list = [
                 "3dinfo",
                 "-label2index",
                 sub_label,
-                self._decon_path,
+                self.decon_path,
                 f"> {out_label}",
             ]
             bash_cmd = " ".join(bash_list)
@@ -148,7 +158,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             bash_list = [
                 "3dTcat",
                 f"-prefix {out_path}",
-                f"{self._decon_path}[{label_int}]",
+                f"{self.decon_path}[{label_int}]",
                 "> /dev/null 2>&1",
             ]
             bash_cmd = " ".join(bash_list)
@@ -205,7 +215,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         Attributes
         ----------
-        _subj_out_dir : path
+        subj_out_dir : path
             Location for output files
 
         Returns
@@ -232,17 +242,17 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self.subj = subj
         self.sess = sess
         self.task = task
-        self._decon_path = decon_path
-        self._subj_out_dir = os.path.dirname(decon_path)
+        self.decon_path = decon_path
+        self.subj_out_dir = os.path.dirname(decon_path)
         out_path = os.path.join(
-            self._subj_out_dir,
+            self.subj_out_dir,
             f"{subj}_{sess}_{task}_desc-{model_name}_betas.tsv",
         )
         if os.path.exists(out_path):
             return out_path
 
         # Generate/Get seprated decon behavior files
-        self._split_decon()
+        self.split_decon()
 
         # Extract and vectorize voxel betas
         for emo, beta_path in self._beta_dict.items():
@@ -271,7 +281,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         df_betas.to_csv(out_path, index=False, sep="\t")
         print(f"\t\tWrote : {out_path}")
         del df_betas
-        tmp_list = glob.glob(f"{self._subj_out_dir}/tmp_*")
+        tmp_list = glob.glob(f"{self.subj_out_dir}/tmp_*")
         for rm_file in tmp_list:
             os.remove(rm_file)
         return out_path

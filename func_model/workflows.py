@@ -318,6 +318,51 @@ def afni_extract(
 
 
 # %%
+def afni_univ_ttest(
+    emo_name, model_name, proj_deriv, work_deriv, sing_afni, log_dir
+):
+    """Title.
+
+    Desc.
+
+    Parameters
+    ----------
+
+    """
+    #
+    proj_afni_deriv = os.path.join(proj_deriv, "model_afni")
+    task_subj = sorted(
+        glob.glob(
+            f"{proj_afni_deriv}/**/*_task-{model_name}_"
+            + "desc-intersect_mask.nii.gz",
+            recursive=True,
+        )
+    )
+
+    #
+    subj_paths = {}
+    for file_path in task_subj:
+        decon_path = os.path.join(
+            os.path.dirname(file_path), "decon_univ_stats_REML+tlrc.HEAD"
+        )
+        if os.path.exists(decon_path):
+            subj, sess, task, _desc, _suff = os.path.basename(file_path).split(
+                "_"
+            )
+            subj_paths[subj] = (sess, task, decon_path)
+
+    #
+    split_decon = afni.group.ExtractTaskBetas(proj_deriv)
+    for subj, info_list in subj_paths.items():
+        split_decon.subj = subj
+        split_decon.sess = info_list[0]
+        split_decon.task = info_list[1]
+        split_decon._decon_path = info_list[2]
+        split_decon._subj_out_dir = work_deriv
+        split_decon._split_decon(emo_name=emo_name)
+
+
+# %%
 def fsl_task_first(
     subj,
     sess,
