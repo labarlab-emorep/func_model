@@ -477,9 +477,9 @@ def tpl_gm(out_dir):
     if os.path.exists(out_path):
         return out_path
 
-    # Find WM, CSF labels
+    # Find WM, CSF, brainstem labels
     c3d_meth = matrix.C3dMethods(out_dir)
-    excl_dict = {1: "lwm", 3: "lcsf", 12: "rwm", 14: "rcsf"}
+    excl_dict = {1: "lwm", 3: "lcsf", 12: "rwm", 14: "rcsf", 8: "bs"}
     excl_list = []
     for ex_num, ex_name in excl_dict.items():
         excl_list.append(
