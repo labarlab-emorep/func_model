@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import textwrap
+from func_model.resources import fsl
 
 
 def submit_subprocess(bash_cmd, chk_path, job_name):
@@ -208,17 +209,18 @@ def schedule_afni(
 def schedule_fsl(
     subj,
     sess,
+    model_name,
+    model_level,
     proj_rawdata,
     proj_deriv,
     work_deriv,
-    model_name,
     log_dir,
 ):
     """Write and schedule pipeline.
 
-    Generate a python script that controls preprocessing. Submit
+    Generate a python script that controls FSL FEAT models. Submit
     the work on schedule resources. Writes parent script to:
-        log_dir/run_model-afni_subj_sess.py
+        log_dir/run-fsl_model-<model_name>_level-<model_level>_subj_sess.py
 
     Parameters
     ----------
@@ -226,16 +228,18 @@ def schedule_fsl(
         BIDS subject identifier
     sess : str
         BIDS session identifier
-    proj_rawdata : path
-        Location of BIDS-organized project rawdata
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    work_deriv : path
-        Parent location for writing pipeline intermediates
     model_name : str
-        [task]
-        Desired AFNI model, for triggering different workflows
+        Name of FSL model, for keeping condition files and
+        output organized
+    model_level : str
+        Level of FSL model
+    proj_rawdata : path
+        Location of BIDS rawdata
+    proj_deriv : path
+        Location of project BIDs derivatives, for finding
+        preprocessed output
+    work_deriv : path
+        Output location for intermediates
     log_dir : path
         Output location for log files and scripts
 
@@ -245,34 +249,44 @@ def schedule_fsl(
         [0] subprocess stdout
         [1] subprocess stderr
 
-    """
-    # Setup software derivatives dirs, for working
-    work_fsl = os.path.join(work_deriv, f"model_fsl-{model_name}")
-    if not os.path.exists(work_fsl):
-        os.makedirs(work_fsl)
+    Raises
+    ------
+    ValueError
+        Unexpected argument parameters
 
-    # Setup software derivatives dirs, for storage
-    proj_fsl = os.path.join(proj_deriv, "model_fsl")
-    if not os.path.exists(proj_fsl):
-        os.makedirs(proj_fsl)
+    """
+    if not fsl.helper.valid_name(model_name):
+        raise ValueError(f"Unexpected model name : {model_name}")
+    if not fsl.helper.valid_level(model_level):
+        raise ValueError(f"Unexpected model level : {model_level}")
+
+    # Determine workflow method
+    wf_meth = (
+        f"fsl_rest_{model_level}"
+        if model_name == "rest"
+        else f"fsl_task_{model_level}"
+    )
 
     # Write parent python script
-    wall_time = 20
+    subj_short = subj[6:]
+    sess_short = sess[-1]
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
 
-        #SBATCH --job-name=p{subj[6:]}s{sess[-1]}
-        #SBATCH --output={log_dir}/par{subj[6:]}s{sess[-1]}.txt
-        #SBATCH --time={wall_time}:00:00
+        #SBATCH --job-name=p{subj_short}s{sess_short}
+        #SBATCH --output={log_dir}/par{subj_short}s{sess_short}.txt
+        #SBATCH --time=30:00:00
         #SBATCH --mem=8000
 
         import os
         import sys
         from func_model import workflows
 
-        _, _, _ = workflows.fsl_{model_name}(
+        workflows.{wf_meth}(
             "{subj}",
             "{sess}",
+            "{model_name}",
+            "{model_level}",
             "{proj_rawdata}",
             "{proj_deriv}",
             "{work_deriv}",
@@ -281,7 +295,10 @@ def schedule_fsl(
 
     """
     sbatch_cmd = textwrap.dedent(sbatch_cmd)
-    py_script = f"{log_dir}/run-fsl_model-{model_name}_{subj}_{sess}.py"
+    py_script = (
+        f"{log_dir}/run-fsl_model-{model_name}_"
+        + f"level-{model_level}_{subj}_{sess}.py"
+    )
     with open(py_script, "w") as ps:
         ps.write(sbatch_cmd)
 
@@ -292,14 +309,5 @@ def schedule_fsl(
         stdout=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
-    print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")
+    print(f"{h_out.decode('utf-8')}\tfor {subj}, {sess}")
     return (h_out, h_err)
-
-
-def schedule_afni_extract():
-    """Title.
-
-    Desc.
-
-    """
-    pass

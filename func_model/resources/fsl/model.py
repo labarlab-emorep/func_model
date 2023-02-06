@@ -1,8 +1,12 @@
-"""Methods for FSL-based pipelines."""
+"""Modeling methods for FSL-based pipelines."""
 # %%
 import os
+import time
+import glob
 import pandas as pd
 import numpy as np
+from func_model.resources.general import submit
+from func_model.resources import fsl
 
 
 # %%
@@ -30,6 +34,13 @@ class ConditionFiles:
         Make condition files for common events (judgment, washout, intensity,
         selection)
 
+    Example
+    -------
+    make_cf = model.ConditionFiles(**args)
+    for run_num in make_cf.run_list:
+        make_cf.common_events(run_num)
+        make_cf.session_separate_events(run_num)
+
     """
 
     def __init__(self, subj, sess, task, subj_work, sess_events):
@@ -42,8 +53,7 @@ class ConditionFiles:
         sess : str
             BIDS session identifier
         task : str
-            [movies | scenarios]
-            Task name
+            BIDS task name
         subj_work : path
             Location of working directory for intermediates
         sess_events : list
@@ -59,7 +69,7 @@ class ConditionFiles:
         """
         if len(sess_events) < 1:
             raise ValueError("Cannot make timing files from 0 events.tsv")
-        if task not in ["movies", "scenarios"]:
+        if not fsl.helper.valid_task(task):
             raise ValueError(f"Uncexpected task name : {task}")
 
         # Set attributes, make output location, make dataframe
@@ -108,25 +118,8 @@ class ConditionFiles:
         self._df_events = pd.concat(events_data).reset_index(drop=True)
         self.run_list = [int(x) for x in self._df_events["run"].unique()]
 
-    def _get_run_df(self, run_num):
-        """Extract run data.
-
-        Parameters
-        ----------
-        run_num : int
-            Run number
-
-        Attributes
-        ----------
-        _df_run : pd.DataFrame
-            Run-specific data
-
-        Raises
-        ------
-        TypeError
-            run_num is not int
-
-        """
+    def _get_run_df(self, run_num: int):
+        """Set _df_run attribute for run data."""
         if not isinstance(run_num, int):
             raise TypeError("Expected int type for run_num")
         self._df_run = self._df_events[
@@ -167,7 +160,7 @@ class ConditionFiles:
             {"onset": event_onset, "duration": event_duration, "mod": 1}
         )
         out_name = (
-            f"{self._subj}_{self._sess}_task-{self._task}_run-0{run_num}_"
+            f"{self._subj}_{self._sess}_{self._task}_run-0{run_num}_"
             + f"desc-{event_name}_events.txt"
         )
         out_path = os.path.join(self._subj_cf_dir, out_name)
@@ -208,7 +201,8 @@ class ConditionFiles:
         # being an equal length, an emotion can match in pos_emo_all
         # in order to find the onset and offset indices by following
         # the position in the lists.
-        idx_onset = np.where(self._df_run["trial_type"] == self._task[:-1])[0]
+        task_short = self._task.split("-")[-1]
+        idx_onset = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
         idx_offset = np.where(self._df_run["trial_type"] == "fix")[0]
         idx_emo_all = np.where(self._df_run["emotion"].notnull())[0]
         pos_emo_all = self._df_run.loc[idx_emo_all, "emotion"].tolist()
@@ -272,7 +266,8 @@ class ConditionFiles:
 
         # As in session_combined_events, use list position and index to
         # align replay with the appropriate emotion.
-        idx_stim = np.where(self._df_run["trial_type"] == self._task[:-1])[0]
+        task_short = self._task.split("-")[-1]
+        idx_stim = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
         idx_replay = np.where(self._df_run["trial_type"] == "replay")[0]
         idx_emo_all = np.where(self._df_run["emotion"].notnull())[0]
         pos_emo_all = self._df_run.loc[idx_emo_all, "emotion"].tolist()
@@ -423,6 +418,343 @@ def confounds(conf_path, subj_work, na_value="n/a"):
     out_path = os.path.join(out_dir, out_name)
     df_out.to_csv(out_path, index=False, sep="\t", na_rep=na_value)
     return df_out
+
+
+# %%
+class MakeFirstFsf:
+    """Generate first-level design FSF files for FSL modelling.
+
+    Use pre-generated template FSF files to write run-specific
+    first-level design FSF files for planned models.
+
+    Design files are written to:
+        <subj_work>/design_files/<run>_level-first_name-<model_name>.fsf
+
+    Attributes
+    ----------
+    write_fsf
+        Find appropriate method for model name, write run design.fsf
+
+    Example
+    -------
+    make_fsf = model.MakeFirstFsf(**args)
+    for run in [list, of, run, files]:
+        fsf_path = make_fsf.write_fsf(**args)
+
+    """
+
+    def __init__(self, subj_work, proj_deriv, model_name):
+        """Initialize.
+
+        Read-in long and short templates.
+
+        Parameters
+        ----------
+        subj_work : path
+            Output work location for intermediates
+        proj_deriv : path
+            Location of project deriviatives directory
+        model_name : str
+            FSL model name, specifies template selection from
+            func_model.reference_files.
+
+        Raises
+        ------
+        ValueError
+            Inappropriate model name or level
+
+        """
+        if not fsl.helper.valid_name(model_name):
+            raise ValueError(f"Unexpected value for model_name : {model_name}")
+
+        self._subj_work = subj_work
+        self._proj_deriv = proj_deriv
+        self._model_name = model_name
+        self._load_templates()
+
+    def _load_templates(self):
+        """Load full, short first-level templates as private attributes."""
+        self._tp_full = fsl.helper.load_reference(
+            "design_template_level-first_"
+            + f"name-{self._model_name}_desc-full.fsf"
+        )
+        self._tp_short = fsl.helper.load_reference(
+            "design_template_level-first_"
+            + f"name-{self._model_name}_desc-short.fsf"
+        )
+
+    def write_fsf(
+        self,
+        run,
+        num_vol,
+        preproc_path,
+        confound_path,
+        judge_path,
+        wash_path,
+        emosel_path,
+        emoint_path,
+        use_short,
+    ):
+        """Write first-level FSF design.
+
+        Update select fields of template FSF files according to user input.
+        Wrapper method, identifies and executes appropriate private method
+        from model_name.
+
+        Parameters
+        ----------
+        run : str
+            BIDS run identifier
+        num_vol : int, str
+            Number of EPI volumes
+        preproc_path : path
+            Location and name of preprocessed EPI file
+        confound_path : path
+            Location, name of confounds file
+        judge_path : path
+            Location, name of judgment condition file
+        wash_path : path
+            Location, name of washout condition file
+        emosel_path : path
+            Location, name of emotion selection condition file
+        emoint_path : path
+            Location, name of emotion intensity condition file
+        use_short : bool
+            Whether to use short or full template design
+
+        Attributes
+        ----------
+        _field_switch : dict
+            Find (key) and replace (value) strings for building
+            run-specific design FSF from template.
+
+        Returns
+        -------
+        path
+            Location, name of generated design FSF
+
+        Raises
+        ------
+        FileNotFoundError
+            Missing input file (preproc, condition)
+        TypeError
+            Incorrect input type
+        ValueError
+            Unexpected preproc file extension
+
+        """
+        # Validate user input
+        for h_path in [
+            preproc_path,
+            confound_path,
+            judge_path,
+            wash_path,
+            emosel_path,
+            emoint_path,
+        ]:
+            if not os.path.exists(h_path):
+                raise FileNotFoundError(f"Missing expected file : {h_path}")
+        if not isinstance(use_short, bool):
+            raise TypeError("Expected use_short as type bool")
+
+        # Set attrs, variables
+        self._run = run
+        self._use_short = use_short
+
+        _pp_ext = preproc_path.split(".")[-1]
+        if _pp_ext == "gz":
+            pp_file = preproc_path[:-7]
+        elif _pp_ext == "nii":
+            pp_file = preproc_path["-4"]
+        else:
+            raise ValueError(
+                "Expected preproc to have .nii or .nii.gz extension."
+            )
+
+        # Setup replace dictionary
+        self._field_switch = {
+            "[[run]]": run,
+            "[[num_vol]]": f"{num_vol}",
+            "[[preproc_path]]": pp_file,
+            "[[conf_path]]": confound_path,
+            "[[judge_path]]": judge_path,
+            "[[wash_path]]": wash_path,
+            "[[emosel_path]]": emosel_path,
+            "[[emoint_path]]": emoint_path,
+            "[[subj_work]]": self._subj_work,
+            "[[deriv_dir]]": self._proj_deriv,
+        }
+
+        # Find, trigger method
+        write_meth = getattr(self, f"_write_first_{self._model_name}")
+        fsf_path = write_meth()
+        return fsf_path
+
+    def _stim_replay_switch(self):
+        """Update replace dict for model sep.
+
+        Find replay and stimulus emotion condition files for run,
+        update private method _field_switch for model_name == sep
+        specific conditions.
+
+        Raises
+        ------
+        ValueError
+            Unable to find replay or stimulus emotion condition file for run
+            Found unequal number of replay, stimulus condition files
+
+        """
+
+        def _get_desc(file_name: str) -> str:
+            """Return description field from condition filename."""
+            try:
+                _su, _se, _ta, _ru, desc, _su = file_name.split("_")
+            except IndexError:
+                raise ValueError(
+                    "Improperly formatted file name for condition file."
+                )
+            return desc.split("-")[-1]
+
+        def _stim_replay(stim_emo: list, rep_emo: list) -> dict:
+            """Return replacement dict for stim, replay events."""
+            stim_dict = {}
+            replay_dict = {}
+            cnt = 1
+            for stim_path, rep_path in zip(stim_emo, rep_emo):
+                desc_stim = _get_desc(os.path.basename(stim_path))
+                stim_dict[f"[[stim_emo{cnt}_name]]"] = desc_stim
+                stim_dict[f"[[stim_emo{cnt}_path]]"] = stim_path
+
+                desc_rep = _get_desc(os.path.basename(rep_path))
+                replay_dict[f"[[rep_emo{cnt}_name]]"] = desc_rep
+                replay_dict[f"[[rep_emo{cnt}_path]]"] = rep_path
+                cnt += 1
+            stim_dict.update(replay_dict)
+            return stim_dict
+
+        # Find stim and replay emotion condition files
+        stim_emo = sorted(
+            glob.glob(
+                f"{self._subj_work}/condition_files/*{self._run}_"
+                + "desc-stim*_events.txt"
+            )
+        )
+        if not stim_emo:
+            raise ValueError("Failed to find stimEmo events.")
+        rep_emo = sorted(
+            glob.glob(
+                f"{self._subj_work}/condition_files/*{self._run}_"
+                + "desc-repl*_events.txt"
+            )
+        )
+        if not rep_emo:
+            raise ValueError("Failed to find repEmo events.")
+        if len(stim_emo) != len(rep_emo):
+            raise ValueError("Stimulus, replay lists unequal length")
+
+        # Update attr
+        emo_dict = _stim_replay(stim_emo, rep_emo)
+        self._field_switch.update(emo_dict)
+
+    def _write_first_sep(self):
+        """Make first-level FSF for model sep.
+
+        Write a design FSF by updating fields in the template FSF for
+        model_name == sep. Write out design files to subject working
+        directory.
+
+        Returns
+        -------
+        path
+            Location, name of design FSF file
+
+        """
+
+        # Update field_switch, make design file
+        self._stim_replay_switch()
+        fsf_edit = self._tp_short if self._use_short else self._tp_full
+        for old, new in self._field_switch.items():
+            fsf_edit = fsf_edit.replace(old, new)
+
+        # Write out
+        out_dir = os.path.join(self._subj_work, "design_files")
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        out_path = os.path.join(
+            out_dir,
+            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
+        )
+        with open(out_path, "w") as tf:
+            tf.write(fsf_edit)
+        return out_path
+
+
+# %%
+def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
+    """Execute FSL's feat.
+
+    Parameters
+    ----------
+    fsf_path : path
+        Location and name of FSL design.fsf
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    model_name : str
+        FSL model name
+    model_level : str
+        FSL model level
+    log_dir : path
+        Output location for log files
+
+    Returns
+    -------
+    path
+        Location of output report.html
+
+    Raises
+    ------
+    FileNotFoundError
+        Missing report.html
+    ValueError
+        Inappropriate model name or level
+
+    """
+    # Validate model_name/level
+    if not fsl.helper.valid_name(model_name):
+        raise ValueError(f"Unexpected value for model_name : {model_name}")
+    if not fsl.helper.valid_level(model_level):
+        raise ValueError(f"Unexpected value for model_level: {model_level}")
+
+    # Setup, avoid repeating work
+    fsf_file = os.path.basename(fsf_path)
+    run = fsf_file.split("_")[0]
+    out_dir = os.path.dirname(os.path.dirname(fsf_path))
+    out_path = os.path.join(
+        out_dir,
+        f"{run}_level-{model_level}_name-{model_name}.feat",
+        "report.html",
+    )
+    if os.path.exists(out_path):
+        return out_path
+
+    # Schedule feat job
+    job_name = subj[-4:] + "s" + sess[-1] + "feat"
+    _, _ = submit.submit_sbatch(
+        f"feat {fsf_path}",
+        job_name,
+        log_dir,
+        num_hours=4,
+        num_cpus=4,
+        mem_gig=8,
+    )
+    time.sleep(30)
+
+    # Verify output exists
+    if not os.path.exists(out_path):
+        raise FileNotFoundError(f"Failed to find feat output : {out_path}")
+    return out_path
 
 
 # %%
