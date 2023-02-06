@@ -2,8 +2,6 @@
 # %%
 import os
 import glob
-import subprocess
-import shutil
 from func_model.resources import afni, fsl
 
 
@@ -337,11 +335,11 @@ def fsl_task_first(
         print(f"Directory not detected : {chk_sess}\n\tSkipping.")
         return
 
-    # Setup output location
+    # Setup output locations
     subj_work = os.path.join(
         work_deriv, f"model_fsl-{model_name}", subj, sess, "func"
     )
-    subj_final = os.path.join(proj_deriv, "model_fsl", subj)
+    subj_final = os.path.join(proj_deriv, "model_fsl", subj, sess)
     for _dir in [subj_work, subj_final]:
         if not os.path.exists(_dir):
             os.makedirs(_dir)
@@ -364,25 +362,9 @@ def fsl_task_first(
         subj, sess, task, model_name, subj_work, proj_deriv
     )
 
-    # Run each run model
+    # Execute each run's model
     for fsf_path in fsf_list:
         _ = fsl.model.run_feat(
             fsf_path, subj, sess, model_name, model_level, log_dir
         )
-
-    # Clean up
-    cp_dir = os.path.dirname(subj_work)
-    bash_cmd = f"cp -r {cp_dir} {subj_final}"
-    h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
-    _ = h_sp.communicate()
-    h_sp.wait()
-    chk_save = os.path.join(subj_final, cp_dir)
-    if not os.path.exists(chk_save):
-        raise FileNotFoundError(f"Expected to find {chk_save}")
-    shutil.rmtree(cp_dir)
-
-
-# %%
-def fsl_rest_first():
-    """Title."""
-    pass
+    fsl.helper.clean_up(subj_work, subj_final)
