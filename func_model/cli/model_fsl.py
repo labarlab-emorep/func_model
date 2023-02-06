@@ -27,6 +27,7 @@ import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.resources.general import submit
+from func_model.resources import fsl
 
 
 # %%
@@ -53,7 +54,7 @@ def _get_args():
         default="sep",
         help=textwrap.dedent(
             """\
-            [sep | rest]
+            [sep]
             FSL model name, for triggering different workflows
             (default : %(default)s)
             """
@@ -104,10 +105,10 @@ def main():
     model_level = args.model_level
 
     # Check model_name, model_level
-    if model_name not in ["sep"]:
+    if not fsl.helper.valid_name(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
-    if model_level not in ["first"]:
+    if not fsl.helper.valid_name(model_name):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
 
@@ -154,11 +155,11 @@ def main():
             _, _ = submit.schedule_fsl(
                 subj,
                 sess,
+                model_name,
+                model_level,
                 proj_rawdata,
                 proj_deriv,
                 work_deriv,
-                model_name,
-                model_level,
                 log_dir,
             )
             time.sleep(3)

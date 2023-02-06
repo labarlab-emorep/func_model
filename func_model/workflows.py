@@ -322,14 +322,45 @@ def fsl_task_first(
     work_deriv,
     log_dir,
 ):
-    """Title.
+    """Run an FSL first-level model for task EPI data.
 
-    Desc.
+    Generate required confounds, condition, and design files and then
+    use FSL's FEAT to run a first-level model.
+
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    model_name : str
+        Name of FSL model, for keeping condition files and
+        output organized
+    model_level : str
+        [first]
+        Level of FSL model
+    proj_rawdata : path
+        Location of BIDS rawdata
+    proj_deriv : path
+        Location of project BIDs derivatives, for finding
+        preprocessed output
+    work_deriv : path
+        Output location for intermediates
+    log_dir : path
+        Output location for log files and scripts
+
+    Raises
+    ------
+    ValueError
+        Unexpected parameter values
+        Unexpected task name
 
     """
-    # check model_namel, session
-    if model_name != "sep":
+    # Check arguments, that data exist
+    if not fsl.helper.valid_name(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
+    if model_level != "first":
+        raise ValueError(f"Unexpected model level : {model_level}")
     chk_sess = os.path.join(proj_rawdata, subj, sess)
     if not os.path.exists(chk_sess):
         print(f"Directory not detected : {chk_sess}\n\tSkipping.")
@@ -348,10 +379,9 @@ def fsl_task_first(
     search_path = os.path.join(proj_rawdata, subj, sess, "func")
     event_path = glob.glob(f"{search_path}/*events.tsv")[0]
     event_file = os.path.basename(event_path)
-    _task = event_file.split("task-")[-1].split("_")[0]
-    if _task not in ["movies", "scenarios"]:
-        raise ValueError(f"Unexpected task name : {_task}")
-    task = "task-" + _task
+    task = "task-" + event_file.split("task-")[-1].split("_")[0]
+    if not fsl.helper.valid_task(task):
+        raise ValueError(f"Unexpected task name : {task}")
 
     # Make condition, confound, and design files
     fsl.wrap.make_condition_files(

@@ -34,6 +34,13 @@ class ConditionFiles:
         Make condition files for common events (judgment, washout, intensity,
         selection)
 
+    Example
+    -------
+    make_cf = model.ConditionFiles(**args)
+    for run_num in make_cf.run_list:
+        make_cf.common_events(run_num)
+        make_cf.session_separate_events(run_num)
+
     """
 
     def __init__(self, subj, sess, task, subj_work, sess_events):

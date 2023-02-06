@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import textwrap
+from func_model.resources import fsl
 
 
 def submit_subprocess(bash_cmd, chk_path, job_name):
@@ -208,25 +209,39 @@ def schedule_afni(
 def schedule_fsl(
     subj,
     sess,
+    model_name,
+    model_level,
     proj_rawdata,
     proj_deriv,
     work_deriv,
-    model_name,
-    model_level,
     log_dir,
 ):
-    """Title.
+    """Write and schedule pipeline.
+
+    Generate a python script that controls FSL FEAT models. Submit
+    the work on schedule resources. Writes parent script to:
+        log_dir/run-fsl_model-<model_name>_level-<model_level>_subj_sess.py
 
     Parameters
     ----------
-    subj
-    sess
-    proj_rawdata
-    proj_deriv
-    work_deriv
-    model_name
-    model_level
-    log_dir
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    model_name : str
+        Name of FSL model, for keeping condition files and
+        output organized
+    model_level : str
+        Level of FSL model
+    proj_rawdata : path
+        Location of BIDS rawdata
+    proj_deriv : path
+        Location of project BIDs derivatives, for finding
+        preprocessed output
+    work_deriv : path
+        Output location for intermediates
+    log_dir : path
+        Output location for log files and scripts
 
     Returns
     -------
@@ -234,13 +249,16 @@ def schedule_fsl(
         [0] subprocess stdout
         [1] subprocess stderr
 
+    Raises
+    ------
+    ValueError
+        Unexpected argument parameters
+
     """
-    # Validate model_name/level
-    # TODO update for other model names, levels
-    if model_name not in ["sep"]:
-        raise ValueError(f"Unexpected value for model_name : {model_name}")
-    if model_level not in ["first"]:
-        raise ValueError(f"Unexpected value for model_level: {model_level}")
+    if not fsl.helper.valid_name(model_name):
+        raise ValueError(f"Unexpected model name : {model_name}")
+    if not fsl.helper.valid_level(model_level):
+        raise ValueError(f"Unexpected model level : {model_level}")
 
     # Determine workflow method
     wf_meth = (

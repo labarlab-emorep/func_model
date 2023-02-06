@@ -8,7 +8,7 @@ required inputs.
 import os
 import glob
 import nibabel as nib
-from . import model
+from . import model, helper
 
 
 # %%
@@ -17,31 +17,45 @@ def make_condition_files(
 ):
     """Make condition files from BIDS events files.
 
-    Identify required files and wrap fsl.model.ConditionFiles.
+    Identify required files and wrap class fsl.model.ConditionFiles. Use
+    model_name to trigger appropriate class methods for making desired
+    condition files.
 
     Parameters
     ----------
-    subj
-    sess
-    task
-    model_name
-    subj_work
-    proj_rawdata
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    task : str
+        BIDS task identifier
+    model_name : str
+        Name of FSL model
+    subj_work : path
+        Output work location for intermediates
+    proj_rawdata : path
+        Location of BIDS rawdata
 
     Raises
     ------
     FileNotFoundError
+        Missing expected BIDS events files for subj, sess
+    ValueError
+        Unexpected model_name
 
     """
-    #
-    subj_sess_raw = os.path.join(proj_rawdata, subj, sess)
-    sess_events = sorted(glob.glob(f"{subj_sess_raw}/func/*events.tsv"))
+    if not helper.valid_name(model_name):
+        raise ValueError(f"Improper model name : {model_name}")
+
+    # Find BIDS events files
+    subj_sess_raw = os.path.join(proj_rawdata, subj, sess, "func")
+    sess_events = sorted(glob.glob(f"{subj_sess_raw}/*events.tsv"))
     if not sess_events:
         raise FileNotFoundError(
             f"Expected BIDs events files in {subj_sess_raw}"
         )
 
-    #
+    # Make condition files for each session run and event
     make_cf = model.ConditionFiles(subj, sess, task, subj_work, sess_events)
     for run_num in make_cf.run_list:
         make_cf.common_events(run_num)
@@ -52,22 +66,29 @@ def make_condition_files(
 def make_confound_files(subj, sess, task, subj_work, proj_deriv):
     """Make confounds files from fMRIPrep timeseries files.
 
-    Identify required files and wrap fsl.model.confounds.
+    Identify required files and wrap function fsl.model.confounds.
 
     Parameters
     ----------
-    subj
-    sess
-    task
-    subj_work
-    proj_deriv
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    task : str
+        BIDS task identifier
+    subj_work : path
+        Output work location for intermediates
+    proj_deriv : path
+        Location of project BIDs derivatives, for finding
+        fMRIPrep output
 
     Raises
     ------
     FileNotFoundError
+        Failed to find any fMRIPrep confound files
 
     """
-    #
+    # Find fMRIPrep confounds
     fp_subj_sess = os.path.join(
         proj_deriv, "pre_processing/fmriprep", subj, sess
     )
@@ -79,7 +100,7 @@ def make_confound_files(subj, sess, task, subj_work, proj_deriv):
             f"Expected fMRIPrep confounds files in {fp_subj_sess}"
         )
 
-    #
+    # Make confound files
     for conf_path in sess_confounds:
         _ = model.confounds(conf_path, subj_work)
 
@@ -87,20 +108,37 @@ def make_confound_files(subj, sess, task, subj_work, proj_deriv):
 def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
     """Write first-level FSF design files.
 
-    Identify required files and wrap fsl.model.MakeFirstFsf.
+    Identify required files and wrap class fsl.model.MakeFirstFsf. Requires
+    output of model.ConditionFiles, model.confounds.
 
     Parameters
     ----------
-    subj
-    sess
-    task
-    model_name
-    subj_work
-    proj_deriv
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    task : str
+        BIDS task identifier
+    model_name : str
+        Name of FSL model
+    subj_work : path
+        Output work location for intermediates
+    proj_deriv : path
+        Location of project BIDs derivatives, for finding
+        fsl_denoise output
 
     Returns
     -------
     list
+        Paths to generated design files
+
+    Raises
+    ------
+    FileNotFoundError
+        Missing FSL preprocessed files
+        Missing regressor files
+    ValueError
+        Unexpected BIDS run number
 
     """
 
@@ -123,7 +161,7 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
                 f"Missing {run} {desc} file in {search_path}"
             )
 
-    #
+    # Identify preprocessed FSL files
     fd_subj_sess = os.path.join(
         proj_deriv, "pre_processing/fsl_denoise", subj, sess
     )
@@ -135,19 +173,19 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
             f"Expected fsl_denoise files in {fd_subj_sess}"
         )
 
-    #
+    # Make run-specific design files
     make_fsf = model.MakeFirstFsf(subj_work, proj_deriv, model_name)
     fsf_list = []
     for preproc_path in sess_preproc:
 
-        #
+        # Determine number of volumes
         run = _get_run(os.path.basename(preproc_path))
         img = nib.load(preproc_path)
         img_header = img.header
         num_vol = img_header.get_data_shape()[3]
         del img
 
-        #
+        # Find common regressor files
         search_conf = f"{subj_work}/confounds_files"
         search_cond = f"{subj_work}/condition_files"
         confound_path = _get_file(search_conf, run, "desc-confounds")
@@ -156,7 +194,7 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
         emosel_path = _get_file(search_cond, run, "desc-emoSelect")
         emoint_path = _get_file(search_cond, run, "desc-emoIntensity")
 
-        #
+        # Write design file
         use_short = True if run == "run-04" or run == "run-08" else False
         fsf_path = make_fsf.write_fsf(
             run,
