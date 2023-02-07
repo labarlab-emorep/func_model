@@ -27,7 +27,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Example
     -------
-    etb_obj = group.ExtractTaskBetas()
+    etb_obj = group.ExtractTaskBetas(*args)
     etb_obj.mask_coord("/path/to/binary/mask/nii")
     df = etb_obj.make_func_matrix(*args)
 
@@ -69,10 +69,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         Example
         -------
-        obj = group.ExtractTaskBetas(**args)
-        obj.decon_path = /path/to/decon/file+tlrc
-        obj.subj_out_dir = /path/to/output/dir
-        obj.get_label_names()
+        etb_obj = group.ExtractTaskBetas(*args)
+        etb_obj.decon_path = "/path/to/decon/file+tlrc"
+        etb_obj.subj_out_dir = "/path/to/output/dir"
+        etb_obj.get_label_names()
 
         """
         # Extract sub-brick label info
@@ -102,7 +102,30 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self.stim_label.sort()
 
     def get_label_int(self, sub_label):
-        """Title."""
+        """Return sub-brick ID of requested sub-brick label.
+
+        Parameters
+        ----------
+        sub_label : str
+            Sub-brick label, e.g. movFea#0_Coef
+
+        Returns
+        -------
+        int
+
+        Raises
+        ------
+        ValueError
+            Trouble in parsing 3dinfo output
+
+        Example
+        -------
+        etb_obj = group.ExtractTaskBetas(*args)
+        etb_obj.decon_path = "/path/to/decon/file"
+        etb_obj.subj_out_dir = "/path/to/output/dir"
+        sub_int = etb_obj.get_label_int("movFea#0_Coef")
+
+        """
         # Determine sub-brick integer value
         out_label = os.path.join(self.subj_out_dir, "tmp_label_int.txt")
         bash_list = [
@@ -115,6 +138,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         bash_cmd = " ".join(bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_label, "Label int")
 
+        # Read label integer and check
         with open(out_label, "r") as lf:
             label_int = lf.read().strip()
         if len(label_int) > 2:
@@ -143,13 +167,13 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         Example
         -------
-        obj = group.ExtractTaskBetas(**args)
-        obj.subj = "sub-1"
-        obj.sess = "ses-1"
-        obj.task = "task-movies"
-        obj.decon_path = /path/to/decon/file+tlrc
-        obj.subj_out_dir = /path/to/output/dir
-        obj.split_decon(emo_name="fear")
+        etb_obj = group.ExtractTaskBetas(**args)
+        etb_obj.subj = "sub-100"
+        etb_obj.sess = "ses-1"
+        etb_obj.task = "task-movies"
+        etb_obj.decon_path = "/path/to/decon/file+tlrc"
+        etb_obj.subj_out_dir = "/path/to/output/dir"
+        etb_obj.split_decon(emo_name="fear")
 
         """
         # Invert emo_switch to unpack sub-bricks
@@ -375,36 +399,60 @@ def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
 
 
 class EtacTest:
-    """Title.
+    """Build and execute ETAC tests.
 
-    Desc.
+    Identify relevant sub-bricks in AFNI's deconvolved files given user
+    input, then construct and run ETAC tests. ETAC shell script and
+    output files are written to <out_dir>.
+
+    Methods
+    --------
+    etac_student(*args)
+        Construct and run a Student's T-test via ETAC
+
+    Example
+    -------
+    et_obj = group.EtacTest(*args)
+    _ = et_obj.etac_student(*args)
 
     """
 
     def __init__(self, proj_dir, out_dir):
-        """Title."""
-        print("Initializing EtacTest")
-        self.proj_dir = proj_dir
-        self.out_dir = out_dir
+        """Initialize.
 
-    def _build_list(self, decon_dict):
-        """Title.
+        Parameters
+        ----------
+        proj_dir : path
+            Location of project directory
+        out_dir : path
+            Output location for generated files
 
-        Returns
-        -------
+        Raises
+        ------
+        FileNotFoundError
+            Missing proj_dir
 
         """
-        #
+        print("Initializing EtacTest")
+
+        # Check and setup
+        if not os.path.exists(proj_dir):
+            raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
+        self._proj_dir = proj_dir
+        self._out_dir = out_dir
+
+    def _build_list(self, decon_dict: dict, sub_label: str) -> list:
+        """Build ETAC input list."""
         set_list = []
-        get_subbrick = ExtractTaskBetas(self.proj_dir)
+        get_subbrick = ExtractTaskBetas(self._proj_dir)
         for subj, decon_path in decon_dict.items():
 
-            #
+            # Get label integer
             get_subbrick.decon_path = decon_path
-            get_subbrick.subj_out_dir = self.out_dir
-            label_int = get_subbrick.get_label_int(self.sub_label)
+            get_subbrick.subj_out_dir = self._out_dir
+            label_int = get_subbrick.get_label_int(sub_label)
 
-            #
+            # Write input line
             set_list.append(subj)
             set_list.append(f"{decon_path}'[{label_int}]'")
         return set_list
@@ -412,39 +460,65 @@ class EtacTest:
     def etac_student(
         self, model_name, emo_short, mask_path, group_dict, sub_label
     ):
-        """Title.
+        """Conduct Student's T-test via ETAC.
 
-        Desc.
+        Compare coefficient against zero using equitable thresholding and
+        clustring. Output files are saved to:
+            <out_dir>/FINAL_<model_name>_<emo_short>VSnull
 
         Parameters
         ----------
-
-        Attributes
-        ----------
+        model_name : str
+            Model identifier
+        emo_short : str
+            Shortened (AFNI) emotion name
+        mask_path : path
+            Location of group mask
+        group_dict : dict
+            Group information in format:
+            {"sub-ER0009": {"decon_path": "/path/to/decon+tlrc.HEAD"}}
+        sub_label : str
+            Sub-brick label, e.g. movFea#0_Coef
 
         Returns
         -------
         path
+            Location of output directory
+
+        Raises
+        ------
+        KeyError
+            Improper structure of group_dict parameter
+        ValueError
+            Improper specification of sub_label parameter
 
         """
-        #
-        self.sub_label = sub_label
+        # Validate user input
+        for _subj, info_dict in group_dict.items():
+            if "decon_path" not in info_dict.keys():
+                raise KeyError("Improper structure of group_dict")
+        _nam, chk_str = sub_label.split("#")
+        if chk_str != "0_Coef":
+            raise ValueError("Improper format of sub_label")
 
-        #
+        # Setup
+        print(f"\tBuilding ETAC for {emo_short} vs null")
+        if not os.path.exists(self._out_dir):
+            os.makedirs(self._out_dir)
         final_name = f"FINAL_{model_name}_{emo_short}VSnull"
-        out_path = os.path.join(self.out_dir, f"{final_name}+tlrc.HEAD")
+        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
         if os.path.exists(out_path):
-            return out_path
+            return self._out_dir
 
-        #
+        # Make input list
         decon_dict = {}
         for subj, decon_info in group_dict.items():
             decon_dict[subj] = decon_info["decon_path"]
         setA_list = self._build_list(decon_dict)
 
-        #
+        # Build ETAC command, write for review
         etac_list = [
-            f"cd {self.out_dir};",
+            f"cd {self._out_dir};",
             "3dttest++",
             f"-mask {mask_path}",
             f"-prefix {final_name}",
@@ -457,12 +531,10 @@ class EtacTest:
             " ".join(setA_list),
         ]
         etac_cmd = " ".join(etac_list)
-
-        #
-        etac_script = os.path.join(self.out_dir, f"{final_name}.sh")
+        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
         with open(etac_script, "w") as script:
             script.write(etac_cmd)
 
-        #
+        # Execute ETAC command
         submit.submit_subprocess(etac_cmd, out_path, f"etac{emo_short}")
-        return out_path
+        return self._out_dir
