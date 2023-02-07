@@ -16,6 +16,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Methods
     -------
+    get_labels(emo_name=None)
+        Derive relevant sub-brick identifiers
     split_decon(emo_name=None)
         Split deconvolve file into each relevant sub-brick
     mask_coord()
@@ -51,12 +53,12 @@ class ExtractTaskBetas(matrix.NiftiArray):
         super().__init__(float_prec)
         self._proj_dir = proj_dir
 
-    def _get_labels(self):
+    def get_label_names(self):
         """Get sub-brick levels from AFNI deconvolved file.
 
         Attributes
         ----------
-        _stim_label : list
+        stim_label : list
             Full label ID of sub-brick starting with "mov" or "sce",
             e.g. movFea#0_Coef.
 
@@ -65,34 +67,60 @@ class ExtractTaskBetas(matrix.NiftiArray):
         ValueError
             Trouble parsing output of 3dinfo -label to list
 
-        """
-        print(f"\tGetting sub-brick labels for {self.subj}, {self.sess}")
+        Example
+        -------
+        obj = group.ExtractTaskBetas(**args)
+        obj.decon_path = /path/to/decon/file+tlrc
+        obj.subj_out_dir = /path/to/output/dir
+        obj.get_label_names()
 
+        """
         # Extract sub-brick label info
         out_label = os.path.join(self.subj_out_dir, "tmp_labels.txt")
-        if not os.path.exists(out_label):
-            bash_list = [
-                "3dinfo",
-                "-label",
-                self.decon_path,
-                f"> {out_label}",
-            ]
-            bash_cmd = " ".join(bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_label, "Get labels")
+        bash_list = [
+            "3dinfo",
+            "-label",
+            self.decon_path,
+            f"> {out_label}",
+        ]
+        bash_cmd = " ".join(bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_label, "Get labels")
 
         with open(out_label, "r") as lf:
             label_str = lf.read()
         label_list = [x for x in label_str.split("|")]
         if label_list[0] != "Full_Fstat":
             raise ValueError("Error in extracting decon labels.")
+        os.remove(out_label)
 
         # Identify labels relevant to task
-        self._stim_label = [
+        self.stim_label = [
             x
             for x in label_list
             if self.task.split("-")[1][:3] in x and "Fstat" not in x
         ]
-        self._stim_label.sort()
+        self.stim_label.sort()
+
+    def get_label_int(self, sub_label):
+        """Title."""
+        # Determine sub-brick integer value
+        out_label = os.path.join(self.subj_out_dir, "tmp_label_int.txt")
+        bash_list = [
+            "3dinfo",
+            "-label2index",
+            sub_label,
+            self.decon_path,
+            f"> {out_label}",
+        ]
+        bash_cmd = " ".join(bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_label, "Label int")
+
+        with open(out_label, "r") as lf:
+            label_int = lf.read().strip()
+        if len(label_int) > 2:
+            raise ValueError(f"Unexpected int length for {sub_label}")
+        os.remove(out_label)
+        return label_int
 
     def split_decon(self, emo_name=None):
         """Split deconvolved files into files by sub-brick.
@@ -105,7 +133,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         Attributes
         ----------
-        _beta_dict : dict
+        beta_dict : dict
             key = emotion, value = path to sub-brick file
 
         Raises
@@ -113,48 +141,46 @@ class ExtractTaskBetas(matrix.NiftiArray):
         ValueError
             Sub-brick identifier int has length > 2
 
+        Example
+        -------
+        obj = group.ExtractTaskBetas(**args)
+        obj.subj = "sub-1"
+        obj.sess = "ses-1"
+        obj.task = "task-movies"
+        obj.decon_path = /path/to/decon/file+tlrc
+        obj.subj_out_dir = /path/to/output/dir
+        obj.split_decon(emo_name="fear")
+
         """
         # Invert emo_switch to unpack sub-bricks
         _emo_switch = helper.emo_switch()
         emo_switch = {j: i for i, j in _emo_switch.items()}
 
         # Extract desired sub-bricks from deconvolve file by label name
-        self._get_labels()
-        beta_dict = {}
-        for sub_label in self._stim_label:
+        self.get_label_names()
+        self.beta_dict = {}
+        for sub_label in self.stim_label:
 
-            # Identify emo string, setup file name
+            # Identify emo string
             emo_long = emo_switch[sub_label[3:6]]
             if emo_name and emo_long != emo_name:
                 continue
+
+            # Determine sub-brick integer value
+            label_int = self.get_label_int(sub_label)
+
+            # Setup file name, avoid repeating beta extraction
             out_file = (
                 f"tmp_{self.subj}_{self.sess}_{self.task}_"
                 + f"desc-{emo_long}_beta.nii.gz"
             )
             out_path = os.path.join(self.subj_out_dir, out_file)
             if os.path.exists(out_path):
-                beta_dict[emo_long] = out_path
+                self.beta_dict[emo_long] = out_path
                 continue
 
-            # Determine sub-brick integer value
-            print(f"\t\tExtracting sub-brick for {emo_long}")
-            out_label = os.path.join(self.subj_out_dir, "tmp_label_int.txt")
-            bash_list = [
-                "3dinfo",
-                "-label2index",
-                sub_label,
-                self.decon_path,
-                f"> {out_label}",
-            ]
-            bash_cmd = " ".join(bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_label, "Label int")
-
-            with open(out_label, "r") as lf:
-                label_int = lf.read().strip()
-            if len(label_int) > 2:
-                raise ValueError(f"Unexpected int length for {sub_label}")
-
             # Write sub-brick as new file
+            print(f"\t\tExtracting sub-brick for {emo_long}")
             bash_list = [
                 "3dTcat",
                 f"-prefix {out_path}",
@@ -162,9 +188,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 "> /dev/null 2>&1",
             ]
             bash_cmd = " ".join(bash_list)
-            _ = submit.submit_subprocess(bash_cmd, out_label, "Split decon")
-            beta_dict[emo_long] = out_path
-        self._beta_dict = beta_dict
+            _ = submit.submit_subprocess(bash_cmd, out_path, "Split decon")
+            self.beta_dict[emo_long] = out_path
 
     def mask_coord(self, mask_path):
         """Identify censoring coordinates from binary brain mask.
@@ -255,7 +280,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self.split_decon()
 
         # Extract and vectorize voxel betas
-        for emo, beta_path in self._beta_dict.items():
+        for emo, beta_path in self.beta_dict.items():
             print(f"\t\tExtracting betas for : {emo}")
             img_arr = self.nifti_to_arr(beta_path)
             info_arr = _id_arr(emo)
@@ -347,3 +372,97 @@ def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
     df_betas_all.to_csv(out_path, index=False, sep="\t")
     print(f"\tWrote : {out_path}")
     return out_path
+
+
+class EtacTest:
+    """Title.
+
+    Desc.
+
+    """
+
+    def __init__(self, proj_dir, out_dir):
+        """Title."""
+        print("Initializing EtacTest")
+        self.proj_dir = proj_dir
+        self.out_dir = out_dir
+
+    def _build_list(self, decon_dict):
+        """Title.
+
+        Returns
+        -------
+
+        """
+        #
+        set_list = []
+        get_subbrick = ExtractTaskBetas(self.proj_dir)
+        for subj, decon_path in decon_dict.items():
+
+            #
+            get_subbrick.decon_path = decon_path
+            get_subbrick.subj_out_dir = self.out_dir
+            label_int = get_subbrick.get_label_int(self.sub_label)
+
+            #
+            set_list.append(subj)
+            set_list.append(f"{decon_path}'[{label_int}]'")
+        return set_list
+
+    def etac_student(
+        self, model_name, emo_short, mask_path, group_dict, sub_label
+    ):
+        """Title.
+
+        Desc.
+
+        Parameters
+        ----------
+
+        Attributes
+        ----------
+
+        Returns
+        -------
+        path
+
+        """
+        #
+        self.sub_label = sub_label
+
+        #
+        final_name = f"FINAL_{model_name}_{emo_short}VSnull"
+        out_path = os.path.join(self.out_dir, f"{final_name}+tlrc.HEAD")
+        if os.path.exists(out_path):
+            return out_path
+
+        #
+        decon_dict = {}
+        for subj, decon_info in group_dict.items():
+            decon_dict[subj] = decon_info["decon_path"]
+        setA_list = self._build_list(decon_dict)
+
+        #
+        etac_list = [
+            f"cd {self.out_dir};",
+            "3dttest++",
+            f"-mask {mask_path}",
+            f"-prefix {final_name}",
+            f"-prefix_clustsim {final_name}_clustsim",
+            "-ETAC",
+            "-ETAC_blur 0",
+            "-ETAC_opt",
+            "NN=2:sid=2:hpow=0:pthr=0.01,0.005,0.002,0.001:name=etac",
+            f"-setA {emo_short}",
+            " ".join(setA_list),
+        ]
+        etac_cmd = " ".join(etac_list)
+
+        #
+        etac_script = os.path.join(self.out_dir, f"{final_name}.sh")
+        with open(etac_script, "w") as script:
+            script.write(etac_cmd)
+
+        #
+        submit.submit_subprocess(etac_cmd, out_path, f"etac{emo_short}")
+        return out_path

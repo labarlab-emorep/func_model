@@ -18,10 +18,9 @@ univ_afni -n movies
 import os
 import sys
 import textwrap
-from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model.resources.general import submit
-from func_model.resources.afni import helper
+from func_model import workflows
+from func_model.resources import afni
 
 
 # %%
@@ -75,32 +74,17 @@ def main():
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
-    # Setup group project directory, paths
-    proj_deriv = os.path.join(proj_dir, "derivatives")
-    proj_rawdata = os.path.join(proj_dir, "rawdata")
+    #
+    if model_name in ["movies", "scenarios"]:
+        task = "task-" + model_name
+    group_dir = os.path.join(proj_dir, "analyses/model_afni")
 
-    # Get environmental vars
-    sing_afni = os.environ["SING_AFNI"]
-    user_name = os.environ["USER"]
-
-    # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", user_name, "EmoRep")
-    # now_time = datetime.now()
-    # log_dir = os.path.join(
-    #     work_deriv,
-    #     f"logs/func-afni_model-{model_name}_"
-    #     + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
-    # )
-    log_dir = os.path.join(
-        work_deriv, f"logs/func-afni_model-{model_name}_test"
-    )
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    # submit per emo
-    emo_dict = helper.emo_switch()
-
-    # workflows.afni_extract(proj_dir, subj_list, model_name)
+    #
+    emo_dict = afni.helper.emo_switch()
+    for emo_name in emo_dict.keys():
+        workflows.afni_univ_ttest(
+            task, model_name, emo_name, proj_dir, group_dir
+        )
 
 
 if __name__ == "__main__":

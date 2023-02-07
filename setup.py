@@ -10,6 +10,7 @@ setup(
             "model_afni=func_model.cli.model_afni:main",
             "model_fsl=func_model.cli.model_fsl:main",
             "extract_afni=func_model.cli.extract_afni:main",
+            "univ_afni=func_model.cli.univ_afni:main",
         ]
     },
     include_package_data=True,

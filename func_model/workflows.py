@@ -2,6 +2,7 @@
 # %%
 import os
 import glob
+from pathlib import Path
 from func_model.resources import afni, fsl
 
 
@@ -318,9 +319,7 @@ def afni_extract(
 
 
 # %%
-def afni_univ_ttest(
-    emo_name, model_name, proj_deriv, work_deriv, sing_afni, log_dir
-):
+def afni_univ_ttest(task, model_name, emo_name, proj_dir, group_dir):
     """Title.
 
     Desc.
@@ -330,36 +329,51 @@ def afni_univ_ttest(
 
     """
     #
-    proj_afni_deriv = os.path.join(proj_deriv, "model_afni")
+    print(f"\nConducting ETAC for {emo_name} vs null")
+    out_dir = os.path.join(group_dir, f"ttest_{model_name}_{emo_name}_vs_null")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # Identify participants, sessions with desired task
+    afni_deriv = os.path.join(
+        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
+    )
     task_subj = sorted(
         glob.glob(
-            f"{proj_afni_deriv}/**/*_task-{model_name}_"
-            + "desc-intersect_mask.nii.gz",
+            f"{afni_deriv}/**/*_{task}_desc-comWas_events.1D",
             recursive=True,
         )
     )
 
-    #
-    subj_paths = {}
+    # Get path to decon file, setup working dict
+    group_dict = {}
     for file_path in task_subj:
         decon_path = os.path.join(
-            os.path.dirname(file_path), "decon_univ_stats_REML+tlrc.HEAD"
+            Path(file_path).parents[1], "decon_univ_stats_REML+tlrc.HEAD"
         )
         if os.path.exists(decon_path):
-            subj, sess, task, _desc, _suff = os.path.basename(file_path).split(
-                "_"
-            )
-            subj_paths[subj] = (sess, task, decon_path)
+            subj, sess, _task, _desc, _suff = os.path.basename(
+                file_path
+            ).split("_")
+            group_dict[subj] = {
+                "sess": sess,
+                "decon_path": decon_path,
+            }
 
     #
-    split_decon = afni.group.ExtractTaskBetas(proj_deriv)
-    for subj, info_list in subj_paths.items():
-        split_decon.subj = subj
-        split_decon.sess = info_list[0]
-        split_decon.task = info_list[1]
-        split_decon._decon_path = info_list[2]
-        split_decon._subj_out_dir = work_deriv
-        split_decon._split_decon(emo_name=emo_name)
+    mask_path = afni.masks.tpl_gm(group_dir)
+
+    #
+    task_short = task.split("-")[1][:3]
+    emo_switch = afni.helper.emo_switch()
+    emo_short = emo_switch[emo_name]
+    sub_label = task_short + emo_short + "#0_Coef"
+
+    #
+    run_etac = afni.group.EtacTest(proj_dir, out_dir)
+    _ = run_etac.etac_student(
+        model_name, emo_short, mask_path, group_dict, sub_label
+    )
 
 
 # %%

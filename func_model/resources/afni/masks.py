@@ -454,6 +454,12 @@ def tpl_gm(out_dir):
     tpl-MNI152NLin6Asym.
 
     """
+    # Avoid repeating work
+    out_name = "tpl_GM_mask"
+    out_path = os.path.join(out_dir, f"{out_name}.nii.gz")
+    if os.path.exists(out_path):
+        return out_path
+
     # Orient to template priors
     try:
         tplflow_dir = os.environ["SINGULARITYENV_TEMPLATEFLOW_HOME"]
@@ -470,12 +476,6 @@ def tpl_gm(out_dir):
         raise FileNotFoundError(
             f"Missing template segmentation profile : {tpl_dseg}"
         )
-
-    # Avoid repeating work
-    out_name = "tpl_GM_mask"
-    out_path = os.path.join(out_dir, f"{out_name}.nii.gz")
-    if os.path.exists(out_path):
-        return out_path
 
     # Find WM, CSF, brainstem labels
     c3d_meth = matrix.C3dMethods(out_dir)
