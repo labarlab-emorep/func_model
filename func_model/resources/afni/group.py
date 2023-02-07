@@ -514,7 +514,7 @@ class EtacTest:
         decon_dict = {}
         for subj, decon_info in group_dict.items():
             decon_dict[subj] = decon_info["decon_path"]
-        setA_list = self._build_list(decon_dict)
+        setA_list = self._build_list(decon_dict, sub_label)
 
         # Build ETAC command, write for review
         etac_list = [
