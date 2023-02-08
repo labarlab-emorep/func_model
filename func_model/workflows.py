@@ -319,20 +319,14 @@ def afni_extract(
 
 
 # %%
-def afni_student_ttest(task, model_name, emo_name, proj_dir, group_dir):
-    """Run a Student's T-test for an emotion.
-
-    Find AFNI deconvolved files, extract the relevant sub-brick for
-    the emotion coefficient, and then generate and run an emotion
-    coefficient versus zero test using AFNI's ETAC method.
+def afni_ttest(task, model_name, emo_name, proj_dir, group_dir):
+    """Title.
 
     Parameters
     ----------
-    task
-    model_name
-    emo_name
-    proj_dir
-    group_dir
+
+    Raises
+    ------
 
     """
     # Validate user input
@@ -342,13 +336,17 @@ def afni_student_ttest(task, model_name, emo_name, proj_dir, group_dir):
         )
     if task not in ["task-movies", "task-scenarios"]:
         raise ValueError(f"Unexpected task value : {task}")
+    if model_name not in ["student", "pairwise"]:
+        raise ValueError(f"Unexpected model name : {model_name}")
     emo_switch = afni.helper.emo_switch()
     if emo_name not in emo_switch.keys():
         raise ValueError(f"Unexpected emotion name : {emo_name}")
 
     # Setup
-    print(f"\nConducting ETAC for {emo_name} vs null")
-    out_dir = os.path.join(group_dir, f"ttest_{model_name}_{emo_name}_vs_null")
+    print(f"\nConducting {model_name} ETAC for {emo_name}")
+    out_dir = os.path.join(
+        group_dir, f"ttest_{model_name}", f"{task}_{emo_name}"
+    )
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
@@ -362,8 +360,10 @@ def afni_student_ttest(task, model_name, emo_name, proj_dir, group_dir):
             recursive=True,
         )
     )
+    if not task_subj:
+        raise ValueError("Failed to detect desc-comWas timing files.")
 
-    # Build dict needed by group.EtacTest.etac_student
+    # Build dict needed by group.EtacTest.etac_[student|pairwise]
     group_dict = {}
     for file_path in task_subj:
         decon_path = os.path.join(
@@ -381,8 +381,8 @@ def afni_student_ttest(task, model_name, emo_name, proj_dir, group_dir):
     # Make, get mask
     mask_path = afni.masks.tpl_gm(group_dir)
 
-    # Build coefficient name to match sub-brick, recreate
-    # name specified by afni.deconvolve.TimingFiles.session_events,
+    # Build coefficient name to match sub-brick, recreate name
+    # specified by afni.deconvolve.TimingFiles.session_events,
     # and append AFNI coefficient title.
     task_short = task.split("-")[1][:3]
     if task_short not in ["mov", "sce"]:
@@ -392,9 +392,14 @@ def afni_student_ttest(task, model_name, emo_name, proj_dir, group_dir):
 
     # Generate, execute ETAC command
     run_etac = afni.group.EtacTest(proj_dir, out_dir)
-    _ = run_etac.etac_student(
-        model_name, emo_short, mask_path, group_dict, sub_label
-    )
+    if model_name == "student":
+        _ = run_etac.etac_student(
+            model_name, emo_short, mask_path, group_dict, sub_label
+        )
+    elif model_name == "pairwise":
+        _ = run_etac.etac_pairwise(
+            model_name, emo_short, mask_path, group_dict, sub_label
+        )
 
 
 # %%

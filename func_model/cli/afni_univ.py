@@ -2,19 +2,16 @@
 
 Construct and execute simple univariate tests for sanity checking
 pipeline output. Output is written to:
-    <proj_dir>/analyses/model_afni/ttest_<model_name>_*
+    <proj-dir>/analyses/model_afni/ttest_<model-name>
 
 Model names:
-    - movies = test group response to emotion movies versus zero,
-                used for sanity checking
-    - scenarios = test group response to emotion scenarios versus zero
-                used for sanity checking
-    - stim = TODO model group response to emotional stimuli versus washout
+    - student  =
+    - pairwise =
 
 Examples
 --------
-afni_univ -n movies
-afni_univ -n scenarios
+afni_univ -n student
+afni_univ -n pairwise --task-name movies
 
 """
 # %%
@@ -43,6 +40,18 @@ def _get_args():
             """
         ),
     )
+    parser.add_argument(
+        "--task-name",
+        type=str,
+        default=None,
+        help=textwrap.dedent(
+            """\
+            [movies | scenarios]
+            If specified, conduct model-name for only specified task.
+            (default : %(default)s)
+            """
+        ),
+    )
 
     required_args = parser.add_argument_group("Required Arguments")
     required_args.add_argument(
@@ -50,7 +59,7 @@ def _get_args():
         "--model-name",
         help=textwrap.dedent(
             """\
-            [movies | scenarios]
+            [student | pairwise]
             Name of model, for organizing output and triggering
             differing workflows.
             """
@@ -72,9 +81,11 @@ def main():
     args = _get_args().parse_args()
     proj_dir = args.proj_dir
     model_name = args.model_name
+    task_name = args.task_name
 
     # Check model_name
-    if model_name not in ["movies", "scenarios"]:
+    univ_models = ["pairwise", "student"]
+    if model_name not in univ_models:
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
@@ -83,14 +94,21 @@ def main():
     if not os.path.exists(group_dir):
         os.makedirs(group_dir)
 
+    emo_dict = afni.helper.emo_switch()
+    task_list = ["task-movies", "task-scenarios"]
+    if task_name:
+        chk_task = f"task-{task_name}"
+        if chk_task not in task_list:
+            raise ValueError(f"Unexpected task name : {task_name}")
+        task_list = [chk_task]
+
     # Flight control for model names
-    if model_name in ["movies", "scenarios"]:
-        task = "task-" + model_name
-        emo_dict = afni.helper.emo_switch()
-        for emo_name in emo_dict.keys():
-            workflows.afni_student_ttest(
-                task, model_name, emo_name, proj_dir, group_dir
-            )
+    if model_name in univ_models:
+        for task in task_list:
+            for emo_name in emo_dict.keys():
+                workflows.afni_ttest(
+                    task, model_name, emo_name, proj_dir, group_dir
+                )
 
 
 if __name__ == "__main__":
