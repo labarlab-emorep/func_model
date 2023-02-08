@@ -363,7 +363,7 @@ def afni_ttest(task, model_name, emo_name, proj_dir, group_dir):
     if not task_subj:
         raise ValueError("Failed to detect desc-comWas timing files.")
 
-    # Build dict needed by group.EtacTest.etac_[student|pairwise]
+    # Build dict needed by group.EtacTest.write_exec
     group_dict = {}
     for file_path in task_subj:
         decon_path = os.path.join(
@@ -391,15 +391,8 @@ def afni_ttest(task, model_name, emo_name, proj_dir, group_dir):
     sub_label = task_short + emo_short + "#0_Coef"
 
     # Generate, execute ETAC command
-    run_etac = afni.group.EtacTest(proj_dir, out_dir)
-    if model_name == "student":
-        _ = run_etac.etac_student(
-            model_name, emo_short, mask_path, group_dict, sub_label
-        )
-    elif model_name == "pairwise":
-        _ = run_etac.etac_pairwise(
-            model_name, emo_short, mask_path, group_dict, sub_label
-        )
+    run_etac = afni.group.EtacTest(proj_dir, out_dir, mask_path)
+    _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
 
 
 # %%

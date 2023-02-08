@@ -407,17 +407,17 @@ class EtacTest:
 
     Methods
     --------
-    etac_student(*args)
-        Construct and run a Student's T-test via ETAC
+    write_exec(*args)
+        Construct and run a T-test via ETAC (3dttest++)
 
     Example
     -------
     et_obj = group.EtacTest(*args)
-    _ = et_obj.etac_student(*args)
+    _ = et_obj.write_exec(*args)
 
     """
 
-    def __init__(self, proj_dir, out_dir):
+    def __init__(self, proj_dir, out_dir, mask_path):
         """Initialize.
 
         Parameters
@@ -426,6 +426,8 @@ class EtacTest:
             Location of project directory
         out_dir : path
             Output location for generated files
+        mask_path : path
+            Location of group mask
 
         Raises
         ------
@@ -440,6 +442,7 @@ class EtacTest:
             raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
         self._proj_dir = proj_dir
         self._out_dir = out_dir
+        self._mask_path = mask_path
 
     def _build_list(self, decon_dict: dict, sub_label: str) -> list:
         """Build ETAC input list."""
@@ -457,23 +460,76 @@ class EtacTest:
             set_list.append(f"{decon_path}'[{label_int}]'")
         return set_list
 
-    def etac_student(
-        self, model_name, emo_short, mask_path, group_dict, sub_label
-    ):
-        """Conduct Student's T-test via ETAC.
+    def _validate_etac_input(self, group_dict: dict, sub_label: str):
+        """Check that user input conforms."""
+        # Check group dict structure
+        for _subj, info_dict in group_dict.items():
+            if "decon_path" not in info_dict.keys():
+                raise KeyError("Improper structure of group_dict")
 
-        Compare coefficient against zero using equitable thresholding and
-        clustring. Output files are saved to:
-            <out_dir>/FINAL_student_<emo_short>
+        # Check specified sub_label
+        _nam, chk_str = sub_label.split("#")
+        if chk_str != "0_Coef":
+            raise ValueError("Improper format of sub_label")
+
+        # Check model name
+        if self._model_name not in ["pairwise", "student"]:
+            raise ValueError("Improper model name specified")
+
+    def _etac_opts(
+        self,
+        final_name: str,
+        blur: int = 0,
+    ) -> list:
+        """Return ETAC options."""
+        etac_head = [f"cd {self._out_dir};", "3dttest++"]
+        etac_body = [
+            f"-mask {self._mask_path}",
+            f"-prefix {final_name}",
+            f"-prefix_clustsim {final_name}_clustsim",
+            "-ETAC",
+            f"-ETAC_blur {blur}",
+            "-ETAC_opt",
+            "NN=2:sid=2:hpow=0:pthr=0.01,0.005,0.002,0.001:name=etac",
+        ]
+        if self._model_name == "pairwise":
+            return etac_head + ["-paired"] + etac_body
+        else:
+            return etac_head + etac_body
+
+    def _write_script(self, final_name: str, bash_cmd: str):
+        """Write BASH command to shell script."""
+        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
+        with open(etac_script, "w") as script:
+            script.write(bash_cmd)
+
+    def _setup(self, emo_short: str) -> tuple:
+        """Return final filename and location."""
+        print(f"\tBuilding {self._model_name} ETAC for {emo_short}")
+        if not os.path.exists(self._out_dir):
+            os.makedirs(self._out_dir)
+        final_name = f"FINAL_{self._model_name}_{emo_short}"
+        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
+        return (final_name, out_path)
+
+    def write_exec(self, model_name, emo_short, group_dict, sub_label):
+        """Write and execute a T-test using AFNI's ETAC method.
+
+        Compare coefficient (sub_label) against null for model_name=student
+        or against the washout coefficient for model_name=pairwise. Generates
+        the ETAC command (3dttest++), writes it to a shell script for review,
+        and then executes the command.
+
+        Output files are saved to:
+            <out_dir>/FINAL_<model_name>_<emo_short>
 
         Parameters
         ----------
         model_name : str
+            [pairwise | student]
             Model identifier
         emo_short : str
             Shortened (AFNI) emotion name
-        mask_path : path
-            Location of group mask
         group_dict : dict
             Group information in format:
             {"sub-ER0009": {"decon_path": "/path/to/decon+tlrc.HEAD"}}
@@ -485,28 +541,11 @@ class EtacTest:
         path
             Location of output directory
 
-        Raises
-        ------
-        KeyError
-            Improper structure of group_dict parameter
-        ValueError
-            Improper specification of sub_label parameter
-
         """
-        # Validate user input
-        for _subj, info_dict in group_dict.items():
-            if "decon_path" not in info_dict.keys():
-                raise KeyError("Improper structure of group_dict")
-        _nam, chk_str = sub_label.split("#")
-        if chk_str != "0_Coef":
-            raise ValueError("Improper format of sub_label")
-
-        # Setup
-        print(f"\tBuilding student ETAC for {emo_short}")
-        if not os.path.exists(self._out_dir):
-            os.makedirs(self._out_dir)
-        final_name = f"FINAL_{model_name}_{emo_short}"
-        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
+        # Validate and setup
+        self._model_name = model_name
+        self._validate_etac_input(group_dict, sub_label)
+        final_name, out_path = self._setup(emo_short)
         if os.path.exists(out_path):
             return self._out_dir
 
@@ -515,111 +554,15 @@ class EtacTest:
         for subj, decon_info in group_dict.items():
             decon_dict[subj] = decon_info["decon_path"]
         setA_list = self._build_list(decon_dict, sub_label)
+        etac_set = [f"-setA {emo_short}", " ".join(setA_list)]
+        if model_name == "pairwise":
+            setB_list = self._build_list(decon_dict, "comWas#0_Coef")
+            etac_set = etac_set + ["-setB washout", " ".join(setB_list)]
 
-        # Build ETAC command, write for review
-        etac_list = [
-            f"cd {self._out_dir};",
-            "3dttest++",
-            f"-mask {mask_path}",
-            f"-prefix {final_name}",
-            f"-prefix_clustsim {final_name}_clustsim",
-            "-ETAC",
-            "-ETAC_blur 0",
-            "-ETAC_opt",
-            "NN=2:sid=2:hpow=0:pthr=0.01,0.005,0.002,0.001:name=etac",
-            f"-setA {emo_short}",
-            " ".join(setA_list),
-        ]
+        # Build ETAC command, write to script for review
+        etac_list = self._etac_opts(final_name) + etac_set
         etac_cmd = " ".join(etac_list)
-        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
-        with open(etac_script, "w") as script:
-            script.write(etac_cmd)
-
-        # Execute ETAC command
-        submit.submit_subprocess(etac_cmd, out_path, f"etac{emo_short}")
-        return self._out_dir
-
-    def etac_pairwise(
-        self, model_name, emo_short, mask_path, group_dict, sub_label
-    ):
-        """Conduct pairwise T-test via ETAC.
-
-        Compare coefficient against washout using equitable thresholding and
-        clustring. Output files are saved to:
-            <out_dir>/FINAL_pairwise_<emo_short>
-
-        Parameters
-        ----------
-        model_name : str
-            Model identifier
-        emo_short : str
-            Shortened (AFNI) emotion name
-        mask_path : path
-            Location of group mask
-        group_dict : dict
-            Group information in format:
-            {"sub-ER0009": {"decon_path": "/path/to/decon+tlrc.HEAD"}}
-        sub_label : str
-            Sub-brick label, e.g. movFea#0_Coef
-
-        Returns
-        -------
-        path
-            Location of output directory
-
-        Raises
-        ------
-        KeyError
-            Improper structure of group_dict parameter
-        ValueError
-            Improper specification of sub_label parameter
-
-        """
-        # Validate user input
-        for _subj, info_dict in group_dict.items():
-            if "decon_path" not in info_dict.keys():
-                raise KeyError("Improper structure of group_dict")
-        _nam, chk_str = sub_label.split("#")
-        if chk_str != "0_Coef":
-            raise ValueError("Improper format of sub_label")
-
-        # Setup
-        print(f"\tBuilding pairwise ETAC for {emo_short}")
-        if not os.path.exists(self._out_dir):
-            os.makedirs(self._out_dir)
-        final_name = f"FINAL_{model_name}_{emo_short}"
-        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
-        if os.path.exists(out_path):
-            return self._out_dir
-
-        # Make input list
-        decon_dict = {}
-        for subj, decon_info in group_dict.items():
-            decon_dict[subj] = decon_info["decon_path"]
-        setA_list = self._build_list(decon_dict, sub_label)
-        setB_list = self._build_list(decon_dict, "comWas#0_Coef")
-
-        # Build ETAC command, write for review
-        etac_list = [
-            f"cd {self._out_dir};",
-            "3dttest++",
-            "-paired",
-            f"-mask {mask_path}",
-            f"-prefix {final_name}",
-            f"-prefix_clustsim {final_name}_clustsim",
-            "-ETAC",
-            "-ETAC_blur 0",
-            "-ETAC_opt",
-            "NN=2:sid=2:hpow=0:pthr=0.01,0.005,0.002,0.001:name=etac",
-            f"-setA {emo_short}",
-            " ".join(setA_list),
-            "-setB washout",
-            " ".join(setB_list),
-        ]
-        etac_cmd = " ".join(etac_list)
-        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
-        with open(etac_script, "w") as script:
-            script.write(etac_cmd)
+        self._write_script(final_name, etac_cmd)
 
         # Execute ETAC command
         submit.submit_subprocess(etac_cmd, out_path, f"etac{emo_short}")
