@@ -1,27 +1,23 @@
-r"""Conduct AFNI-based models of EPI run files.
+"""CLI for initiating FSL regressions.
 
-Utilizing output of fMRIPrep, construct needed files for deconvolution. Write
-the 3dDeconvolve script, and use it to generate the matrices and 3dREMLfit
-script. Execute 3dREMLfit, and save output files to group location.
-A workflow is submitted for each session found in subject's fmriprep
-directory.
+Desc.
 
 Model names:
-    - univ = A standard univariate model yielding a single averaged
-        beta-coefficient for each event type (-stim_times_AM1)
-    - rest = Conduct a resting-state analysis referencing example
-        11 of afni_proc.py.
+    - sep = emotion stimulus (scenarios, movies) and replay are
+        modeled separately
+    - both = TODO, emotion stimulus and replay modeled together
+    - rest = TODO, model resting-state data
 
-Output logs are written to:
-    /work/$(whoami)/EmoRep/logs/func-afni_model-<model-name>_<timestamp>
+Level names:
+    - first = first-level GLM
+    - second = TODO, second-level GLM
 
 Examples
 --------
-model_afni -s sub-ER0009
-model_afni --model-name indiv -s sub-ER0009 sub-ER0016
-model_afni --model-name rest -s sub-ER0016 sub-ER0024
+fsl_model -s sub-ER0009
 
 """
+
 # %%
 import os
 import sys
@@ -31,7 +27,7 @@ import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.resources.general import submit
-from func_model.resources.afni import helper
+from func_model.resources import fsl
 
 
 # %%
@@ -41,13 +37,25 @@ def _get_args():
         description=__doc__, formatter_class=RawTextHelpFormatter
     )
     parser.add_argument(
-        "--model-name",
+        "--model-level",
         type=str,
-        default="univ",
+        default="first",
         help=textwrap.dedent(
             """\
-            [univ | rest | mixed]
-            AFNI model name/type, for triggering different workflows
+            [first]
+            FSL model level, for triggering different workflows
+            (default : %(default)s)
+            """
+        ),
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default="sep",
+        help=textwrap.dedent(
+            """\
+            [sep]
+            FSL model name, for triggering different workflows
             (default : %(default)s)
             """
         ),
@@ -55,7 +63,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",
+        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
         help=textwrap.dedent(
             """\
             Path to BIDS-formatted project directory
@@ -80,7 +88,7 @@ def _get_args():
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
-        sys.exit(1)
+        sys.exit(0)
 
     return parser
 
@@ -94,11 +102,14 @@ def main():
     subj_list = args.sub_list
     proj_dir = args.proj_dir
     model_name = args.model_name
+    model_level = args.model_level
 
-    # Check model_name
-    model_valid = helper.valid_models(model_name)
-    if not model_valid:
+    # Check model_name, model_level
+    if not fsl.helper.valid_name(model_name):
         print(f"Unsupported model name : {model_name}")
+        sys.exit(1)
+    if not fsl.helper.valid_name(model_name):
+        print(f"Unsupported model level : {model_level}")
         sys.exit(1)
 
     # Setup group project directory, paths
@@ -106,42 +117,49 @@ def main():
     proj_rawdata = os.path.join(proj_dir, "rawdata")
 
     # Get environmental vars
-    sing_afni = os.environ["SING_AFNI"]
     user_name = os.environ["USER"]
+    try:
+        os.environ["FSLDIR"]
+    except KeyError:
+        print("Missing required global variable FSLDIR")
+        sys.exit(1)
 
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", user_name, "EmoRep")
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,
-        f"logs/func-afni_model-{model_name}_"
+        f"logs/func-fsl_model-{model_name}_"
         + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
     )
-    # log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
+    log_dir = os.path.join(
+        work_deriv, f"logs/func-fsl_model-{model_name}_test"
+    )
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
     # Submit jobs for each participant, session
     for subj in subj_list:
-        sess_list = [
-            os.path.basename(x)
-            for x in glob.glob(
-                f"{proj_deriv}/pre_processing/fmriprep/{subj}/ses-*"
-            )
-        ]
-        if not sess_list:
-            print(f"No pre-processed sessions detected for {subj}, skipping")
-            continue
+        for sess in ["ses-day2", "ses-day3"]:
 
-        for sess in sess_list:
-            _, _ = submit.schedule_afni(
+            # Check for preprocessed data
+            subj_deriv = os.path.join(
+                proj_deriv, "pre_processing", "fsl_denoise", subj, sess, "func"
+            )
+            fsl_pp = glob.glob(f"{subj_deriv}/*tfiltMasked_bold.nii.gz")
+            if not fsl_pp:
+                print(f"No preprocessed files detected for {subj}, {sess}")
+                continue
+
+            # Schedule work
+            _, _ = submit.schedule_fsl(
                 subj,
                 sess,
+                model_name,
+                model_level,
                 proj_rawdata,
                 proj_deriv,
                 work_deriv,
-                sing_afni,
-                model_name,
                 log_dir,
             )
             time.sleep(3)

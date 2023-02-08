@@ -13,8 +13,8 @@ Model names:
 
 Examples
 --------
-univ_afni -n movies
-univ_afni -n scenarios
+afni_univ -n movies
+afni_univ -n scenarios
 
 """
 # %%
