@@ -1,5 +1,7 @@
 """Conduct univariate testing using AFNI-based methods.
 
+Written for the local labarserv2 environment.
+
 Construct and execute simple univariate tests for sanity checking
 pipeline output. Student and paired tests are organized by task
 stimulus type (movies, scenarios). Output is written to:

@@ -1,4 +1,6 @@
-r"""Conduct AFNI-based models of EPI run files.
+"""Conduct AFNI-based models of EPI run files.
+
+Written for the remote Duke Compute Cluster (DCC) environment.
 
 Utilizing output of fMRIPrep, construct needed files for deconvolution. Write
 the 3dDeconvolve script, and use it to generate the matrices and 3dREMLfit
@@ -18,7 +20,7 @@ Output logs are written to:
 Examples
 --------
 afni_model -s sub-ER0009
-afni_model --model-name indiv -s sub-ER0009 sub-ER0016
+afni_model --model-name univ -s sub-ER0009 sub-ER0016
 afni_model --model-name rest -s sub-ER0016 sub-ER0024
 
 """
