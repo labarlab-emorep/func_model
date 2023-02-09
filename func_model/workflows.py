@@ -80,8 +80,7 @@ def afni_task(
             f"Expected BIDs events files in {subj_sess_raw}"
         )
     task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
-    task_valid = ["movies", "scenarios"]
-    if task not in task_valid:
+    if not afni.helper.valid_task(f"task-{task}"):
         raise ValueError(f"Expected task names movies|scenarios, found {task}")
 
     # Generate, organize timing files
@@ -319,24 +318,51 @@ def afni_extract(
 
 
 # %%
-def afni_ttest(task, model_name, emo_name, proj_dir, group_dir):
-    """Title.
+def afni_ttest(task, model_name, emo_name, proj_dir):
+    """Conduct T-tests in AFNI using the ETAC method.
+
+    Conduct stimulus-specific (movies, scenarios) t-tests comparing
+    emotion against zero (student) or washout (paired). Output
+    scripts and files are written to:
+        <proj_dir>/analyses/model_afni/ttest_<model_name>/<task>_<emo_name>
 
     Parameters
     ----------
+    task : str
+        [task-movies | task-scenarios]
+        BIDS task identifier
+    model_name : str
+        [student | paired]
+        Type of T-test to conduct
+    emo_name : str, key of afni.helper.emo_switch
+        Lower case emotion name
+    proj_dir : path
+        Project directory location, should contain
+        data_scanner_BIDS/derivatives/model_afni
 
     Raises
     ------
+    FileNotFoundError
+        Missing required directory
+    ValueError
+        Unexpected argument parameter
 
     """
-    # Validate user input
+    # Validate paths
     if not os.path.exists(proj_dir):
         raise FileNotFoundError(
             f"Missing expected project directory : {proj_dir}"
         )
-    if task not in ["task-movies", "task-scenarios"]:
+    afni_deriv = os.path.join(
+        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
+    )
+    if not os.path.exists(afni_deriv):
+        raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
+
+    # Validate strings
+    if not afni.helper.valid_task(task):
         raise ValueError(f"Unexpected task value : {task}")
-    if model_name not in ["student", "pairwise"]:
+    if not afni.helper.valid_univ_test(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
     emo_switch = afni.helper.emo_switch()
     if emo_name not in emo_switch.keys():
@@ -344,6 +370,7 @@ def afni_ttest(task, model_name, emo_name, proj_dir, group_dir):
 
     # Setup
     print(f"\nConducting {model_name} ETAC for {emo_name}")
+    group_dir = os.path.join(proj_dir, "analyses/model_afni")
     out_dir = os.path.join(
         group_dir, f"ttest_{model_name}", f"{task}_{emo_name}"
     )
@@ -351,9 +378,6 @@ def afni_ttest(task, model_name, emo_name, proj_dir, group_dir):
         os.makedirs(out_dir)
 
     # Identify participant/sessions with desired task from timing file
-    afni_deriv = os.path.join(
-        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
-    )
     task_subj = sorted(
         glob.glob(
             f"{afni_deriv}/**/*_{task}_desc-comWas_events.1D",

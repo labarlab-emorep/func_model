@@ -284,7 +284,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             )
 
         # Check input, set attributes and output location
-        if task not in ["task-scenarios", "task-movies"]:
+        if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
 
         print(f"\tGetting betas from {subj}, {sess}")
@@ -473,7 +473,7 @@ class EtacTest:
             raise ValueError("Improper format of sub_label")
 
         # Check model name
-        if self._model_name not in ["pairwise", "student"]:
+        if not helper.valid_univ_test(self._model_name):
             raise ValueError("Improper model name specified")
 
     def _etac_opts(
@@ -492,7 +492,7 @@ class EtacTest:
             "-ETAC_opt",
             "NN=2:sid=2:hpow=0:pthr=0.01,0.005,0.002,0.001:name=etac",
         ]
-        if self._model_name == "pairwise":
+        if self._model_name == "paired":
             return etac_head + ["-paired"] + etac_body
         else:
             return etac_head + etac_body
@@ -516,7 +516,7 @@ class EtacTest:
         """Write and execute a T-test using AFNI's ETAC method.
 
         Compare coefficient (sub_label) against null for model_name=student
-        or against the washout coefficient for model_name=pairwise. Generates
+        or against the washout coefficient for model_name=paired. Generates
         the ETAC command (3dttest++), writes it to a shell script for review,
         and then executes the command.
 
@@ -526,7 +526,7 @@ class EtacTest:
         Parameters
         ----------
         model_name : str
-            [pairwise | student]
+            [paired | student]
             Model identifier
         emo_short : str
             Shortened (AFNI) emotion name
@@ -555,7 +555,7 @@ class EtacTest:
             decon_dict[subj] = decon_info["decon_path"]
         setA_list = self._build_list(decon_dict, sub_label)
         etac_set = [f"-setA {emo_short}", " ".join(setA_list)]
-        if model_name == "pairwise":
+        if model_name == "paired":
             setB_list = self._build_list(decon_dict, "comWas#0_Coef")
             etac_set = etac_set + ["-setB washout", " ".join(setB_list)]
 

@@ -1,21 +1,21 @@
 """Conduct univariate testing using AFNI-based methods.
 
 Construct and execute simple univariate tests for sanity checking
-pipeline output. Output is written to:
+pipeline output. Student and paired tests are organized by task
+stimulus type (movies, scenarios). Output is written to:
     <proj-dir>/analyses/model_afni/ttest_<model-name>
 
 Model names:
-    - student  =
-    - pairwise =
+    - student  = Student's T-test, comparing each task emotion against zero
+    - paired = Paired T-test, comparing each task emotion against washout
 
 Examples
 --------
 afni_univ -n student
-afni_univ -n pairwise --task-name movies
+afni_univ -n paired --task-name movies
 
 """
 # %%
-import os
 import sys
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
@@ -59,7 +59,7 @@ def _get_args():
         "--model-name",
         help=textwrap.dedent(
             """\
-            [student | pairwise]
+            [student | paired]
             Name of model, for organizing output and triggering
             differing workflows.
             """
@@ -84,16 +84,12 @@ def main():
     task_name = args.task_name
 
     # Check model_name
-    univ_models = ["pairwise", "student"]
+    univ_models = ["paired", "student"]
     if model_name not in univ_models:
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
     # Setup
-    group_dir = os.path.join(proj_dir, "analyses/model_afni")
-    if not os.path.exists(group_dir):
-        os.makedirs(group_dir)
-
     emo_dict = afni.helper.emo_switch()
     task_list = ["task-movies", "task-scenarios"]
     if task_name:
@@ -106,9 +102,7 @@ def main():
     if model_name in univ_models:
         for task in task_list:
             for emo_name in emo_dict.keys():
-                workflows.afni_ttest(
-                    task, model_name, emo_name, proj_dir, group_dir
-                )
+                workflows.afni_ttest(task, model_name, emo_name, proj_dir)
 
 
 if __name__ == "__main__":
