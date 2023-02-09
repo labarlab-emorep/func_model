@@ -7,9 +7,10 @@ setup(
     entry_points={
         "console_scripts": [
             "func_model=func_model.entrypoint:main",
-            "model_afni=func_model.cli.model_afni:main",
-            "model_fsl=func_model.cli.model_fsl:main",
-            "extract_afni=func_model.cli.extract_afni:main",
+            "afni_model=func_model.cli.afni_model:main",
+            "afni_extract=func_model.cli.afni_extract:main",
+            "afni_univ=func_model.cli.afni_univ:main",
+            "fsl_model=func_model.cli.fsl_model:main",
         ]
     },
     include_package_data=True,

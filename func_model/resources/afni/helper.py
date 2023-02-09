@@ -32,10 +32,22 @@ def prepend_afni_sing(proj_deriv, subj_work, sing_afni) -> list:
     ]
 
 
+def valid_task(task_name: str) -> bool:
+    """Return bool of whether task_name is supported."""
+    valid_list = ["task-movies", "task-scenarios"]
+    return task_name in valid_list
+
+
 def valid_models(model_name: str) -> bool:
     """Return bool of whether model_name is supported."""
     valid_list = ["univ", "rest", "mixed"]
     return model_name in valid_list
+
+
+def valid_univ_test(test_name: str) -> bool:
+    """Return bool of whether test_name is supported."""
+    valid_list = ["student", "paired"]
+    return test_name in valid_list
 
 
 def emo_switch() -> dict:

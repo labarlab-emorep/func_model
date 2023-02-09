@@ -2,6 +2,7 @@
 # %%
 import os
 import glob
+from pathlib import Path
 from func_model.resources import afni, fsl
 
 
@@ -79,8 +80,7 @@ def afni_task(
             f"Expected BIDs events files in {subj_sess_raw}"
         )
     task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
-    task_valid = ["movies", "scenarios"]
-    if task not in task_valid:
+    if not afni.helper.valid_task(f"task-{task}"):
         raise ValueError(f"Expected task names movies|scenarios, found {task}")
 
     # Generate, organize timing files
@@ -229,7 +229,7 @@ def afni_rest(
 
 # %%
 def afni_extract(
-    proj_dir, subj_list, model_name, group_mask=True, comb_all=True
+    proj_dir, subj_list, model_name, group_mask="template", comb_all=True
 ):
     """Extract sub-brick betas and generate dataframe.
 
@@ -252,22 +252,26 @@ def afni_extract(
     model_name : str
         [univ]
         Model identifier of deconvolved file
-    group_mask : bool, optional
-        Whether to generate a group intersection mask and then
-        find coordinates to remove from dataframe
+    group_mask : str, optional
+        [template | intersection]
+        Generate a group-level mask, used to identify and remove
+        voxels of no interest from beta dataframe
     comb_all : bool, optional
-        Combine all participand beta dataframes into an
+        Combine all participant beta dataframes into an
         omnibus one
 
     Raises
     ------
     ValueError
         Unexpected model_name value
+        Unexpected group_mask value
 
     """
     # Validate and setup
     if model_name != "univ":
         raise ValueError("Unexpected model_name")
+    if group_mask not in ["template", "intersection"]:
+        raise ValueError("unexpected group_mask parameter")
     out_dir = os.path.join(proj_dir, "analyses/model_afni")
     proj_deriv = os.path.join(proj_dir, "data_scanner_BIDS", "derivatives")
     if not os.path.exists(out_dir):
@@ -277,9 +281,11 @@ def afni_extract(
     get_betas = afni.group.ExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
-    if group_mask:
+    if group_mask == "template":
+        mask_path = afni.masks.tpl_gm(out_dir)
+    elif group_mask == "intersection":
         mask_path = afni.masks.group_mask(proj_deriv, subj_list, out_dir)
-        get_betas.mask_coord(mask_path)
+    get_betas.mask_coord(mask_path)
 
     # Make beta dataframe for each subject
     for subj in subj_list:
@@ -309,6 +315,108 @@ def afni_extract(
         _ = afni.group.comb_matrices(
             subj_list, model_name, proj_deriv, out_dir
         )
+
+
+# %%
+def afni_ttest(task, model_name, emo_name, proj_dir):
+    """Conduct T-tests in AFNI using the ETAC method.
+
+    Conduct stimulus-specific (movies, scenarios) t-tests comparing
+    emotion against zero (student) or washout (paired). Output
+    scripts and files are written to:
+        <proj_dir>/analyses/model_afni/ttest_<model_name>/<task>_<emo_name>
+
+    Parameters
+    ----------
+    task : str
+        [task-movies | task-scenarios]
+        BIDS task identifier
+    model_name : str
+        [student | paired]
+        Type of T-test to conduct
+    emo_name : str, key of afni.helper.emo_switch
+        Lower case emotion name
+    proj_dir : path
+        Project directory location, should contain
+        data_scanner_BIDS/derivatives/model_afni
+
+    Raises
+    ------
+    FileNotFoundError
+        Missing required directory
+    ValueError
+        Unexpected argument parameter
+
+    """
+    # Validate paths
+    if not os.path.exists(proj_dir):
+        raise FileNotFoundError(
+            f"Missing expected project directory : {proj_dir}"
+        )
+    afni_deriv = os.path.join(
+        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
+    )
+    if not os.path.exists(afni_deriv):
+        raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
+
+    # Validate strings
+    if not afni.helper.valid_task(task):
+        raise ValueError(f"Unexpected task value : {task}")
+    if not afni.helper.valid_univ_test(model_name):
+        raise ValueError(f"Unexpected model name : {model_name}")
+    emo_switch = afni.helper.emo_switch()
+    if emo_name not in emo_switch.keys():
+        raise ValueError(f"Unexpected emotion name : {emo_name}")
+
+    # Setup
+    print(f"\nConducting {model_name} ETAC for {emo_name}")
+    group_dir = os.path.join(proj_dir, "analyses/model_afni")
+    out_dir = os.path.join(
+        group_dir, f"ttest_{model_name}", f"{task}_{emo_name}"
+    )
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # Identify participant/sessions with desired task from timing file
+    task_subj = sorted(
+        glob.glob(
+            f"{afni_deriv}/**/*_{task}_desc-comWas_events.1D",
+            recursive=True,
+        )
+    )
+    if not task_subj:
+        raise ValueError("Failed to detect desc-comWas timing files.")
+
+    # Build dict needed by group.EtacTest.write_exec
+    group_dict = {}
+    for file_path in task_subj:
+        decon_path = os.path.join(
+            Path(file_path).parents[1], "decon_univ_stats_REML+tlrc.HEAD"
+        )
+        if os.path.exists(decon_path):
+            subj, sess, _task, _desc, _suff = os.path.basename(
+                file_path
+            ).split("_")
+            group_dict[subj] = {
+                "sess": sess,
+                "decon_path": decon_path,
+            }
+
+    # Make, get mask
+    mask_path = afni.masks.tpl_gm(group_dir)
+
+    # Build coefficient name to match sub-brick, recreate name
+    # specified by afni.deconvolve.TimingFiles.session_events,
+    # and append AFNI coefficient title.
+    task_short = task.split("-")[1][:3]
+    if task_short not in ["mov", "sce"]:
+        raise ValueError("Problem splitting task name")
+    emo_short = emo_switch[emo_name]
+    sub_label = task_short + emo_short + "#0_Coef"
+
+    # Generate, execute ETAC command
+    run_etac = afni.group.EtacTest(proj_dir, out_dir, mask_path)
+    _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
 
 
 # %%

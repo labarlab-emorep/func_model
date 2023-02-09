@@ -18,8 +18,8 @@ The group-level dataframe is written to:
 
 Examples
 --------
-extract_afni --sub-list sub-ER0009 sub-ER0016
-extract_afni --sub-all
+afni_extract --sub-list sub-ER0009 sub-ER0016
+afni_extract --sub-all
 
 """
 # %%
