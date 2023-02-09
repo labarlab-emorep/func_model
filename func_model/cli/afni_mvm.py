@@ -1,20 +1,12 @@
-"""Conduct univariate testing using AFNI-based methods.
-
-Written for the local labarserv2 environment.
-
-Construct and execute simple univariate tests for sanity checking
-pipeline output. Student and paired tests are organized by task
-stimulus type (movies, scenarios). Output is written to:
-    <proj-dir>/analyses/model_afni/ttest_<model-name>
+"""Title.
 
 Model names:
-    - student  = Student's T-test, comparing each task emotion against zero
-    - paired = Paired T-test, comparing each task emotion against washout
+    - rm = repeated measures comparison between emotion, collapsing across
+            stimulus modality (1*movies + 1*scenarios), and washout (-2*wash)
 
 Examples
 --------
-afni_univ -n student
-afni_univ -n paired --task-name movies
+afni_mvm -n rm
 
 """
 # %%
@@ -42,18 +34,6 @@ def _get_args():
             """
         ),
     )
-    parser.add_argument(
-        "--task-name",
-        type=str,
-        default=None,
-        help=textwrap.dedent(
-            """\
-            [movies | scenarios]
-            If specified, conduct model-name for only specified task.
-            (default : %(default)s)
-            """
-        ),
-    )
 
     required_args = parser.add_argument_group("Required Arguments")
     required_args.add_argument(
@@ -61,7 +41,7 @@ def _get_args():
         "--model-name",
         help=textwrap.dedent(
             """\
-            [student | paired]
+            [rm]
             Name of model, for organizing output and triggering
             differing workflows.
             """
@@ -83,26 +63,17 @@ def main():
     args = _get_args().parse_args()
     proj_dir = args.proj_dir
     model_name = args.model_name
-    task_name = args.task_name
 
     # Check model_name
-    if not afni.helper.valid_univ_test(model_name):
+    if not afni.helper.valid_mvm_test(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
     # Setup
     emo_dict = afni.helper.emo_switch()
-    task_list = ["task-movies", "task-scenarios"]
-    if task_name:
-        chk_task = f"task-{task_name}"
-        if chk_task not in task_list:
-            raise ValueError(f"Unexpected task name : {task_name}")
-        task_list = [chk_task]
-
-    # Run model for each task, emotion
-    for task in task_list:
-        for emo_name in emo_dict.keys():
-            workflows.afni_ttest(task, model_name, emo_name, proj_dir)
+    for emo_name in emo_dict.keys():
+        pass
+        # workflows.afni_ttest(task, model_name, emo_name, proj_dir)
 
 
 if __name__ == "__main__":

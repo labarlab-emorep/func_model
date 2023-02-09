@@ -420,6 +420,99 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
 
 
 # %%
+def afni_mvm(proj_dir, model_name, emo_name):
+    """Title
+
+    Parameters
+    ----------
+
+
+    Raises
+    ------
+
+
+    """
+    # Validate paths
+    if not os.path.exists(proj_dir):
+        raise FileNotFoundError(
+            f"Missing expected project directory : {proj_dir}"
+        )
+    afni_deriv = os.path.join(
+        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
+    )
+    if not os.path.exists(afni_deriv):
+        raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
+
+    # Validate strings
+    if not afni.helper.valid_mvm_test(model_name):
+        raise ValueError(f"Unexpected model name : {model_name}")
+    emo_switch = afni.helper.emo_switch()
+    if emo_name not in emo_switch.keys():
+        raise ValueError(f"Unexpected emotion name : {emo_name}")
+
+    # Setup
+    print(f"\nConducting {model_name} MVM for {emo_name}")
+    group_dir = os.path.join(proj_dir, "analyses/model_afni")
+    out_dir = os.path.join(
+        group_dir, f"mvm_{model_name}", f"{emo_name}_vs_washout"
+    )
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    #
+    emo_short = emo_switch[emo_name]
+    wash_label = "comWas#0_Coef"
+
+    #
+    subj_all = [
+        os.path.basename(x) for x in sorted(glob.glob(f"{afni_deriv}/sub-*"))
+    ]
+    group_dict = {}
+    for subj in subj_all:
+
+        #
+        decon_list = sorted(
+            glob.glob(
+                f"{afni_deriv}/{subj}/**/decon_univ_stats_REML+tlrc.HEAD",
+                recursive=True,
+            )
+        )
+        if len(decon_list) != 2:
+            continue
+        group_dict[subj] = {}
+
+        #
+        for decon_path in decon_list:
+            search_path = os.path.join(
+                os.path.dirname(decon_path), "timing_files"
+            )
+            wash_path = glob.glob(f"{search_path}/*_desc-comWas_events.1D")[0]
+            wash_file = os.path.basename(wash_path)
+            _subj, sess, task, _desc, _suff = wash_file.split("_")
+
+            #
+            task_short = task.split("-")[1][:3]
+            if task_short not in ["mov", "sce"]:
+                raise ValueError("Problem splitting task name")
+
+            #
+            emo_label = task_short + emo_short + "#0_Coef"
+            group_dict[subj][task] = {
+                "sess": sess,
+                "decon_path": decon_path,
+                "emo_label": emo_label,
+                "wash_label": wash_label,
+            }
+
+    # Make, get mask
+    mask_path = afni.masks.tpl_gm(group_dir)
+
+    # # Generate, execute ETAC command
+    # run_etac = afni.group.EtacTest(proj_dir, out_dir, mask_path)
+    # _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
+
+
+# %%
 def fsl_task_first(
     subj,
     sess,

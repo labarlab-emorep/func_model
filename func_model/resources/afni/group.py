@@ -1,4 +1,5 @@
 """Methods for group-level analyses."""
+# %%
 import os
 import glob
 import pandas as pd
@@ -336,6 +337,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         return out_path
 
 
+# %%
 def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
     """Combine participant beta dataframes into master.
 
@@ -567,3 +569,59 @@ class EtacTest:
         # Execute ETAC command
         submit.submit_subprocess(etac_cmd, out_path, f"etac{emo_short}")
         return self._out_dir
+
+
+class MvmTest:
+    """Title."""
+
+    def __init__(self, proj_dir, out_dir, mask_path):
+        """Title."""
+        print("Initializing MvmTest")
+
+        # Check and setup
+        if not os.path.exists(proj_dir):
+            raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
+        self._proj_dir = proj_dir
+        self._out_dir = out_dir
+        self._mask_path = mask_path
+
+    def write_exec(self, group_dict, model_name, emo_short):
+        """Title."""
+        #
+        get_subbrick = ExtractTaskBetas(proj_dir)
+        table_list = []
+        for subj in group_dict:
+            for task, info_dict in group_dict[subj].items():
+                stim = task.split("-")[1]
+                decon_path = info_dict["decon_path"]
+                emo_label = info_dict["emo_label"]
+                wash_label = info_dict["wash_label"]
+
+                for label_name, label_type, sub_label in zip(
+                    ["emo", "wash"], [stim, "base"], [emo_label, wash_label]
+                ):
+                    get_subbrick.decon_path = decon_path
+                    get_subbrick.subj_out_dir = out_dir
+                    label_int = get_subbrick.get_label_int(sub_label)
+                    table_list.append(subj)
+                    table_list.append(label_name)
+                    table_list.append(label_type)
+                    table_list.append(f"{decon_path}'[{label_int}]'")
+
+        #
+        final_name = f"FINAL_{model_name}_{emo_short}"
+        mvm_head = [
+            "3dMVM",
+            f"-prefix {final_name}",
+            "-bsVars 1",
+            "-wsVars 'stimlabel*stimtype'",
+            f"-mask {mask_path}",
+            "-num_glt 1",
+            "-gltLabel 1 stim_vs_wash",
+            "-gltCode 1 'stimlabel : 1*emo -1*wash'",
+            "Subj stimlabel stimtype InputFile",
+        ]
+        mvm_cmd = " ".join(mvm_head + table_list)
+        mvm_script = os.path.join(out_dir, f"{final_name}.sh")
+        with open(mvm_script, "w") as script:
+            script.write(mvm_cmd)
