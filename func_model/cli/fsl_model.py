@@ -1,6 +1,9 @@
 """CLI for initiating FSL regressions.
 
-Desc.
+Setup and run first- and second-level models in FSL for task
+and resting-state EPI data. First-level output are written
+to participant derivatives:
+    <proj-dir>/derivatives/model_fsl/<subj>/<sess>/func/run-*_<level>_<name>
 
 Model names:
     - sep = emotion stimulus (scenarios, movies) and replay are
@@ -131,9 +134,6 @@ def main():
         work_deriv,
         f"logs/func-fsl_model-{model_name}_"
         + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
-    )
-    log_dir = os.path.join(
-        work_deriv, f"logs/func-fsl_model-{model_name}_test"
     )
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
