@@ -1,5 +1,7 @@
 """Extract voxel beta weights from deconvolved files.
 
+Written for the local labarserv2 environment.
+
 Mine AFNI deconvolved files for sub-bricks/behaviors of interest
 and generate a dataframe of voxel beta-coefficients. Dataframes
 may be masked by identifying empty coordinates in a group-level
