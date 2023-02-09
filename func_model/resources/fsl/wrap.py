@@ -7,6 +7,7 @@ required inputs.
 # %%
 import os
 import glob
+from typing import Union
 import nibabel as nib
 from . import model, helper
 
@@ -152,14 +153,28 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
                 "Improperly formatted file name for preprocessed BOLD."
             )
 
-    def _get_file(search_path: str, run: str, desc: str) -> str:
-        """Return path to condition or confound file."""
+    def _get_file(search_path: str, run: str, desc: str) -> Union[str, None]:
+        """Return path to condition/confound file or None."""
         try:
             return glob.glob(f"{search_path}/*_{run}_{desc}*.txt")[0]
         except IndexError:
-            raise FileNotFoundError(
-                f"Missing {run} {desc} file in {search_path}"
-            )
+            return None
+
+    def _get_cond(search_path: str, run: str) -> dict:
+        """Return dict of paths to common conditions."""
+        # cond_common values match description field of condition files
+        cond_common = ["judgment", "washout", "emoSelect", "emoIntensity"]
+        out_dict = {}
+        for cond in cond_common:
+            out_dict[cond] = _get_file(search_path, run, f"desc-{cond}")
+        return out_dict
+
+    def _none_in_dict(search_dict: dict) -> bool:
+        """Check dictionary values for None types."""
+        for _key, value in search_dict.items():
+            if value is None:
+                return True
+        return False
 
     # Identify preprocessed FSL files
     fd_subj_sess = os.path.join(
@@ -179,20 +194,25 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
     for preproc_path in sess_preproc:
 
         # Determine number of volumes
-        run = _get_run(os.path.basename(preproc_path))
         img = nib.load(preproc_path)
         img_header = img.header
         num_vol = img_header.get_data_shape()[3]
         del img
 
-        # Find common regressor files
+        # Find confounds file
+        run = _get_run(os.path.basename(preproc_path))
         search_conf = f"{subj_work}/confounds_files"
-        search_cond = f"{subj_work}/condition_files"
         confound_path = _get_file(search_conf, run, "desc-confounds")
-        judge_path = _get_file(search_cond, run, "desc-judgment")
-        wash_path = _get_file(search_cond, run, "desc-washout")
-        emosel_path = _get_file(search_cond, run, "desc-emoSelect")
-        emoint_path = _get_file(search_cond, run, "desc-emoIntensity")
+        if not confound_path:
+            print(f"\tNo confound found for {run}, skipping")
+            continue
+
+        # Find condition files
+        search_cond = f"{subj_work}/condition_files"
+        cond_dict = _get_cond(search_cond, run)
+        if _none_in_dict(cond_dict):
+            print(f"\tMissing required condition file for {run}, skipping")
+            continue
 
         # Write design file
         use_short = True if run == "run-04" or run == "run-08" else False
@@ -201,10 +221,10 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
             num_vol,
             preproc_path,
             confound_path,
-            judge_path,
-            wash_path,
-            emosel_path,
-            emoint_path,
+            cond_dict["judgment"],
+            cond_dict["washout"],
+            cond_dict["emoSelect"],
+            cond_dict["emoIntensity"],
             use_short,
         )
         fsf_list.append(fsf_path)
