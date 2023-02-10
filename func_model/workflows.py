@@ -508,8 +508,8 @@ def afni_mvm(proj_dir, model_name, emo_name):
     mask_path = afni.masks.tpl_gm(group_dir)
 
     # # Generate, execute ETAC command
-    # run_etac = afni.group.EtacTest(proj_dir, out_dir, mask_path)
-    # _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
+    run_mvm = afni.group.MvmTest(proj_dir, out_dir, mask_path)
+    _ = run_mvm.write_exec(group_dict, model_name, emo_short)
 
 
 # %%

@@ -400,7 +400,52 @@ def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
     return out_path
 
 
-class EtacTest:
+class _SetupTest:
+    """Title."""
+
+    def __init__(self, proj_dir, out_dir, mask_path):
+        """Initialize.
+
+        Parameters
+        ----------
+        proj_dir : path
+            Location of project directory
+        out_dir : path
+            Output location for generated files
+        mask_path : path
+            Location of group mask
+
+        Raises
+        ------
+        FileNotFoundError
+            Missing proj_dir
+
+        """
+        print("\tInitializing _SetupTest")
+        if not os.path.exists(proj_dir):
+            raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
+        self._proj_dir = proj_dir
+        self._out_dir = out_dir
+        self._mask_path = mask_path
+        if not os.path.exists(self._out_dir):
+            os.makedirs(self._out_dir)
+
+    def _write_script(self, final_name: str, bash_cmd: str):
+        """Write BASH command to shell script."""
+        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
+        with open(etac_script, "w") as script:
+            script.write(bash_cmd)
+
+    def _setup_output(self, model_name: str, emo_short: str) -> tuple:
+        """Setup, return final filename and location."""
+        print(f"\tBuilding {model_name} ETAC for {emo_short}")
+        final_name = f"FINAL_{model_name}_{emo_short}"
+        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
+        return (final_name, out_path)
+
+
+# %%
+class EtacTest(_SetupTest):
     """Build and execute ETAC tests.
 
     Identify relevant sub-bricks in AFNI's deconvolved files given user
@@ -438,13 +483,7 @@ class EtacTest:
 
         """
         print("Initializing EtacTest")
-
-        # Check and setup
-        if not os.path.exists(proj_dir):
-            raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
-        self._proj_dir = proj_dir
-        self._out_dir = out_dir
-        self._mask_path = mask_path
+        super().__init__(proj_dir, out_dir, mask_path)
 
     def _build_list(self, decon_dict: dict, sub_label: str) -> list:
         """Build ETAC input list."""
@@ -499,21 +538,6 @@ class EtacTest:
         else:
             return etac_head + etac_body
 
-    def _write_script(self, final_name: str, bash_cmd: str):
-        """Write BASH command to shell script."""
-        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
-        with open(etac_script, "w") as script:
-            script.write(bash_cmd)
-
-    def _setup(self, emo_short: str) -> tuple:
-        """Return final filename and location."""
-        print(f"\tBuilding {self._model_name} ETAC for {emo_short}")
-        if not os.path.exists(self._out_dir):
-            os.makedirs(self._out_dir)
-        final_name = f"FINAL_{self._model_name}_{emo_short}"
-        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
-        return (final_name, out_path)
-
     def write_exec(self, model_name, emo_short, group_dict, sub_label):
         """Write and execute a T-test using AFNI's ETAC method.
 
@@ -547,7 +571,7 @@ class EtacTest:
         # Validate and setup
         self._model_name = model_name
         self._validate_etac_input(group_dict, sub_label)
-        final_name, out_path = self._setup(emo_short)
+        final_name, out_path = self._setup_output(model_name, emo_short)
         if os.path.exists(out_path):
             return self._out_dir
 
@@ -571,57 +595,83 @@ class EtacTest:
         return self._out_dir
 
 
-class MvmTest:
+class MvmTest(_SetupTest):
     """Title."""
 
     def __init__(self, proj_dir, out_dir, mask_path):
         """Title."""
         print("Initializing MvmTest")
+        super().__init__(proj_dir, out_dir, mask_path)
 
-        # Check and setup
-        if not os.path.exists(proj_dir):
-            raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
-        self._proj_dir = proj_dir
-        self._out_dir = out_dir
-        self._mask_path = mask_path
+    def _build_row(self, row_dict):
+        """Title."""
+        for stimlabel, info_dict in row_dict.items():
+            self._get_subbrick.decon_path = info_dict["decon_path"]
+            self._get_subbrick.subj_out_dir = self._out_dir
+            label_int = self._get_subbrick.get_label_int(
+                info_dict["sub_label"]
+            )
+
+            #
+            self._table_list.append(info_dict["subj"])
+            self._table_list.append(stimlabel)
+            self._table_list.append(info_dict["stimtype"])
+            decon_path = info_dict["decon_path"]
+            self._table_list.append(f"{decon_path}'[{label_int}]'")
+
+    def _build_table(self):
+        """Title."""
+        #
+        self._get_subbrick = ExtractTaskBetas(self._proj_dir)
+        self._table_list = []
+        for subj in self._group_dict:
+            for task, info_dict in self._group_dict[subj].items():
+
+                #
+                stim = task.split("-")[1]
+                stim_short = stim[:3]
+                row_dict = {
+                    "emo": {
+                        "subj": subj,
+                        "stimtype": stim,
+                        "decon_path": info_dict["decon_path"],
+                        "sub_label": info_dict["emo_label"],
+                    },
+                    "base": {
+                        "subj": subj,
+                        "stimtype": f"{stim_short}Was",
+                        "decon_path": info_dict["decon_path"],
+                        "sub_label": info_dict["wash_label"],
+                    },
+                }
+                self._build_row(row_dict)
 
     def write_exec(self, group_dict, model_name, emo_short):
         """Title."""
         #
-        get_subbrick = ExtractTaskBetas(proj_dir)
-        table_list = []
-        for subj in group_dict:
-            for task, info_dict in group_dict[subj].items():
-                stim = task.split("-")[1]
-                decon_path = info_dict["decon_path"]
-                emo_label = info_dict["emo_label"]
-                wash_label = info_dict["wash_label"]
-
-                for label_name, label_type, sub_label in zip(
-                    ["emo", "wash"], [stim, "base"], [emo_label, wash_label]
-                ):
-                    get_subbrick.decon_path = decon_path
-                    get_subbrick.subj_out_dir = out_dir
-                    label_int = get_subbrick.get_label_int(sub_label)
-                    table_list.append(subj)
-                    table_list.append(label_name)
-                    table_list.append(label_type)
-                    table_list.append(f"{decon_path}'[{label_int}]'")
+        self._model_name = model_name
+        self._group_dict = group_dict
+        final_name, out_path = self._setup_output(model_name, emo_short)
+        if os.path.exists(out_path):
+            return self._out_dir
 
         #
-        final_name = f"FINAL_{model_name}_{emo_short}"
         mvm_head = [
             "3dMVM",
             f"-prefix {final_name}",
             "-bsVars 1",
             "-wsVars 'stimlabel*stimtype'",
-            f"-mask {mask_path}",
+            f"-mask {self._mask_path}",
             "-num_glt 1",
             "-gltLabel 1 stim_vs_wash",
-            "-gltCode 1 'stimlabel : 1*emo -1*wash'",
+            "-gltCode 1 'stimlabel : 1*emo -1*base'",
+            "-dataTable",
             "Subj stimlabel stimtype InputFile",
         ]
-        mvm_cmd = " ".join(mvm_head + table_list)
-        mvm_script = os.path.join(out_dir, f"{final_name}.sh")
-        with open(mvm_script, "w") as script:
-            script.write(mvm_cmd)
+        self._build_table()
+        mvm_cmd = " ".join(mvm_head + self._table_list)
+        self._write_script(final_name, mvm_cmd)
+
+        #
+        submit.submit_subprocess(mvm_cmd, out_path, f"mvm{emo_short}")
+        return self._out_dir
