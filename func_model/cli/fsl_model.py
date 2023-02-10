@@ -1,5 +1,7 @@
 """CLI for initiating FSL regressions.
 
+Written for the remote Duke Compute Cluster (DCC) environment.
+
 Setup and run first- and second-level models in FSL for task
 and resting-state EPI data. First-level output are written
 to participant derivatives:

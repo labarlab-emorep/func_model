@@ -56,12 +56,47 @@ class NiftiArray:
         img_flat = self._flatten_array(img_data)
         return img_flat
 
+    def add_arr_id(
+        self, subj: str, task: str, emo: str, img_flat: np.ndarray
+    ) -> np.ndarray:
+        """Title."""
+        id_arr = np.array(
+            [
+                ["subj_id", "task_id", "emo_id"],
+                [subj, task, emo],
+            ]
+        )
+        return np.concatenate((id_arr, img_flat), axis=1)
+
     def arr_to_df(self, arr: np.ndarray) -> pd.DataFrame:
         """Make dataframe from flat array."""
         df = pd.DataFrame(np.transpose(arr), columns=["idx", "val"])
         df = df.set_index("idx")
         df = df.transpose().reset_index(drop=True)
         return df
+
+    def mask_coord(self, mask_path):
+        """Identify censoring coordinates from binary brain mask.
+
+        Read-in binary values from a brain mask, vectorize, and identify
+        coordinates of mask file outside of brain. Sets internal attribute
+        holding coordinates to remove from beta dataframes.
+
+        Parameters
+        ----------
+        mask_path : path
+            Location of binary brain mask
+
+        Attributes
+        ----------
+        _rm_cols : array
+            Column names (coordinates) to drop from beta dataframes
+
+        """
+        print("\tFinding coordinates to censor ...")
+        img_flat = self.nifti_to_arr(mask_path)
+        df_mask = self.arr_to_df(img_flat)
+        self._rm_cols = df_mask.columns[df_mask.isin([0.0]).any()]
 
 
 class C3dMethods:

@@ -11,6 +11,7 @@ setup(
             "afni_extract=func_model.cli.afni_extract:main",
             "afni_univ=func_model.cli.afni_univ:main",
             "fsl_model=func_model.cli.fsl_model:main",
+            "fsl_extract=func_model.cli.fsl_extract:main",
         ]
     },
     include_package_data=True,

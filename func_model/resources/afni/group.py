@@ -215,28 +215,28 @@ class ExtractTaskBetas(matrix.NiftiArray):
             _ = submit.submit_subprocess(bash_cmd, out_path, "Split decon")
             self.beta_dict[emo_long] = out_path
 
-    def mask_coord(self, mask_path):
-        """Identify censoring coordinates from binary brain mask.
+    # def mask_coord(self, mask_path):
+    #     """Identify censoring coordinates from binary brain mask.
 
-        Read-in binary values from a brain mask, vectorize, and identify
-        coordinates of mask file outside of brain. Sets internal attribute
-        holding coordinates to remove from beta dataframes.
+    #     Read-in binary values from a brain mask, vectorize, and identify
+    #     coordinates of mask file outside of brain. Sets internal attribute
+    #     holding coordinates to remove from beta dataframes.
 
-        Parameters
-        ----------
-        mask_path : path
-            Location of binary brain mask
+    #     Parameters
+    #     ----------
+    #     mask_path : path
+    #         Location of binary brain mask
 
-        Attributes
-        ----------
-        _rm_cols : array
-            Column names (coordinates) to drop from beta dataframes
+    #     Attributes
+    #     ----------
+    #     _rm_cols : array
+    #         Column names (coordinates) to drop from beta dataframes
 
-        """
-        print("\tFinding coordinates to censor ...")
-        img_flat = self.nifti_to_arr(mask_path)
-        df_mask = self.arr_to_df(img_flat)
-        self._rm_cols = df_mask.columns[df_mask.isin([0.0]).any()]
+    #     """
+    #     print("\tFinding coordinates to censor ...")
+    #     img_flat = self.nifti_to_arr(mask_path)
+    #     df_mask = self.arr_to_df(img_flat)
+    #     self._rm_cols = df_mask.columns[df_mask.isin([0.0]).any()]
 
     def make_func_matrix(self, subj, sess, task, model_name, decon_path):
         """Generate a matrix of beta-coefficients from a deconvolve file.

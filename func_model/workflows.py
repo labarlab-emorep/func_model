@@ -506,3 +506,65 @@ def fsl_task_first(
             fsf_path, subj, sess, model_name, model_level, log_dir
         )
     fsl.helper.clean_up(subj_work, subj_final)
+
+
+# %%
+def fsl_extract(
+    proj_dir,
+    subj_list,
+    model_name,
+    model_level,
+    group_mask="template",
+    comb_all=True,
+):
+    """Title.
+
+    Parameters
+    ----------
+
+    """
+    # check model_name, model_level
+
+    #
+    if group_mask not in ["template", "intersection"]:
+        raise ValueError("unexpected group_mask parameter")
+
+    #
+    out_dir = os.path.join(proj_dir, "analyses/model_fsl")
+    proj_deriv = os.path.join(proj_dir, "data_scanner_BIDS", "derivatives")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # Initialize beta extraction
+    # get_betas = fsl.group.ExtractTaskBetas(proj_dir)
+
+    # Generate mask and identify censor coordinates
+    if group_mask == "template":
+        mask_path = afni.masks.tpl_gm(out_dir)
+    elif group_mask == "intersection":
+        mask_path = afni.masks.group_mask(proj_deriv, subj_list, out_dir)
+    get_betas.mask_coord(mask_path)
+
+    # Make beta dataframe for each subject
+    for subj in subj_list:
+        for sess in ["ses-day2", "ses-day3"]:
+
+            #
+            subj_deriv_func = os.path.join(
+                proj_deriv, "model_fsl", subj, sess, "func"
+            )
+            task_path = glob.glob(
+                f"{subj_deriv_func}/condition_files/*_events.txt"
+            )[0]
+            _subj, _sess, task, _run, _desc, _suff = os.path.basename(
+                task_path
+            ).split("_")
+            design_list = sorted(
+                glob.glob(f"{subj_deriv_func}/run-*/design.con")
+            )
+
+    # # Combine all participant dataframes
+    # if comb_all:
+    #     _ = afni.group.comb_matrices(
+    #         subj_list, model_name, proj_deriv, out_dir
+    #     )
