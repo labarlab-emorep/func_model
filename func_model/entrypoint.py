@@ -12,6 +12,7 @@ def main():
         afni_model   : Conduct AFNI-style deconvolution
         afni_extract : Extract emotion beta values from deconvolve AFNI as a matrix
         afni_univ    : Conduct univariate tests in AFNI
+        afni_mvm     : Conduct multivariate tests in AFNI
         fsl_model    : Conduct FSL-style first- and second-level regressions
 
     """

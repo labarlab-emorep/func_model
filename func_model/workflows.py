@@ -421,11 +421,25 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
 
 # %%
 def afni_mvm(proj_dir, model_name, emo_name):
-    """Title
+    """Conduct ANOVA-style tests in AFNI via 3dMVM.
+
+
+
+    Conduct stimulus-specific (movies, scenarios) t-tests comparing
+    emotion against zero (student) or washout (paired). Output
+    scripts and files are written to:
+        <proj_dir>/analyses/model_afni/ttest_<model_name>/<task>_<emo_name>
 
     Parameters
     ----------
-
+    proj_dir : path
+        Project directory location, should contain
+        data_scanner_BIDS/derivatives/model_afni
+    model_name : str
+        [rm]
+        Model identifier
+    emo_name : str, key of afni.helper.emo_switch
+        Lower case emotion name
 
     Raises
     ------
@@ -464,6 +478,7 @@ def afni_mvm(proj_dir, model_name, emo_name):
     wash_label = "comWas#0_Coef"
 
     #
+    print("\tBuilding group dictionary")
     subj_all = [
         os.path.basename(x) for x in sorted(glob.glob(f"{afni_deriv}/sub-*"))
     ]
@@ -481,7 +496,7 @@ def afni_mvm(proj_dir, model_name, emo_name):
             continue
         group_dict[subj] = {}
 
-        #
+        # Make group dictionary required by group.MvmTest.write_exec
         for decon_path in decon_list:
             search_path = os.path.join(
                 os.path.dirname(decon_path), "timing_files"
@@ -505,10 +520,12 @@ def afni_mvm(proj_dir, model_name, emo_name):
             }
 
     # Make, get mask
+    print("\tGetting group mask")
     mask_path = afni.masks.tpl_gm(group_dir)
 
-    # # Generate, execute ETAC command
+    # Generate, execute ETAC command
     run_mvm = afni.group.MvmTest(proj_dir, out_dir, mask_path)
+    run_mvm.clustsim()
     _ = run_mvm.write_exec(group_dict, model_name, emo_short)
 
 

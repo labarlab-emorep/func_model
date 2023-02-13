@@ -1,8 +1,11 @@
 """Title.
 
 Model names:
-    - rm = repeated measures comparison between emotion, collapsing across
-            stimulus modality (1*movies + 1*scenarios), and washout (-2*wash)
+    - rm = repeated-measures ANOVA using two within-subject factors
+            (session, stimulus). Session has two factors: movies,
+            scenarios. Stimulus has two factors: emotion and
+            washout. Produces sessionXstimulus F-stats and posthoc
+            emotion-washout T-stat.
 
 Examples
 --------
@@ -71,9 +74,9 @@ def main():
 
     # Setup
     emo_dict = afni.helper.emo_switch()
-    for emo_name in emo_dict.keys():
-        pass
-        # workflows.afni_ttest(task, model_name, emo_name, proj_dir)
+    # for emo_name in emo_dict.keys():
+    #
+    workflows.afni_mvm(proj_dir, model_name, "fear")
 
 
 if __name__ == "__main__":
