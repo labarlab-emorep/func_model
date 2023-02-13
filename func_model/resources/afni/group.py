@@ -605,7 +605,7 @@ class MvmTest(_SetupTest):
 
     def _build_row(self, row_dict):
         """Title."""
-        for stimlabel, info_dict in row_dict.items():
+        for _, info_dict in row_dict.items():
             self._get_subbrick.decon_path = info_dict["decon_path"]
             self._get_subbrick.subj_out_dir = self._out_dir
             label_int = self._get_subbrick.get_label_int(
@@ -614,10 +614,11 @@ class MvmTest(_SetupTest):
 
             #
             self._table_list.append(info_dict["subj"])
-            self._table_list.append(stimlabel)
-            self._table_list.append(info_dict["stimtype"])
-            decon_path = info_dict["decon_path"]
-            self._table_list.append(f"{decon_path}'[{label_int}]'")
+            self._table_list.append(info_dict["sesslabel"])
+            self._table_list.append(info_dict["stimlabel"])
+            self._table_list.append(
+                f"{info_dict['decon_path']}'[{label_int}]'"
+            )
 
     def _build_table(self):
         """Title."""
@@ -629,17 +630,18 @@ class MvmTest(_SetupTest):
 
                 #
                 stim = task.split("-")[1]
-                stim_short = stim[:3]
                 row_dict = {
                     "emo": {
                         "subj": subj,
-                        "stimtype": stim,
+                        "sesslabel": stim,
+                        "stimlabel": "emo",
                         "decon_path": info_dict["decon_path"],
                         "sub_label": info_dict["emo_label"],
                     },
                     "base": {
                         "subj": subj,
-                        "stimtype": f"{stim_short}Was",
+                        "sesslabel": stim,
+                        "stimlabel": "wash",
                         "decon_path": info_dict["decon_path"],
                         "sub_label": info_dict["wash_label"],
                     },
@@ -660,13 +662,13 @@ class MvmTest(_SetupTest):
             "3dMVM",
             f"-prefix {final_name}",
             "-bsVars 1",
-            "-wsVars 'stimlabel*stimtype'",
+            "-wsVars 'sesslabel*stimlabel'",
             f"-mask {self._mask_path}",
             "-num_glt 1",
-            "-gltLabel 1 stim_vs_wash",
-            "-gltCode 1 'stimlabel : 1*emo -1*base'",
+            "-gltLabel 1 emo_vs_wash",
+            "-gltCode 1 'stimlabel : 1*emo -1*wash'",
             "-dataTable",
-            "Subj stimlabel stimtype InputFile",
+            "Subj sesslabel stimlabel InputFile",
         ]
         self._build_table()
         mvm_cmd = " ".join(mvm_head + self._table_list)
