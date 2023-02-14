@@ -1,13 +1,29 @@
-"""CLI for initiating FSL regressions.
+"""Conduct AFNI-based models of EPI run files.
 
-Desc.
+Written for the remote Duke Compute Cluster (DCC) environment.
+
+Utilizing output of fMRIPrep, construct needed files for deconvolution. Write
+the 3dDeconvolve script, and use it to generate the matrices and 3dREMLfit
+script. Execute 3dREMLfit, and save output files to group location.
+A workflow is submitted for each session found in subject's fmriprep
+directory.
+
+Model names:
+    - univ = A standard univariate model yielding a single averaged
+        beta-coefficient for each event type (-stim_times_AM1)
+    - rest = Conduct a resting-state analysis referencing example
+        11 of afni_proc.py.
+
+Output logs are written to:
+    /work/$(whoami)/EmoRep/logs/func-afni_model-<model-name>_<timestamp>
 
 Examples
 --------
-model_fsl -s sub-ER0009
+afni_model -s sub-ER0009
+afni_model --model-name univ -s sub-ER0009 sub-ER0016
+afni_model --model-name rest -s sub-ER0016 sub-ER0024
 
 """
-
 # %%
 import os
 import sys
@@ -16,7 +32,8 @@ import glob
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import submit
+from func_model.resources.general import submit
+from func_model.resources.afni import helper
 
 
 # %%
@@ -28,11 +45,11 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="task",
+        default="univ",
         help=textwrap.dedent(
             """\
-            [task]
-            FSL model name/type, for triggering different workflows
+            [univ | rest | mixed]
+            AFNI model name/type, for triggering different workflows
             (default : %(default)s)
             """
         ),
@@ -40,7 +57,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",
+        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
         help=textwrap.dedent(
             """\
             Path to BIDS-formatted project directory
@@ -81,7 +98,8 @@ def main():
     model_name = args.model_name
 
     # Check model_name
-    if model_name not in ["task"]:
+    model_valid = helper.valid_models(model_name)
+    if not model_valid:
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
@@ -90,18 +108,18 @@ def main():
     proj_rawdata = os.path.join(proj_dir, "rawdata")
 
     # Get environmental vars
-    # TODO check for FSL
+    sing_afni = os.environ["SING_AFNI"]
     user_name = os.environ["USER"]
 
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", user_name, "EmoRep")
     now_time = datetime.now()
-    # log_dir = os.path.join(
-    #     work_deriv,
-    #     f"logs/func-fsl_model-{model_name}_"
-    #     + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
-    # )
-    log_dir = os.path.join(work_deriv, "logs/func_model-fsl_test")
+    log_dir = os.path.join(
+        work_deriv,
+        f"logs/func-afni_model-{model_name}_"
+        + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
+    )
+    # log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
@@ -118,12 +136,13 @@ def main():
             continue
 
         for sess in sess_list:
-            _, _ = submit.schedule_fsl(
+            _, _ = submit.schedule_afni(
                 subj,
                 sess,
                 proj_rawdata,
                 proj_deriv,
                 work_deriv,
+                sing_afni,
                 model_name,
                 log_dir,
             )

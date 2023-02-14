@@ -1,144 +1,167 @@
-"""Run processing methods for workflow."""
-# %%
+"""Methods for additional preprocessing."""
 import os
 import glob
 import fnmatch
-from func_model import afni
+from func_model.resources.afni import helper, deconvolve, masks
+from func_model.resources.general import submit
 
 
-# %%
-def afni_univ_tfs(subj, sess, subj_work, subj_sess_raw):
-    """Make timing files for univariate sanity check.
-
-    Generate a set of AFNI-styled timing files in order to
-    check the design and manipulation.
-
-    Timing files for common, session stimulus, and selection
-    tasks are generated. Fixations are excluded to serve as
-    model baseline.
+def _smooth_epi(
+    subj_work,
+    proj_deriv,
+    func_preproc,
+    sing_afni,
+    blur_size=3,
+):
+    """Spatially smooth EPI files.
 
     Parameters
     ----------
-    subj : str
-        BIDS subject identifier
-    sess : str
-        BIDS session identifier
     subj_work : path
-        Location of working directory for generating intermediate files
-    subj_sess_raw : path
-        Location of participant's session rawdata, used to find
-        BIDS event files
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    func_preproc : list
+        Locations of preprocessed EPI files
+    sing_afni : path
+        Location of AFNI singularity file
+    blur_size : int, optional
+        Size (mm) of smoothing kernel
 
     Returns
     -------
-    dict
-        key = event name
-        value = path to timing file
+    list
+        Paths to smoothed EPI files
 
     Raises
     ------
-    FileNotFoundError
-        BIDS event files are missing
-    ValueError
-        Unexpected task name
+    TypeError
+        Improper parameter types
 
     """
-    # Find events files
-    sess_events = sorted(glob.glob(f"{subj_sess_raw}/func/*events.tsv"))
-    if not sess_events:
-        raise FileNotFoundError(
-            f"Expected BIDs events files in {subj_sess_raw}"
-        )
+    # Check arguments
+    if not isinstance(blur_size, int):
+        raise TypeError("Optional blur_size requires int")
+    if not isinstance(func_preproc, list):
+        raise TypeError("Argument func_preproc requires list")
 
-    # Identify and validate task name
-    task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
-    task_valid = ["movies", "scenarios"]
-    if task not in task_valid:
-        raise ValueError(f"Expected task names movies|scenarios, found {task}")
+    # Start return list, smooth each epi file
+    print("\nSmoothing EPI files ...")
+    func_smooth = []
+    for epi_path in func_preproc:
 
-    # Generate timing files
-    make_tf = afni.TimingFiles(subj_work, sess_events)
-    tf_com = make_tf.common_events(subj, sess, task)
-    tf_sess = make_tf.session_events(subj, sess, task)
-    tf_sel = make_tf.select_events(subj, sess, task)
-    tf_all = tf_com + tf_sess + tf_sel
+        # Setup output names/paths, avoid repeating work
+        epi_preproc = os.path.basename(epi_path)
+        desc_preproc = epi_preproc.split("desc-")[1].split("_")[0]
+        epi_smooth = epi_preproc.replace(desc_preproc, "smoothed")
+        out_path = os.path.join(subj_work, epi_smooth)
+        if os.path.exists(out_path):
+            func_smooth.append(out_path)
+            continue
 
-    # Setup output dict
-    sess_tfs = {}
-    for tf_path in tf_all:
-        h_key = os.path.basename(tf_path).split("desc-")[1].split("_")[0]
-        sess_tfs[h_key] = tf_path
+        # Smooth data
+        print(f"\tStarting smoothing of {epi_path}")
+        bash_list = [
+            "3dmerge",
+            f"-1blur_fwhm {blur_size}",
+            "-doall",
+            f"-prefix {out_path}",
+            epi_path,
+        ]
+        sing_prep = helper.prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+        bash_cmd = " ".join(sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
 
-    return sess_tfs
+        # Update return list
+        func_smooth.append(out_path)
+
+    # Double-check correct order of files
+    func_smooth.sort()
+    return func_smooth
 
 
-def afni_indiv_tfs(subj, sess, subj_work, subj_sess_raw):
-    """Make timing files for sanity check modeling individual events.
-
-    DEPRECATED.
-
-    This "indiv" approach requires the same timing files as "univ", so wrap
-    the afni_univ_tfs method and return that output.
+def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
+    """Scale EPI timeseries.
 
     Parameters
     ----------
-    subj : str
-        BIDS subject identifier
-    sess : str
-        BIDS session identifier
     subj_work : path
-        Location of working directory for generating intermediate files
-    subj_sess_raw : path
-        Location of participant's session rawdata, used to find
-        BIDS event files
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    mask_min : path
+        Location of minimum-value mask, output of
+        afni.MakeMasks.minimum
+    func_preproc : list
+        Locations of preprocessed EPI files
+    sing_afni : path
+        Location of AFNI singularity file
 
     Returns
     -------
-    dict
-        key = event name
-        value = path to timing file
+    list
+        Paths to scaled EPI files
+
+    Raises
+    ------
+    TypeError
+        Improper parameter types
 
     """
-    sess_tfs = afni_univ_tfs(subj, sess, subj_work, subj_sess_raw)
-    return sess_tfs
+    # Check arguments
+    if not isinstance(func_preproc, list):
+        raise TypeError("Argument func_preproc requires list")
+
+    # Start return list, scale each epi file supplied
+    print("\nScaling EPI files ...")
+    func_scaled = []
+    for epi_path in func_preproc:
+
+        # Setup output names, avoid repeating work
+        epi_preproc = os.path.basename(epi_path)
+        desc_preproc = epi_preproc.split("desc-")[1].split("_")[0]
+        epi_tstat = "tmp_" + epi_preproc.replace(desc_preproc, "tstat")
+        out_tstat = os.path.join(subj_work, epi_tstat)
+        epi_scale = epi_preproc.replace(desc_preproc, "scaled")
+        out_path = os.path.join(subj_work, epi_scale)
+        if os.path.exists(out_path):
+            func_scaled.append(out_path)
+            continue
+
+        # Determine mean values
+        print(f"\tStarting scaling of {epi_path}")
+        bash_list = [
+            "3dTstat",
+            f"-prefix {out_tstat}",
+            epi_path,
+        ]
+        sing_prep = helper.prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+        bash_cmd = " ".join(sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
+
+        # Scale values
+        bash_list = [
+            "3dcalc",
+            f"-a {epi_path}",
+            f"-b {out_tstat}",
+            f"-c {mask_min}",
+            "-expr 'c * min(200, a/b*100)*step(a)*step(b)'",
+            f"-prefix {out_path}",
+        ]
+        bash_cmd = " ".join(sing_prep + bash_list)
+        _ = submit.submit_subprocess(bash_cmd, out_path, "Scale run")
+
+        # Update return list
+        func_scaled.append(out_path)
+
+    # Double-check correct order of files
+    func_scaled.sort()
+    return func_scaled
 
 
-def afni_mixed_tfs(subj, sess, subj_work, subj_sess_raw):
-    """Title.
-
-    TODO - could probalby just use afni_univ_tfs and then generate
-    one more set of TFs from TimingFiles.block_events
-
-    """
-    # Find events files
-    sess_events = sorted(glob.glob(f"{subj_sess_raw}/func/*events.tsv"))
-    if not sess_events:
-        raise FileNotFoundError(
-            f"Expected BIDs events files in {subj_sess_raw}"
-        )
-
-    # Identify and validate task name
-    task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
-    task_valid = ["movies", "scenarios"]
-    if task not in task_valid:
-        raise ValueError(f"Expected task names movies|scenarios, found {task}")
-
-    #
-    sess_tfs = afni_univ_tfs(subj, sess, subj_work, subj_sess_raw)
-
-    #
-    make_tf = afni.TimingFiles(subj_work, sess_events)
-    tf_blk = make_tf.session_blocks(subj, sess, task)
-
-    # Setup output dict
-    for tf_path in tf_blk:
-        h_key = os.path.basename(tf_path).split("desc-")[1].split("_")[0]
-        sess_tfs[h_key] = tf_path
-
-    return sess_tfs
-
-
-def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
+def extra_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     """Conduct extra preprocessing for AFNI.
 
     Identify required files from fMRIPrep and FSL, then conduct
@@ -263,7 +286,7 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     func_dict["func-preproc"] = run_files
 
     # Make required masks
-    make_masks = afni.MakeMasks(
+    make_masks = masks.MakeMasks(
         subj_work, proj_deriv, anat_dict, func_dict, sing_afni
     )
     anat_dict["mask-int"] = make_masks.intersect()
@@ -273,10 +296,10 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     anat_dict["mask-min"] = make_masks.minimum()
 
     # Smooth and scale EPI data
-    smooth_epi = afni.smooth_epi(
+    smooth_epi = _smooth_epi(
         subj_work, proj_deriv, func_dict["func-preproc"], sing_afni
     )
-    func_dict["func-scaled"] = afni.scale_epi(
+    func_dict["func-scaled"] = _scale_epi(
         subj_work,
         proj_deriv,
         anat_dict["mask-min"],
@@ -285,7 +308,7 @@ def afni_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     )
 
     # Make AFNI-style motion and censor files
-    make_motion = afni.MotionCensor(
+    make_motion = deconvolve.MotionCensor(
         subj_work, proj_deriv, func_dict["func-motion"], sing_afni
     )
     func_dict["mot-mean"] = make_motion.mean_motion()
