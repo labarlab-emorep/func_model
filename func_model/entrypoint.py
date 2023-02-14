@@ -17,7 +17,12 @@ def main():
 
         fsl_model    : Conduct FSL-style first- and second-level regressions
         fsl_extract  : Extract emotion beta values from FSL first-level as a matrix
-
+        
+    The sub-packages afni_model, fsl_model are written specifically for the
+    Duke Compute Cluster (DCC), while afni_extract, afni_univ, afni_mvm, and
+    fsl_extract are written for labarserv2.
+    
+    
     """
     )
 
