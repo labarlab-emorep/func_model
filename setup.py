@@ -15,7 +15,7 @@ setup(
         ]
     },
     include_package_data=True,
-    package_data={"": ["reference_files/first_level_design_template.fsf"]},
+    package_data={"": ["reference_files/design*.fsf"]},
     install_requires=[
         "nibabel>=4.0.1",
         "numpy>=1.22.3",
