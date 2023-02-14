@@ -1,10 +1,16 @@
-"""Title.
+"""Conduct multivariate testing using AFNI-based methods.
+
+Written for the remote Duke Compute Cluster (DCC) environment.
+
+Construct and execute simple multivariate tests for sanity checking
+pipeline output. Output is written to:
+    <proj-dir>/analyses/model_afni/mvm_<model-name>
 
 Model names:
-    - rm = repeated-measures ANOVA using two within-subject factors
-            (session, stimulus). Session has two factors: movies,
-            scenarios. Stimulus has two factors: emotion and
-            washout. Produces sessionXstimulus F-stats and posthoc
+    - rm = repeated-measures ANOVA using two within-subject factors.
+            Factor A is session stimulus (movies, scenarios), and
+            Factor B is stimulus type (emotion, washout). Main and
+            interactive effects are generated as well as an
             emotion-washout T-stat.
 
 Examples
@@ -62,21 +68,18 @@ def _get_args():
 
 # %%
 def main():
-    """Setup working environment."""
+    """Capture, validate arguments and submit workflow."""
     args = _get_args().parse_args()
     proj_dir = args.proj_dir
     model_name = args.model_name
-
-    # Check model_name
     if not afni.helper.valid_mvm_test(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
-    # Setup
+    # Submit workflow for each emotion
     emo_dict = afni.helper.emo_switch()
-    # for emo_name in emo_dict.keys():
-    #
-    workflows.afni_mvm(proj_dir, model_name, "fear")
+    for emo_name in emo_dict.keys():
+        workflows.afni_mvm(proj_dir, model_name, emo_name)
 
 
 if __name__ == "__main__":

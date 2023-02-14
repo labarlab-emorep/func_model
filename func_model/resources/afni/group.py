@@ -716,6 +716,8 @@ class MvmTest(_SetupTest):
 
         Raises
         ------
+        KeyError
+            Unexpected group_dict organization
         ValueError
             Unexpected model name
 
@@ -745,7 +747,7 @@ class MvmTest(_SetupTest):
         print("\tBuilding 3dMVM command")
         mvm_head = [
             "3dMVM",
-            f"-prefix {final_name}",
+            f"-prefix {self._out_dir}/{final_name}",
             "-jobs 12",
             "-bsVars 1",
             "-wsVars 'sesslabel*stimlabel'",
