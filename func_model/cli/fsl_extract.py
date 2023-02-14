@@ -120,13 +120,25 @@ def main():
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
 
-    # Make subject list, trigger workflow
+    # Check, make subject list
+    proj_deriv = os.path.join(
+        proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
+    )
+    subj_all = sorted(glob.glob(f"{proj_deriv}/sub-*"))
+    if not subj_all:
+        raise ValueError(f"No FSL output found at : {proj_deriv}")
+    subj_all_list = [os.path.basename(x) for x in subj_all]
+    if subj_list:
+        for subj in subj_list:
+            if subj not in subj_all_list:
+                raise ValueError(
+                    "Specified subject not found in "
+                    + f"derivatives/model_fsl : {subj}"
+                )
     if subj_all:
-        proj_deriv = os.path.join(
-            proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
-        )
-        subj_all = sorted(glob.glob(f"{proj_deriv}/sub-*"))
-        subj_list = [os.path.basename(x) for x in subj_all]
+        subj_list = subj_all_list
+
+    # Submit workflow
     workflows.fsl_extract(proj_dir, subj_list, model_name, model_level)
 
 

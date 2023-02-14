@@ -14,16 +14,19 @@ class NiftiArray:
 
     Methods
     -------
-    add_arr_id()
+    add_arr_id(subj, task, emo, arr, run=None)
+        Prepend identifier values to 1D array
     arr_to_df(arr)
         Convert 1D array to pd.DataFrame
-    mask_coord()
+    mask_coord(mask_path)
+        Identify coordinates outside of group-level binary mask
     nifti_to_arr(nifti_path)
         Convert 3D NIfTI to 1D array
 
     Example
     -------
     na_obj = matrix.NiftiArray(4)
+    na_obj.mask_coord("/path/to/mask/nii")
     img_flat = na_obj.nifti_to_arr("/path/to/nii")
     df_flat = na_obj.arr_to_df(img_flat)
 

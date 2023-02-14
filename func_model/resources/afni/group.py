@@ -3,7 +3,6 @@
 import os
 import glob
 import pandas as pd
-import numpy as np
 from func_model.resources.afni import helper
 from func_model.resources.general import submit, matrix
 
@@ -17,12 +16,12 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Methods
     -------
-    get_labels(emo_name=None)
-        Derive relevant sub-brick identifiers
+    get_label_names()
+        Derive sub-brick identifiers
+    get_label_int(sub_label)
+        Determine specific sub-brick integer
     split_decon(emo_name=None)
         Split deconvolve file into each relevant sub-brick
-    mask_coord()
-        Find coordinates to censor based on brain mask
     make_func_matrix(subj, sess, task, model_name, decon_path)
         Generate dataframe of voxel beta weights for subject, session
 
@@ -30,7 +29,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
     -------
     etb_obj = group.ExtractTaskBetas(*args)
     etb_obj.mask_coord("/path/to/binary/mask/nii")
-    df = etb_obj.make_func_matrix(*args)
+    df_path = etb_obj.make_func_matrix(*args)
 
     """
 
@@ -216,29 +215,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
             _ = submit.submit_subprocess(bash_cmd, out_path, "Split decon")
             self.beta_dict[emo_long] = out_path
 
-    # def mask_coord(self, mask_path):
-    #     """Identify censoring coordinates from binary brain mask.
-
-    #     Read-in binary values from a brain mask, vectorize, and identify
-    #     coordinates of mask file outside of brain. Sets internal attribute
-    #     holding coordinates to remove from beta dataframes.
-
-    #     Parameters
-    #     ----------
-    #     mask_path : path
-    #         Location of binary brain mask
-
-    #     Attributes
-    #     ----------
-    #     _rm_cols : array
-    #         Column names (coordinates) to drop from beta dataframes
-
-    #     """
-    #     print("\tFinding coordinates to censor ...")
-    #     img_flat = self.nifti_to_arr(mask_path)
-    #     df_mask = self.arr_to_df(img_flat)
-    #     self._rm_cols = df_mask.columns[df_mask.isin([0.0]).any()]
-
     def make_func_matrix(self, subj, sess, task, model_name, decon_path):
         """Generate a matrix of beta-coefficients from a deconvolve file.
 
@@ -274,16 +250,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
             Location of output dataframe
 
         """
-
-        def _id_arr(emo: str) -> np.ndarray:
-            """Return array of identifier information."""
-            return np.array(
-                [
-                    ["subj_id", "task_id", "emo_id"],
-                    [subj.split("-")[-1], task.split("-")[-1], emo],
-                ]
-            )
-
         # Check input, set attributes and output location
         if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
@@ -307,9 +273,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
         # Extract and vectorize voxel betas
         for emo, beta_path in self.beta_dict.items():
             print(f"\t\tExtracting betas for : {emo}")
-            img_arr = self.nifti_to_arr(beta_path)
-            info_arr = _id_arr(emo)
-            img_arr = np.concatenate((info_arr, img_arr), axis=1)
+            h_arr = self.nifti_to_arr(beta_path)
+            img_arr = self.add_arr_id(subj, task, emo, h_arr)
 
             # Create/update dataframe
             if "df_betas" not in locals() and "df_betas" not in globals():
@@ -356,6 +321,8 @@ def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
     proj_deriv : path
         Location of project derivatives, will search for dataframes
         in <proj_deriv>/model_afni/sub-*.
+    out_dir : path
+        Output location of final dataframe
 
     Returns
     -------

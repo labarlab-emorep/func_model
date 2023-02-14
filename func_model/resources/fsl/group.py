@@ -1,20 +1,29 @@
 """Methods for group-level analyses."""
 import os
 import glob
-from pathlib import Path
 import pandas as pd
-import numpy as np
 from func_model.resources.fsl import helper
 from func_model.resources.general import matrix
 
 
 class ExtractTaskBetas(matrix.NiftiArray):
-    """Title.
+    """Generate dataframe of voxel beta-coefficients.
 
-    Desc.
+    Align FSL cope.nii files with their corresponding contrast
+    names and then extract all voxel beta weights for contrasts
+    of interest. Converts extracted beta weights into a dataframe.
 
     Methods
     -------
+    make_func_matrix(**args)
+        Identify and align cope.nii files, mine for betas
+        and generate dataframe
+
+    Example
+    -------
+    etb_obj = group.ExtractTaskBetas(*args)
+    etb_obj.mask_coord("/path/to/binary/mask/nii")
+    df_path = etb_obj.make_func_matrix(*args)
 
     """
 
@@ -109,32 +118,83 @@ class ExtractTaskBetas(matrix.NiftiArray):
         model_name,
         model_level,
         design_list,
-        subj_deriv_func,
+        subj_out,
     ):
-        """Title."""
-        # Check input, set attributes and output location
+        """Generate a matrix of beta-coefficients from FSL GLM cope files.
+
+        Extract task-related beta-coefficients maps, then vectorize the matrix
+        and create a dataframe where each row has all voxel beta-coefficients
+        for an event of interest.
+
+        Dataframe is written to:
+            <out_dir>/<subj>_<sess>_<task>_name-<model_name>_level-<model_level>_betas.tsv
+
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        task : str
+            [task-movies | task-scenarios]
+            BIDS task identifier
+        model_name : str
+            [sep]
+            FSL model identifier
+        model_level : str
+            [first]
+            FSL model level
+        design_list : list
+            Paths to participant design.con files
+        subj_out : path
+            Output location for betas dataframe
+
+        Returns
+        -------
+        path
+            Output location of beta dataframe
+
+        Raises
+        ------
+        ValueError
+            Unexpected task, model_name, model_level
+            Trouble deriving run number
+
+        """
+        # Validate model variables
         if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
+        if not helper.valid_name(model_name):
+            raise ValueError(
+                f"Unsupported value for model_name : {model_name}"
+            )
+        if not helper.valid_level(model_level):
+            raise ValueError(
+                f"Unsupported value for model_level : {model_level}"
+            )
 
+        # Setup and check for existing work
         print(f"\tGetting betas from {subj}, {sess}")
         subj_short = subj.split("-")[-1]
         task_short = task.split("-")[-1]
         out_path = os.path.join(
-            subj_deriv_func,
+            subj_out,
             f"{subj}_{sess}_{task}_name-{model_name}_"
             + f"level-{model_level}_betas.tsv",
         )
         if os.path.exists(out_path):
             return out_path
 
-        #
+        # Mine files from each design.con
         for self._design_path in design_list:
+
+            # Determine run number for identifier columns
             run_dir = os.path.basename(os.path.dirname(self._design_path))
             run_num = run_dir.split("_")[0].split("-")[1]
             if len(run_num) != 2:
                 raise ValueError("Error parsing path for run number")
 
-            #
+            # Find and match copes to emotions, get voxel betas
             cope_dict = self._find_copes()
             for emo, cope_path in cope_dict.items():
                 print(f"\t\tExtracting betas for run-{run_num}: {emo}")
@@ -179,6 +239,19 @@ def comb_matrices(subj_list, model_name, model_level, proj_deriv, out_dir):
 
     Parameters
     ----------
+    subj_list : list
+        Participants to include in final dataframe
+    model_name : str
+        [sep]
+        FSL model identifier
+    model_level : str
+        [first]
+        FSL model level
+    proj_deriv : path
+        Location of project derivatives, will search for dataframes
+        in <proj_deriv>/model_fsl/sub-*.
+    out_dir : path
+        Output location of final dataframe
 
     Returns
     -------
@@ -188,12 +261,17 @@ def comb_matrices(subj_list, model_name, model_level, proj_deriv, out_dir):
     Raises
     ------
     ValueError
+        Unexpected values for model_name, model_level
         Missing participant dataframes
 
     """
-    print("\tCombining participant beta tsv files ...")
+    if not helper.valid_name(model_name):
+        raise ValueError(f"Unsupported value for model_name : {model_name}")
+    if not helper.valid_level(model_level):
+        raise ValueError(f"Unsupported value for model_level : {model_level}")
 
     # Find desired dataframes
+    print("\tCombining participant beta tsv files ...")
     df_list = sorted(
         glob.glob(
             f"{proj_deriv}/model_fsl/sub*/ses*/func/*name-"
