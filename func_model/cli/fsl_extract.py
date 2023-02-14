@@ -1,8 +1,26 @@
-"""Title.
+"""Extract voxel beta weights from FSL FEAT files.
+
+Written for the local labarserv2 environment.
+
+Mine FSL GLM files for contrasts of interest and generate a
+dataframe of voxel beta-coefficients. Dataframes may be masked by
+identifying coordinates in a group-level mask.
+
+Dataframes are written for each subject in --subj-list/all, and
+a group dataframe can be generated from all subject dataframes.
+
+Subject-level dataframes are titled
+    <subj>_<sess>_<task>_name-<model_name>_level-<model_level>_betas.tsv
+and written to:
+    <proj_dir>/data_scanner_BIDS/derivatives/model_fsl/<subj>/<sess>/func
+
+The group-level dataframe is written to:
+    <proj_dir>/analyses/model_fsl/fsl_<model_name>_betas.tsv
 
 Examples
 --------
-fsl_extract
+fsl_extract --sub-list sub-ER0009 sub-ER0016
+fsl_extract --sub-all
 
 """
 # %%
@@ -98,7 +116,7 @@ def main():
     if not fsl.helper.valid_name(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
-    if not fsl.helper.valid_name(model_name):
+    if not fsl.helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
 
@@ -109,7 +127,7 @@ def main():
         )
         subj_all = sorted(glob.glob(f"{proj_deriv}/sub-*"))
         subj_list = [os.path.basename(x) for x in subj_all]
-    # workflows.afni_extract(proj_dir, subj_list, model_name)
+    workflows.fsl_extract(proj_dir, subj_list, model_name, model_level)
 
 
 if __name__ == "__main__":

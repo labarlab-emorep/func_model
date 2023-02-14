@@ -39,49 +39,77 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._proj_dir = proj_dir
 
     def _read_contrast(self):
-        """Title."""
+        """Match contrast name to number, set as self._con_dict."""
+        # Extract design.con lines starting with /ContrastName
         con_lines = []
-        with open(design_path) as dp:
+        with open(self._design_path) as dp:
             for ln in dp:
                 if ln.startswith("/ContrastName"):
                     con_lines.append(ln[1:])
-        con_dict = {}
+        if len(con_lines) == 0:
+            raise ValueError(
+                "Could not find ContrastName in " + f"{self._design_path}"
+            )
+
+        # Organize contrast lines
+        self._con_dict = {}
         for line in con_lines:
             con, name = line.split()
-            con_dict[name] = con
+            self._con_dict[name] = con
 
     def _drop_replay(self):
-        """Title."""
-        for key in list(con_dict.keys()):
+        """Remove replay* and keep stim* keys from self._con_dict."""
+        if not hasattr(self, "_con_dict"):
+            raise AttributeError(
+                "Missing self._con_dict, try self._read_contrast"
+            )
+        for key in list(self._con_dict.keys()):
             if key.startswith("replay"):
-                del con_dict[key]
+                del self._con_dict[key]
 
     def _clean_contrast(self):
-        """Title."""
+        """Clean self._con_dict into pairs of emotion: contrast num."""
+        if not hasattr(self, "_con_dict"):
+            raise AttributeError(
+                "Missing self._con_dict, try self._read_contrast"
+            )
         out_dict = {}
-        for key, value in con_dict.items():
+        for key, value in self._con_dict.items():
             new_key = key[4:].split("GT")[0].lower()
             out_dict[new_key] = value[-1]
-        con_dict = out_dict
+        self._con_dict = out_dict
 
-    def _find_copes(self):
-        """Title."""
+    def _find_copes(self) -> dict:
+        """Match emotion name to cope file."""
+        # Mine, organize design.con info
         self._read_contrast()
         self._drop_replay()
         self._clean_contrast()
 
-        #
-        feat_dir = os.path.dirname(design_path)
+        # Orient from desing.con to stats dir
+        feat_dir = os.path.dirname(self._design_path)
         stats_dir = os.path.join(feat_dir, "stats")
+
+        # Match emotion to nii path
         cope_dict = {}
-        for emo, num in con_dict.items():
-            nii_name = f"cope{num}.nii.gz"
-            nii_path = os.path.join(stats_dir, nii_name)
+        for emo, num in self._con_dict.items():
+            nii_path = os.path.join(stats_dir, f"cope{num}.nii.gz")
+            if not os.path.exists(nii_path):
+                raise FileNotFoundError(
+                    f"Missing expected cope file : {nii_path}"
+                )
             cope_dict[emo] = nii_path
         return cope_dict
 
     def make_func_matrix(
-        self, subj, sess, task, model_name, model_level, design_list, out_dir
+        self,
+        subj,
+        sess,
+        task,
+        model_name,
+        model_level,
+        design_list,
+        subj_deriv_func,
     ):
         """Title."""
         # Check input, set attributes and output location
@@ -89,14 +117,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError(f"Unexpected value for task : {task}")
 
         print(f"\tGetting betas from {subj}, {sess}")
-        self.subj = subj
-        self.sess = sess
-        self.task = task
         subj_short = subj.split("-")[-1]
         task_short = task.split("-")[-1]
-
         out_path = os.path.join(
-            out_dir,
+            subj_deriv_func,
             f"{subj}_{sess}_{task}_name-{model_name}_"
             + f"level-{model_level}_betas.tsv",
         )
@@ -104,12 +128,20 @@ class ExtractTaskBetas(matrix.NiftiArray):
             return out_path
 
         #
-        for design_path in design_list:
+        for self._design_path in design_list:
+            run_dir = os.path.basename(os.path.dirname(self._design_path))
+            run_num = run_dir.split("_")[0].split("-")[1]
+            if len(run_num) != 2:
+                raise ValueError("Error parsing path for run number")
+
+            #
             cope_dict = self._find_copes()
             for emo, cope_path in cope_dict.items():
-                print(f"\t\tExtracting betas for : {emo}")
+                print(f"\t\tExtracting betas for run-{run_num}: {emo}")
                 h_arr = self.nifti_to_arr(cope_path)
-                img_arr = self.add_arr_id(subj_short, task_short, emo, h_arr)
+                img_arr = self.add_arr_id(
+                    subj_short, task_short, emo, h_arr, run=run_num
+                )
                 del h_arr
 
                 # Create/update dataframe
@@ -123,16 +155,72 @@ class ExtractTaskBetas(matrix.NiftiArray):
                     del df_tmp
                 del img_arr
 
-        # # Clean if workflow uses mask_coord
-        # print("\tCleaning dataframe ...")
-        # if hasattr(self, "_rm_cols"):
-        #     df_betas = df_betas.drop(self._rm_cols, axis=1)
+        # Clean if workflow uses mask_coord
+        print("\tCleaning dataframe ...")
+        if hasattr(self, "_rm_cols"):
+            df_betas = df_betas.drop(self._rm_cols, axis=1)
 
-        # # Write and clean
-        # df_betas.to_csv(out_path, index=False, sep="\t")
-        # print(f"\t\tWrote : {out_path}")
-        # del df_betas
-        # tmp_list = glob.glob(f"{self.subj_out_dir}/tmp_*")
-        # for rm_file in tmp_list:
-        #     os.remove(rm_file)
-        # return out_path
+        # Write and clean
+        df_betas.to_csv(out_path, index=False, sep="\t")
+        print(f"\t\tWrote : {out_path}")
+        del df_betas
+        return out_path
+
+
+def comb_matrices(subj_list, model_name, model_level, proj_deriv, out_dir):
+    """Combine participant beta dataframes into master.
+
+    Copied, lightly edits from func_model.resources.afni.group.comb_matrices,
+    could be refactored into single method for AFNI, FSL.
+
+    Find beta-coefficient dataframes for participants in subj_list
+    and combine into a single dataframe. Output dataframe is written to:
+        <out_dir>/fsl_<model_name>_<model_level>_betas.tsv
+
+    Parameters
+    ----------
+
+    Returns
+    -------
+    path
+        Location of output dataframe
+
+    Raises
+    ------
+    ValueError
+        Missing participant dataframes
+
+    """
+    print("\tCombining participant beta tsv files ...")
+
+    # Find desired dataframes
+    df_list = sorted(
+        glob.glob(
+            f"{proj_deriv}/model_fsl/**/*name-{model_name}_"
+            + f"level-{model_level}_betas.tsv",
+            recursive=True,
+        )
+    )
+    if not df_list:
+        raise ValueError("No subject beta-coefficient dataframes found.")
+    beta_list = [
+        x for x in df_list if os.path.basename(x).split("_")[0] in subj_list
+    ]
+
+    # Combine dataframes and write out
+    for beta_path in beta_list:
+        print(f"\t\tAdding {beta_path} ...")
+        if "df_betas_all" not in locals() and "df_betas_all" not in globals():
+            df_betas_all = pd.read_csv(beta_path, sep="\t")
+        else:
+            df_tmp = pd.read_csv(beta_path, sep="\t")
+            df_betas_all = pd.concat(
+                [df_betas_all, df_tmp], axis=0, ignore_index=True
+            )
+
+    out_path = os.path.join(
+        out_dir, f"fsl_{model_name}_{model_level}_betas.tsv"
+    )
+    df_betas_all.to_csv(out_path, index=False, sep="\t")
+    print(f"\tWrote : {out_path}")
+    return out_path

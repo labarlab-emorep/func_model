@@ -658,7 +658,7 @@ def fsl_extract(
         os.makedirs(out_dir)
 
     # Initialize beta extraction
-    # get_betas = fsl.group.ExtractTaskBetas(proj_dir)
+    get_betas = fsl.group.ExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
     if group_mask == "template":
@@ -684,9 +684,18 @@ def fsl_extract(
             design_list = sorted(
                 glob.glob(f"{subj_deriv_func}/run-*/design.con")
             )
+            get_betas.make_func_matrix(
+                subj,
+                sess,
+                task,
+                model_name,
+                model_level,
+                design_list,
+                subj_deriv_func,
+            )
 
-    # # Combine all participant dataframes
-    # if comb_all:
-    #     _ = afni.group.comb_matrices(
-    #         subj_list, model_name, proj_deriv, out_dir
-    #     )
+    # Combine all participant dataframes
+    if comb_all:
+        _ = fsl.group.comb_matrices(
+            subj_list, model_name, model_level, proj_deriv, out_dir
+        )

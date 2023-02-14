@@ -14,8 +14,10 @@ class NiftiArray:
 
     Methods
     -------
+    add_arr_id()
     arr_to_df(arr)
         Convert 1D array to pd.DataFrame
+    mask_coord()
     nifti_to_arr(nifti_path)
         Convert 3D NIfTI to 1D array
 
@@ -57,15 +59,20 @@ class NiftiArray:
         return img_flat
 
     def add_arr_id(
-        self, subj: str, task: str, emo: str, img_flat: np.ndarray
+        self,
+        subj: str,
+        task: str,
+        emo: str,
+        img_flat: np.ndarray,
+        run: str = None,
     ) -> np.ndarray:
-        """Title."""
-        id_arr = np.array(
-            [
-                ["subj_id", "task_id", "emo_id"],
-                [subj, task, emo],
-            ]
-        )
+        """Prepend 1D array with identifier fields."""
+        title_list = ["subj_id", "task_id", "emo_id"]
+        value_list = [subj, task, emo]
+        if run:
+            title_list.append("run_id")
+            value_list.append(run)
+        id_arr = np.array([title_list, value_list])
         return np.concatenate((id_arr, img_flat), axis=1)
 
     def arr_to_df(self, arr: np.ndarray) -> pd.DataFrame:
