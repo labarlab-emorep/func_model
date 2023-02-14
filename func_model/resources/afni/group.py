@@ -275,6 +275,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             print(f"\t\tExtracting betas for : {emo}")
             h_arr = self.nifti_to_arr(beta_path)
             img_arr = self.add_arr_id(subj, task, emo, h_arr)
+            del h_arr
 
             # Create/update dataframe
             if "df_betas" not in locals() and "df_betas" not in globals():
