@@ -196,9 +196,8 @@ def comb_matrices(subj_list, model_name, model_level, proj_deriv, out_dir):
     # Find desired dataframes
     df_list = sorted(
         glob.glob(
-            f"{proj_deriv}/model_fsl/**/*name-{model_name}_"
-            + f"level-{model_level}_betas.tsv",
-            recursive=True,
+            f"{proj_deriv}/model_fsl/sub*/ses*/func/*name-"
+            + f"{model_name}_level-{model_level}_betas.tsv",
         )
     )
     if not df_list:
