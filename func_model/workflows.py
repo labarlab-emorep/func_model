@@ -420,6 +420,128 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
 
 
 # %%
+def afni_mvm(proj_dir, model_name, emo_name):
+    """Conduct ANOVA-style tests in AFNI via 3dMVM.
+
+    Identify participants with deconvolved files from both sessions
+    and then conduct an ANOVA-styled analysis for the specified emotion.
+    Cluster simulations (Monte Carlo) are written to the same directory
+    as the group-level mask, and 3dMVM scripts and output are written to:
+        <proj_dir>/analyses/model_afni/mvm_<model_name>/<emo_name>_vs_washout
+
+    Currently, only a two-factor repeated-measures ANOVA analysis is
+    supported, with factor A as session stimulus (movies, scenarios), and
+    factor B as stimulus type (emotion, washout). Main, interactive effects
+    are generated as well as an emotion-washout T-stat.
+
+    Parameters
+    ----------
+    proj_dir : path
+        Project directory location, should contain
+        data_scanner_BIDS/derivatives/model_afni
+    model_name : str
+        [rm]
+        Model identifier
+    emo_name : str, key of afni.helper.emo_switch
+        Lower case emotion name
+
+    Raises
+    ------
+    FileNotFoundError
+        Missing expected directories
+    ValueError
+        Unexpected model_name, emo_name
+        Unexpected first three characters of task name
+
+    """
+    # Validate paths
+    if not os.path.exists(proj_dir):
+        raise FileNotFoundError(
+            f"Missing expected project directory : {proj_dir}"
+        )
+    afni_deriv = os.path.join(
+        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
+    )
+    if not os.path.exists(afni_deriv):
+        raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
+
+    # Validate strings
+    if not afni.helper.valid_mvm_test(model_name):
+        raise ValueError(f"Unexpected model name : {model_name}")
+    emo_switch = afni.helper.emo_switch()
+    if emo_name not in emo_switch.keys():
+        raise ValueError(f"Unexpected emotion name : {emo_name}")
+
+    # Setup output location
+    print(f"\nConducting {model_name} MVM for {emo_name}")
+    group_dir = os.path.join(proj_dir, "analyses/model_afni")
+    out_dir = os.path.join(
+        group_dir, f"mvm_{model_name}", f"{emo_name}_vs_washout"
+    )
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # Get AFNI emo name and washout subbrick label
+    emo_short = emo_switch[emo_name]
+    wash_label = "comWas#0_Coef"
+
+    # Make group dictionary required by group.MvmTest.write_exec
+    print("\tBuilding group dictionary")
+    subj_all = [
+        os.path.basename(x) for x in sorted(glob.glob(f"{afni_deriv}/sub-*"))
+    ]
+    group_dict = {}
+    for subj in subj_all:
+
+        # Only include participants with deconvolved data from both sessions
+        decon_list = sorted(
+            glob.glob(
+                f"{afni_deriv}/{subj}/**/decon_univ_stats_REML+tlrc.HEAD",
+                recursive=True,
+            )
+        )
+        if len(decon_list) != 2:
+            print(
+                "Unexpected number of deconvolved files, excluding "
+                + f"{subj} from group-level model"
+            )
+            continue
+        group_dict[subj] = {}
+
+        # Identify the task name from washout timing file
+        for decon_path in decon_list:
+            search_path = os.path.join(
+                os.path.dirname(decon_path), "timing_files"
+            )
+            wash_path = glob.glob(f"{search_path}/*_desc-comWas_events.1D")[0]
+            wash_file = os.path.basename(wash_path)
+            _subj, sess, task, _desc, _suff = wash_file.split("_")
+
+            # Reconstruct subbrick label for the emotion
+            task_short = task.split("-")[1][:3]
+            if task_short not in ["mov", "sce"]:
+                raise ValueError("Problem splitting task name")
+            emo_label = task_short + emo_short + "#0_Coef"
+
+            # Fill dictionary with required structure, items
+            group_dict[subj][task] = {
+                "sess": sess,
+                "decon_path": decon_path,
+                "emo_label": emo_label,
+                "wash_label": wash_label,
+            }
+
+    # Make, get mask
+    print("\tGetting group mask")
+    mask_path = afni.masks.tpl_gm(group_dir)
+
+    # Generate, execute ETAC command
+    run_mvm = afni.group.MvmTest(proj_dir, out_dir, mask_path)
+    run_mvm.clustsim()
+    _ = run_mvm.write_exec(group_dict, model_name, emo_short)
+
+
+# %%
 def fsl_task_first(
     subj,
     sess,

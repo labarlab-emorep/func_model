@@ -50,6 +50,12 @@ def valid_univ_test(test_name: str) -> bool:
     return test_name in valid_list
 
 
+def valid_mvm_test(test_name: str) -> bool:
+    """Return bool of whether test_name is supported."""
+    valid_list = ["rm"]
+    return test_name in valid_list
+
+
 def emo_switch() -> dict:
     """Return events-AFNI emotion mappings."""
     return {
