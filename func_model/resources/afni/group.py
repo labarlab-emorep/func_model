@@ -1,4 +1,5 @@
 """Methods for group-level analyses."""
+# %%
 import os
 import glob
 import pandas as pd
@@ -336,6 +337,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         return out_path
 
 
+# %%
 def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
     """Combine participant beta dataframes into master.
 
@@ -398,7 +400,52 @@ def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
     return out_path
 
 
-class EtacTest:
+class _SetupTest:
+    """Helper class for AFNI group-level tests classes."""
+
+    def __init__(self, proj_dir, out_dir, mask_path):
+        """Initialize.
+
+        Parameters
+        ----------
+        proj_dir : path
+            Location of project directory
+        out_dir : path
+            Output location for generated files
+        mask_path : path
+            Location of group mask
+
+        Raises
+        ------
+        FileNotFoundError
+            Missing proj_dir
+
+        """
+        print("\tInitializing _SetupTest")
+        if not os.path.exists(proj_dir):
+            raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
+        self._proj_dir = proj_dir
+        self._out_dir = out_dir
+        self._mask_path = mask_path
+        if not os.path.exists(self._out_dir):
+            os.makedirs(self._out_dir)
+
+    def _write_script(self, final_name: str, bash_cmd: str):
+        """Write BASH command to shell script."""
+        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
+        with open(etac_script, "w") as script:
+            script.write(bash_cmd)
+
+    def _setup_output(self, model_name: str, emo_short: str) -> tuple:
+        """Setup, return final filename and location."""
+        print(f"\tBuilding {model_name} test for {emo_short}")
+        final_name = f"FINAL_{model_name}_{emo_short}"
+        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
+        return (final_name, out_path)
+
+
+# %%
+class EtacTest(_SetupTest):
     """Build and execute ETAC tests.
 
     Identify relevant sub-bricks in AFNI's deconvolved files given user
@@ -429,20 +476,9 @@ class EtacTest:
         mask_path : path
             Location of group mask
 
-        Raises
-        ------
-        FileNotFoundError
-            Missing proj_dir
-
         """
         print("Initializing EtacTest")
-
-        # Check and setup
-        if not os.path.exists(proj_dir):
-            raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
-        self._proj_dir = proj_dir
-        self._out_dir = out_dir
-        self._mask_path = mask_path
+        super().__init__(proj_dir, out_dir, mask_path)
 
     def _build_list(self, decon_dict: dict, sub_label: str) -> list:
         """Build ETAC input list."""
@@ -497,21 +533,6 @@ class EtacTest:
         else:
             return etac_head + etac_body
 
-    def _write_script(self, final_name: str, bash_cmd: str):
-        """Write BASH command to shell script."""
-        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
-        with open(etac_script, "w") as script:
-            script.write(bash_cmd)
-
-    def _setup(self, emo_short: str) -> tuple:
-        """Return final filename and location."""
-        print(f"\tBuilding {self._model_name} ETAC for {emo_short}")
-        if not os.path.exists(self._out_dir):
-            os.makedirs(self._out_dir)
-        final_name = f"FINAL_{self._model_name}_{emo_short}"
-        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
-        return (final_name, out_path)
-
     def write_exec(self, model_name, emo_short, group_dict, sub_label):
         """Write and execute a T-test using AFNI's ETAC method.
 
@@ -545,7 +566,7 @@ class EtacTest:
         # Validate and setup
         self._model_name = model_name
         self._validate_etac_input(group_dict, sub_label)
-        final_name, out_path = self._setup(emo_short)
+        final_name, out_path = self._setup_output(model_name, emo_short)
         if os.path.exists(out_path):
             return self._out_dir
 
@@ -567,3 +588,214 @@ class EtacTest:
         # Execute ETAC command
         submit.submit_subprocess(etac_cmd, out_path, f"etac{emo_short}")
         return self._out_dir
+
+
+class MvmTest(_SetupTest):
+    """Build and execute 3dMVM tests.
+
+    Construct a two-factor repeated-measures ANOVA for sanity checking.
+    3dMVM scripts and output are written to <out_dir>.
+
+    Methods
+    --------
+    clustsim()
+        Conduct Monte Carlo simulations on group-level mask
+    write_exec(*args)
+        Generate the 3dMVM command and then execute
+
+    Example
+    -------
+    mvm_obj = group.MvmTest(*args)
+    mvm_obj.clustsim()
+    _ = mvm_obj.write_exec(*args)
+
+    """
+
+    def __init__(self, proj_dir, out_dir, mask_path):
+        """Initialize.
+
+        Parameters
+        ----------
+        proj_dir : path
+            Location of project directory
+        out_dir : path
+            Output location for generated files
+        mask_path : path
+            Location of group mask
+
+        """
+        print("Initializing MvmTest")
+        super().__init__(proj_dir, out_dir, mask_path)
+
+    def _build_row(self, row_dict: dict):
+        """Write single row of datatable."""
+        # Identify sub-brick integer from label
+        for _, info_dict in row_dict.items():
+            self._get_subbrick.decon_path = info_dict["decon_path"]
+            self._get_subbrick.subj_out_dir = self._out_dir
+            label_int = self._get_subbrick.get_label_int(
+                info_dict["sub_label"]
+            )
+
+            # Write line
+            self._table_list.append(info_dict["subj"])
+            self._table_list.append(info_dict["sesslabel"])
+            self._table_list.append(info_dict["stimlabel"])
+            self._table_list.append(
+                f"{info_dict['decon_path']}'[{label_int}]'"
+            )
+
+    def _build_table(self):
+        """Build the datatable of 3dMVM."""
+        # Initialize ExtractTaskBetas, subset group_dict for
+        # individual subjects, sessions
+        self._get_subbrick = ExtractTaskBetas(self._proj_dir)
+        self._table_list = []
+        for subj in self._group_dict:
+            for task, info_dict in self._group_dict[subj].items():
+
+                # Organize session data to write mulitple lines
+                stim = task.split("-")[1]
+                row_dict = {
+                    "emo": {
+                        "subj": subj,
+                        "sesslabel": stim,
+                        "stimlabel": "emo",
+                        "decon_path": info_dict["decon_path"],
+                        "sub_label": info_dict["emo_label"],
+                    },
+                    "base": {
+                        "subj": subj,
+                        "sesslabel": stim,
+                        "stimlabel": "wash",
+                        "decon_path": info_dict["decon_path"],
+                        "sub_label": info_dict["wash_label"],
+                    },
+                }
+                self._build_row(row_dict)
+
+    def write_exec(self, group_dict, model_name, emo_short):
+        """Write and execute 3dMVM command.
+
+        Build a repeated-measures ANOVA, using two within-subject
+        factors (sesslabel, stimlabel). Output F-stats and posthoc
+        stimlabel emo-wash T-stat.
+
+        Parameters
+        ----------
+        group_dict : dict
+            All participant data, in format:
+                - first-level keys = BIDS subject identifier
+                - second-level keys = BIDS task identifier
+                - third-level dictionary:
+                    - sess: BIDS session identifier
+                    - decon_path: path to decon file
+                    - emo_label:  emotion subbrick label
+                    - wash_label: washout subbrick label
+            Example:
+                {"sub-ER0009": {
+                    "task-movies": {
+                        "sess": "ses-day2",
+                        "decon_path": "/path/to/ses-day2/decon",
+                        "emo_label": "movFea#0_Coef",
+                        "wash_label": "comWas#0_Coef",
+                        },
+                    "scenarios": {},
+                    },
+                }
+        model_name : str
+            [rm]
+            Model identifier
+        emo_short : str
+            Shortened (AFNI) emotion name
+
+        Returns
+        -------
+        path
+            Output directory location
+
+        Raises
+        ------
+        KeyError
+            Unexpected group_dict organization
+        ValueError
+            Unexpected model name
+
+        """
+        # Validate
+        if not helper.valid_mvm_test(model_name):
+            raise ValueError(f"Unexpected model_name : {model_name}")
+        first_keys = list(group_dict.keys())
+        if not any("sub-ER" in x for x in first_keys):
+            raise KeyError("First-level key not matching format : sub-ER*")
+        second_keys = list(group_dict[first_keys[0]].keys())
+        for task in second_keys:
+            if not helper.valid_task(task):
+                raise KeyError(f"Unexpected second-level key : {task}")
+        third_keys = list(group_dict[first_keys[0]][second_keys[0]].keys())
+        valid_keys = ["sess", "decon_path", "emo_label", "wash_label"]
+        for key in third_keys:
+            if key not in valid_keys:
+                raise KeyError(f"Unexpected third-level key : {key}")
+
+        # Setup, check for existing output
+        self._group_dict = group_dict
+        final_name, out_path = self._setup_output(model_name, emo_short)
+        if os.path.exists(out_path):
+            return self._out_dir
+
+        print("\tBuilding 3dMVM command")
+        mvm_head = [
+            "3dMVM",
+            f"-prefix {self._out_dir}/{final_name}",
+            "-jobs 12",
+            "-bsVars 1",
+            "-wsVars 'sesslabel*stimlabel'",
+            f"-mask {self._mask_path}",
+            "-num_glt 1",
+            "-gltLabel 1 emo_vs_wash",
+            "-gltCode 1 'stimlabel : 1*emo -1*wash'",
+            "-dataTable",
+            "Subj sesslabel stimlabel InputFile",
+        ]
+        self._build_table()
+        mvm_cmd = " ".join(mvm_head + self._table_list)
+        self._write_script(final_name, mvm_cmd)
+
+        print("\tExecuting 3dMVM command")
+        submit.submit_subprocess(mvm_cmd, out_path, f"mvm{emo_short}")
+        return self._out_dir
+
+    def clustsim(self):
+        """Conduct mask-based Monte Carlo simulations.
+
+        Does not incorporate ACF, but will if used for formal analyses
+        and not simple sanity-checking. Output file written to the
+        same directory as the group mask, and title
+        montecarlo_simulations.txt.
+
+        Returns
+        -------
+        path
+            Location of output file
+
+        """
+        sim_out = os.path.join(
+            os.path.dirname(self._mask_path), "montecarlo_simulations.txt"
+        )
+        if os.path.exists(sim_out):
+            return sim_out
+
+        print("\tConducting Monte Carlo simulations")
+        bash_list = [
+            "3dClustSim",
+            f"-mask {self._mask_path}",
+            "-LOTS",
+            "-iter 10000",
+            f"> {sim_out}",
+        ]
+        submit.submit_subprocess(" ".join(bash_list), sim_out, "MCsim")
+        return sim_out
+
+
+# %%
