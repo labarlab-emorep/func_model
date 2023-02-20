@@ -148,7 +148,7 @@ def main():
             subj_deriv = os.path.join(
                 proj_deriv, "pre_processing", "fsl_denoise", subj, sess, "func"
             )
-            fsl_pp = glob.glob(f"{subj_deriv}/*tfiltMasked_bold.nii.gz")
+            fsl_pp = glob.glob(f"{subj_deriv}/*scaled_bold.nii.gz")
             if not fsl_pp:
                 print(f"No preprocessed files detected for {subj}, {sess}")
                 continue
