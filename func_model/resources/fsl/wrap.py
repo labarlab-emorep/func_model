@@ -103,7 +103,7 @@ def make_confound_files(subj, sess, task, subj_work, proj_deriv):
 
     # Make confound files
     for conf_path in sess_confounds:
-        _ = model.confounds(conf_path, subj_work)
+        _ = model.confounds(conf_path, subj_work, fd_thresh=0.5)
 
 
 def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
