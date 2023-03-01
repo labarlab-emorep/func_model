@@ -23,6 +23,11 @@ def valid_task(task: str) -> bool:
     return task in ["task-movies", "task-scenarios"]
 
 
+def valid_contrast(con: str) -> bool:
+    "Check if contrast name is valid."
+    return con in ["stim", "replay"]
+
+
 def load_reference(file_name: str) -> str:
     """Return FSF template from resources."""
     with pkg_resources.open_text(reference_files, file_name) as tf:

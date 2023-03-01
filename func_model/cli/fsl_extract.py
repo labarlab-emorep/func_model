@@ -19,8 +19,9 @@ The group-level dataframe is written to:
 
 Examples
 --------
-fsl_extract --sub-list sub-ER0009 sub-ER0016
 fsl_extract --sub-all
+fsl_extract --sub-all --contrast-name replay
+fsl_extract --sub-list sub-ER0009 sub-ER0016
 
 """
 # %%
@@ -38,6 +39,19 @@ def _get_args():
     """Get and parse arguments."""
     parser = ArgumentParser(
         description=__doc__, formatter_class=RawTextHelpFormatter
+    )
+    parser.add_argument(
+        "--contrast-name",
+        type=str,
+        default="stim",
+        help=textwrap.dedent(
+            """\
+            [stim | replay]
+            Desired contrast from which coefficients will be extracted,
+            substring of design.fsf EV Title.
+            (default : %(default)s)
+            """
+        ),
     )
     parser.add_argument(
         "--model-level",
@@ -109,37 +123,43 @@ def main():
     subj_list = args.sub_list
     subj_all = args.sub_all
     proj_dir = args.proj_dir
+    con_name = args.contrast_name
     model_name = args.model_name
     model_level = args.model_level
 
-    # Check model_name, model_level
+    # Check user input
     if not fsl.helper.valid_name(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
     if not fsl.helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
+    if not fsl.helper.valid_contrast(con_name):
+        print(f"Unsupported contrast name : {con_name}")
+        sys.exit(1)
 
     # Check, make subject list
     proj_deriv = os.path.join(
         proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
     )
-    subj_all = sorted(glob.glob(f"{proj_deriv}/sub-*"))
-    if not subj_all:
+    subj_avail = sorted(glob.glob(f"{proj_deriv}/sub-*"))
+    if not subj_avail:
         raise ValueError(f"No FSL output found at : {proj_deriv}")
-    subj_all_list = [os.path.basename(x) for x in subj_all]
+    subj_avail = [os.path.basename(x) for x in subj_avail]
     if subj_list:
         for subj in subj_list:
-            if subj not in subj_all_list:
+            if subj not in subj_avail:
                 raise ValueError(
                     "Specified subject not found in "
                     + f"derivatives/model_fsl : {subj}"
                 )
     if subj_all:
-        subj_list = subj_all_list
+        subj_list = subj_avail
 
     # Submit workflow
-    workflows.fsl_extract(proj_dir, subj_list, model_name, model_level)
+    workflows.fsl_extract(
+        proj_dir, subj_list, model_name, model_level, con_name
+    )
 
 
 if __name__ == "__main__":
