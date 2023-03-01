@@ -705,9 +705,12 @@ def fsl_extract(
             subj_deriv_func = os.path.join(
                 proj_deriv, "model_fsl", subj, sess, "func"
             )
-            task_path = glob.glob(
-                f"{subj_deriv_func}/condition_files/*_events.txt"
-            )[0]
+            try:
+                task_path = glob.glob(
+                    f"{subj_deriv_func}/condition_files/*_events.txt"
+                )[0]
+            except IndexError:
+                continue
             _subj, _sess, task, _run, _desc, _suff = os.path.basename(
                 task_path
             ).split("_")
