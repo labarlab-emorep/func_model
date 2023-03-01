@@ -103,7 +103,7 @@ def make_confound_files(subj, sess, task, subj_work, proj_deriv):
 
     # Make confound files
     for conf_path in sess_confounds:
-        _ = model.confounds(conf_path, subj_work)
+        _ = model.confounds(conf_path, subj_work, fd_thresh=0.5)
 
 
 def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
@@ -181,7 +181,7 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
         proj_deriv, "pre_processing/fsl_denoise", subj, sess
     )
     sess_preproc = sorted(
-        glob.glob(f"{fd_subj_sess}/func/*{task}*tfiltMasked_bold.nii.gz")
+        glob.glob(f"{fd_subj_sess}/func/*{task}*desc-scaled_bold.nii.gz")
     )
     if not sess_preproc:
         raise FileNotFoundError(

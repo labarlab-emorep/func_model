@@ -351,7 +351,7 @@ class ConditionFiles:
 
 
 # %%
-def confounds(conf_path, subj_work, na_value="n/a"):
+def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
     """Make confounds files for FSL modelling.
 
     Extract relevant columns from fMRIPrep's confounds output file
@@ -369,6 +369,10 @@ def confounds(conf_path, subj_work, na_value="n/a"):
     na_value : str, optional
         NA value in the fMRIprep confounds, will be used
         in output file.
+    fd_thresh : None, float, optional
+        If specified, use value to identify volumes requiring
+        censoring and build output dataframe columns. Otherwise
+        simply grab fMRIPrep confounds motion_outlierX columns.
 
     Returns
     -------
@@ -383,6 +387,8 @@ def confounds(conf_path, subj_work, na_value="n/a"):
     """
     if not os.path.exists(conf_path):
         raise FileNotFoundError(f"Expected to find file : {conf_path}")
+    if not isinstance(na_value, str):
+        raise TypeError("Unexpected type for na_value")
 
     # Setup output location
     out_dir = os.path.join(subj_work, "confounds_files")
@@ -408,12 +414,23 @@ def confounds(conf_path, subj_work, na_value="n/a"):
         "rot_z_derivative1",
     ]
 
-    # Make dataframe, write out
+    # Subset dataframe for desired columns
     df = pd.read_csv(conf_path, sep="\t", na_values=na_value)
-    mot_cols = [x for x in df.columns if "motion_outlier" in x]
-    col_list += mot_cols
-    df_out = df[col_list]
+    if not fd_thresh:
+        mot_cols = [x for x in df.columns if "motion_outlier" in x]
+        col_list += mot_cols
+    df_out = df[col_list].copy()
 
+    # Add FSL motion_outlier column for each volume that matches
+    # or exceeds the framewise displacement threshold
+    if fd_thresh:
+        mot_mask = df.index[df["framewise_displacement"] >= fd_thresh].tolist()
+        if mot_mask:
+            for cnt, idx in enumerate(mot_mask):
+                df_out[f"motion_outlier{cnt:02d}"] = 0
+                df_out.at[idx, f"motion_outlier{cnt:02d}"] = 1
+
+    # Write out df
     out_name = os.path.basename(conf_path).replace(".tsv", ".txt")
     out_path = os.path.join(out_dir, out_name)
     df_out.to_csv(out_path, index=False, sep="\t", na_rep=na_value)
