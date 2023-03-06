@@ -1,7 +1,10 @@
 """Methods for group-level analyses."""
 import os
 import glob
+import re
 import pandas as pd
+import numpy as np
+import nibabel as nib
 from func_model.resources.fsl import helper
 from func_model.resources.general import matrix
 
@@ -186,8 +189,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
         task_short = task.split("-")[-1]
         out_path = os.path.join(
             subj_out,
-            f"{subj}_{sess}_{task}_name-{model_name}_"
-            + f"level-{model_level}_con-{con_name}_betas.tsv",
+            f"{subj}_{sess}_{task}_level-{model_level}_"
+            + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
         self._con_name = con_name
         if os.path.exists(out_path):
@@ -289,8 +292,8 @@ def comb_matrices(
     print("\tCombining participant beta tsv files ...")
     df_list = sorted(
         glob.glob(
-            f"{proj_deriv}/model_fsl/sub*/ses*/func/*name-"
-            + f"{model_name}_level-{model_level}_con-{con_name}_betas.tsv",
+            f"{proj_deriv}/model_fsl/sub*/ses*/func/*level-{model_level}_"
+            + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
     )
     if not df_list:
@@ -311,8 +314,73 @@ def comb_matrices(
             )
 
     out_path = os.path.join(
-        out_dir, f"fsl_{model_name}_{model_level}_con-{con_name}_betas.tsv"
+        out_dir,
+        f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
+        + "voxel-betas.tsv",
     )
     df_betas_all.to_csv(out_path, index=False, sep="\t")
     print(f"\tWrote : {out_path}")
     return out_path
+
+
+# %%
+class ImportanceMask(matrix.NiftiArray):
+    """Title.
+
+    Methods
+    -------
+
+    Example
+    -------
+
+    """
+
+    def __init__(self):
+        """Title.
+
+        Desc.
+
+        """
+        print("Initializing ImportanceMask")
+        super().__init__(4)
+
+    def mine_template(self, tpl_path):
+        """Title.
+
+        Desc.
+
+        Attributes
+        ----------
+
+        """
+        if not os.path.exists(tpl_path):
+            raise FileNotFoundError(f"Missing file : {tpl_path}")
+
+        print(f"Mining domain info from : {tpl_path}")
+        img = self.nifti_to_img(tpl_path)
+        img_data = img.get_fdata()
+        self.img_header = img.header
+        self.empty_matrix = np.zeros(img_data.shape)
+
+    def emo_mask(self, df, mask_path):
+        """Title.
+
+        Desc.
+
+        """
+        print(f"Building importance map : {mask_path}")
+        arr_fill = self.empty_matrix.copy()
+
+        col_emo = [re.sub("[^0-9]", " ", x).split() for x in df.columns]
+        for col_idx in col_emo:
+            x = int(col_idx[0])
+            y = int(col_idx[1])
+            z = int(col_idx[2])
+            arr_fill[x][y][z] = df.loc[0, f"({x}, {y}, {z})"]
+
+        #
+        emo_img = nib.Nifti1Image(
+            arr_fill, affine=None, header=self.img_header
+        )
+        nib.save(emo_img, mask_path)
+        return emo_img

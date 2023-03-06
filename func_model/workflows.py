@@ -2,6 +2,7 @@
 # %%
 import os
 import glob
+import pandas as pd
 from pathlib import Path
 from func_model.resources import afni, fsl
 
@@ -739,3 +740,48 @@ def fsl_extract(
         _ = fsl.group.comb_matrices(
             subj_list, model_name, model_level, con_name, proj_deriv, out_dir
         )
+
+
+# %%
+def fsl_classify_mask(
+    proj_dir, model_name, model_level, con_name, task_name, tpl_path
+):
+    """Title.
+
+    Parameters
+    ----------
+
+    """
+    #
+    data_dir = os.path.join(proj_dir, "analyses/classify_plsda")
+    class_path = os.path.join(
+        data_dir,
+        f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
+        + f"task-{task_name}_voxel-importance.txt",
+    )
+    if not os.path.exists(class_path):
+        raise FileNotFoundError(
+            f"Check filename -- failed to find : {class_path}"
+        )
+    df_import = pd.read_csv(class_path, sep="\t")
+    emo_list = df_import["emo_id"].tolist()
+    if len(emo_list) != 15:
+        raise ValueError(
+            f"Unexpected number of emotions from df.emo_id : {emo_list}"
+        )
+
+    #
+    mk_mask = fsl.group.ImportanceMask()
+    mk_mask.mine_template(tpl_path)
+
+    #
+    for emo_name in emo_list:
+        print(f"Making imporance mask for : {emo_name}")
+        df_emo = df_import[df_import["emo_id"] == emo_name]
+        df_emo = df_emo.drop("emo_id", axis=1).reset_index(drop=True)
+        mask_path = os.path.join(
+            data_dir,
+            f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
+            + f"task-{task_name}_emo-{emo_name}_map.nii.gz",
+        )
+        _ = mk_mask.emo_mask(df_emo, mask_path)

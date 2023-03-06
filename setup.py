@@ -13,6 +13,7 @@ setup(
             "afni_mvm=func_model.cli.afni_mvm:main",
             "fsl_model=func_model.cli.fsl_model:main",
             "fsl_extract=func_model.cli.fsl_extract:main",
+            "fsl_map=func_model.cli.fsl_map:main",
         ]
     },
     include_package_data=True,

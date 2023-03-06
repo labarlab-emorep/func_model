@@ -22,6 +22,8 @@ class NiftiArray:
         Identify coordinates outside of group-level binary mask
     nifti_to_arr(nifti_path)
         Convert 3D NIfTI to 1D array
+    nifti_to_img(nifti_path)
+        Convert NIfTI to Nibabel image
 
     Example
     -------
@@ -56,10 +58,14 @@ class NiftiArray:
 
     def nifti_to_arr(self, nifti_path: str) -> np.ndarray:
         """Generate flat array of NIfTI voxel values."""
-        img = nib.load(nifti_path)
+        img = self.nifti_to_img(nifti_path)
         img_data = img.get_fdata()
         img_flat = self._flatten_array(img_data)
         return img_flat
+
+    def nifti_to_img(self, nifti_path: str):
+        """Return Nibabel Image."""
+        return nib.load(nifti_path)
 
     def add_arr_id(
         self,
