@@ -101,8 +101,6 @@ def _get_args():
 # %%
 def main():
     """Setup working environment."""
-
-    # Capture CLI arguments
     args = _get_args().parse_args()
     subj_list = args.sub_list
     proj_dir = args.proj_dir
