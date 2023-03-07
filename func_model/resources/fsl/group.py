@@ -1,7 +1,10 @@
 """Methods for group-level analyses."""
 import os
 import glob
+import re
 import pandas as pd
+import numpy as np
+import nibabel as nib
 from func_model.resources.fsl import helper
 from func_model.resources.general import matrix
 
@@ -12,6 +15,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
     Align FSL cope.nii files with their corresponding contrast
     names and then extract all voxel beta weights for contrasts
     of interest. Converts extracted beta weights into a dataframe.
+
+    Inherits general.matrix.NiftiArray.
 
     Methods
     -------
@@ -66,14 +71,14 @@ class ExtractTaskBetas(matrix.NiftiArray):
             con, name = line.split()
             self._con_dict[name] = con
 
-    def _drop_replay(self):
-        """Remove replay* and keep stim* keys from self._con_dict."""
+    def _drop_contrast(self):
+        """Drop contrasts of no interest from self._con_dict."""
         if not hasattr(self, "_con_dict"):
             raise AttributeError(
                 "Missing self._con_dict, try self._read_contrast"
             )
         for key in list(self._con_dict.keys()):
-            if key.startswith("replay"):
+            if not key.startswith(self._con_name):
                 del self._con_dict[key]
 
     def _clean_contrast(self):
@@ -83,8 +88,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 "Missing self._con_dict, try self._read_contrast"
             )
         out_dict = {}
+        clean_num = len(self._con_name)
         for key, value in self._con_dict.items():
-            new_key = key[4:].split("GT")[0].lower()
+            new_key = key[clean_num:].split("GT")[0].lower()
             out_dict[new_key] = value[-1]
         self._con_dict = out_dict
 
@@ -92,7 +98,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         """Match emotion name to cope file."""
         # Mine, organize design.con info
         self._read_contrast()
-        self._drop_replay()
+        self._drop_contrast()
         self._clean_contrast()
 
         # Orient from desing.con to stats dir
@@ -117,6 +123,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         task,
         model_name,
         model_level,
+        con_name,
         design_list,
         subj_out,
     ):
@@ -144,6 +151,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
         model_level : str
             [first]
             FSL model level
+        con_name : str
+            [stim | replay]
+            Desired contrast from which coefficients will be extracted
         design_list : list
             Paths to participant design.con files
         subj_out : path
@@ -172,6 +182,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError(
                 f"Unsupported value for model_level : {model_level}"
             )
+        if not helper.valid_contrast(con_name):
+            raise ValueError(f"Unsupported value for con_name : {con_name}")
 
         # Setup and check for existing work
         print(f"\tGetting betas from {subj}, {sess}")
@@ -179,9 +191,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
         task_short = task.split("-")[-1]
         out_path = os.path.join(
             subj_out,
-            f"{subj}_{sess}_{task}_name-{model_name}_"
-            + f"level-{model_level}_betas.tsv",
+            f"{subj}_{sess}_{task}_level-{model_level}_"
+            + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
+        self._con_name = con_name
         if os.path.exists(out_path):
             return out_path
 
@@ -227,7 +240,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
         return out_path
 
 
-def comb_matrices(subj_list, model_name, model_level, proj_deriv, out_dir):
+def comb_matrices(
+    subj_list, model_name, model_level, con_name, proj_deriv, out_dir
+):
     """Combine participant beta dataframes into master.
 
     Copied, lightly edits from func_model.resources.afni.group.comb_matrices,
@@ -247,6 +262,9 @@ def comb_matrices(subj_list, model_name, model_level, proj_deriv, out_dir):
     model_level : str
         [first]
         FSL model level
+    con_name : str
+        [stim | replay]
+        Desired contrast from which coefficients will be extracted
     proj_deriv : path
         Location of project derivatives, will search for dataframes
         in <proj_deriv>/model_fsl/sub-*.
@@ -269,13 +287,15 @@ def comb_matrices(subj_list, model_name, model_level, proj_deriv, out_dir):
         raise ValueError(f"Unsupported value for model_name : {model_name}")
     if not helper.valid_level(model_level):
         raise ValueError(f"Unsupported value for model_level : {model_level}")
+    if not helper.valid_contrast(con_name):
+        raise ValueError(f"Unsupported value for con_name : {con_name}")
 
     # Find desired dataframes
     print("\tCombining participant beta tsv files ...")
     df_list = sorted(
         glob.glob(
-            f"{proj_deriv}/model_fsl/sub*/ses*/func/*name-"
-            + f"{model_name}_level-{model_level}_betas.tsv",
+            f"{proj_deriv}/model_fsl/sub*/ses*/func/*level-{model_level}_"
+            + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
     )
     if not df_list:
@@ -296,8 +316,140 @@ def comb_matrices(subj_list, model_name, model_level, proj_deriv, out_dir):
             )
 
     out_path = os.path.join(
-        out_dir, f"fsl_{model_name}_{model_level}_betas.tsv"
+        out_dir,
+        f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
+        + "voxel-betas.tsv",
     )
     df_betas_all.to_csv(out_path, index=False, sep="\t")
     print(f"\tWrote : {out_path}")
     return out_path
+
+
+# %%
+class ImportanceMask(matrix.NiftiArray):
+    """Convert a dataframe of classifier values into a NIfTI mask.
+
+    Reference a template to derive header information and start a
+    matrix of the same size. Populate said matrix was row values
+    from a supplied dataframe.
+
+    Inherits general.matrix.NiftiArray.
+
+    Methods
+    -------
+    mine_template(tpl_path)
+        Extract relevant information from a template
+    make_mask(df, mask_path)
+        Turn dataframe of values into NIfTI mask
+
+    Example
+    -------
+    im_obj = group.ImportanceMask()
+    im_obj.mine_template("/path/to/template.nii.gz")
+    im_obj.emo_mask(pd.DataFrame, "/path/to/output/mask.nii.gz")
+
+    """
+
+    def __init__(self):
+        """Initialize."""
+        print("Initializing ImportanceMask")
+        super().__init__(4)
+
+    def mine_template(self, tpl_path):
+        """Mine a NIfTI template for information.
+
+        Capture the NIfTI header and generate an empty
+        np.ndarray of the same size as the template.
+
+        Parameters
+        ----------
+        tpl_path : path
+            Location and name of template
+
+        Attributes
+        ----------
+        img_header : obj, nibabel.nifti1.Nifti1Header
+            Header data of template
+        empty_matrix : np.ndarray
+            Matrix containing zeros that is the same size as
+            the template.
+
+        """
+        if not os.path.exists(tpl_path):
+            raise FileNotFoundError(f"Missing file : {tpl_path}")
+
+        print(f"\tMining domain info from : {tpl_path}")
+        img = self.nifti_to_img(tpl_path)
+        img_data = img.get_fdata()
+        self.img_header = img.header
+        self.empty_matrix = np.zeros(img_data.shape)
+
+    def make_mask(self, df, mask_path):
+        """Convert row values into matrix and save as NIfTI mask.
+
+        Using the dataframe column names, fill an empty matrix
+        with row values and then save the file as a NIfTI mask.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            A header and single row containing classifier importance.
+            Column names should be formatted as coordinate, e.g.
+            "(45, 31, 90)".
+        mask_path : path
+            Location and name of output NIfTI file
+
+        Returns
+        -------
+        nd.array
+            Matrix of template size filled with classifier
+            importance values.
+
+        Raises
+        ------
+        AttributeError
+            Missing required attributes
+        KeyError
+        ValueError
+            Improper formatting of dataframe
+
+        """
+        # Check for required attrs
+        if not hasattr(self, "empty_matrix") and not hasattr(
+            self, "img_header"
+        ):
+            raise AttributeError(
+                "Attributes empty_matrix, img_header "
+                + "required. Try ImportanceMask.mine_template."
+            )
+
+        # Validate dataframe
+        if df.shape[0] != 1:
+            raise ValueError("Dataframe must have only one row")
+        chk_col = df.columns[0]
+        try:
+            int(re.sub("[^0-9]", "", chk_col))
+        except ValueError:
+            raise KeyError("Improperly formatted df column name.")
+        if len(re.sub("[^0-9]", " ", chk_col).split()) != 3:
+            raise KeyError("Improperly formatted df column name.")
+
+        # Convert column names into a list of coordinate values
+        print(f"\tBuilding importance map : {mask_path}")
+        arr_fill = self.empty_matrix.copy()
+        col_emo = [re.sub("[^0-9]", " ", x).split() for x in df.columns]
+
+        # Add each column's value to the appropriate coordinate
+        # in the empty matrix.
+        for col_idx in col_emo:
+            x = int(col_idx[0])
+            y = int(col_idx[1])
+            z = int(col_idx[2])
+            arr_fill[x][y][z] = df.loc[0, f"({x}, {y}, {z})"]
+
+        # Write matrix as a nii, embed template header
+        emo_img = nib.Nifti1Image(
+            arr_fill, affine=None, header=self.img_header
+        )
+        nib.save(emo_img, mask_path)
+        return arr_fill

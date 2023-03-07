@@ -1,33 +1,22 @@
-"""Extract voxel beta weights from FSL FEAT files.
+"""Generate NIfTI masks from classifier output.
 
 Written for the local labarserv2 environment.
 
-Mine FSL GLM files for contrasts of interest and generate a
-dataframe of voxel beta-coefficients. Dataframes may be masked by
-identifying coordinates in a group-level mask.
+Convert each row of a feature importance dataframe into
+a NIfTI file in template space.
 
-Dataframes are written for each subject in --subj-list/all, and
-a group dataframe can be generated from all subject dataframes.
-
-Subject-level dataframes are titled
-    <subj>_<sess>_<task>_name-<model_name>_level-<model_level>_betas.tsv
-and written to:
-    <proj_dir>/data_scanner_BIDS/derivatives/model_fsl/<subj>/<sess>/func
-
-The group-level dataframe is written to:
-    <proj_dir>/analyses/model_fsl/fsl_<model_name>_betas.tsv
+Check for data in, and writes files to:
+    <proj-dir>/analyses/classify_plsda
 
 Examples
 --------
-fsl_extract --sub-all
-fsl_extract --sub-all --contrast-name replay
-fsl_extract --sub-list sub-ER0009 sub-ER0016
+fsl_map -t movies
+fsl_map -t movies --contrast-name replay
 
 """
 # %%
 import os
 import sys
-import glob
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model import workflows
@@ -88,23 +77,18 @@ def _get_args():
             """
         ),
     )
-    parser.add_argument(
-        "--sub-list",
-        nargs="+",
-        help=textwrap.dedent(
-            """\
-            List of subject IDs to extract behavior beta-coefficients
-            """
-        ),
+
+    required_args = parser.add_argument_group("Required Arguments")
+    required_args.add_argument(
+        "-t",
+        "--task-name",
         type=str,
-    )
-    parser.add_argument(
-        "--sub-all",
-        action="store_true",
+        required=True,
         help=textwrap.dedent(
             """\
-            Extract beta-coefficients from all available subjects and
-            generate a master dataframe.
+            [movies | scenarios]
+            Name of EmoRep stimulus type, corresponds to BIDS task field
+            (default : %(default)s)
             """
         ),
     )
@@ -120,12 +104,11 @@ def _get_args():
 def main():
     """Setup working environment."""
     args = _get_args().parse_args()
-    subj_list = args.sub_list
-    subj_all = args.sub_all
     proj_dir = args.proj_dir
     con_name = args.contrast_name
     model_name = args.model_name
     model_level = args.model_level
+    task_name = args.task_name
 
     # Check user input
     if not fsl.helper.valid_name(model_name):
@@ -137,28 +120,28 @@ def main():
     if not fsl.helper.valid_contrast(con_name):
         print(f"Unsupported contrast name : {con_name}")
         sys.exit(1)
+    if task_name not in ["movies", "scenarios"]:
+        raise ValueError(f"Unexpected value for task : {task_name}")
 
-    # Check, make subject list
-    proj_deriv = os.path.join(
-        proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
+    # Get template path
+    try:
+        tplflow_dir = os.environ["SINGULARITYENV_TEMPLATEFLOW_HOME"]
+    except KeyError:
+        raise EnvironmentError(
+            "Expected global variable SINGULARITYENV_TEMPLATEFLOW_HOME"
+            + "try : $labar_env emorep"
+        )
+    tpl_path = os.path.join(
+        tplflow_dir,
+        "tpl-MNI152NLin6Asym",
+        "tpl-MNI152NLin6Asym_res-02_T1w.nii.gz",
     )
-    subj_avail = sorted(glob.glob(f"{proj_deriv}/sub-*"))
-    if not subj_avail:
-        raise ValueError(f"No FSL output found at : {proj_deriv}")
-    subj_avail = [os.path.basename(x) for x in subj_avail]
-    if subj_list:
-        for subj in subj_list:
-            if subj not in subj_avail:
-                raise ValueError(
-                    "Specified subject not found in "
-                    + f"derivatives/model_fsl : {subj}"
-                )
-    if subj_all:
-        subj_list = subj_avail
+    if not os.path.exists(tpl_path):
+        raise FileNotFoundError(f"Expected to find template : {tpl_path}")
 
     # Submit workflow
-    workflows.fsl_extract(
-        proj_dir, subj_list, model_name, model_level, con_name
+    workflows.fsl_classify_mask(
+        proj_dir, model_name, model_level, con_name, task_name, tpl_path
     )
 
 
