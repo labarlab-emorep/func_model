@@ -16,6 +16,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
     names and then extract all voxel beta weights for contrasts
     of interest. Converts extracted beta weights into a dataframe.
 
+    Inherits general.matrix.NiftiArray.
+
     Methods
     -------
     make_func_matrix(**args)
@@ -325,62 +327,129 @@ def comb_matrices(
 
 # %%
 class ImportanceMask(matrix.NiftiArray):
-    """Title.
+    """Convert a dataframe of classifier values into a NIfTI mask.
+
+    Reference a template to derive header information and start a
+    matrix of the same size. Populate said matrix was row values
+    from a supplied dataframe.
+
+    Inherits general.matrix.NiftiArray.
 
     Methods
     -------
+    mine_template(tpl_path)
+        Extract relevant information from a template
+    make_mask(df, mask_path)
+        Turn dataframe of values into NIfTI mask
 
     Example
     -------
+    im_obj = group.ImportanceMask()
+    im_obj.mine_template("/path/to/template.nii.gz")
+    im_obj.emo_mask(pd.DataFrame, "/path/to/output/mask.nii.gz")
 
     """
 
     def __init__(self):
-        """Title.
-
-        Desc.
-
-        """
+        """Initialize."""
         print("Initializing ImportanceMask")
         super().__init__(4)
 
     def mine_template(self, tpl_path):
-        """Title.
+        """Mine a NIfTI template for information.
 
-        Desc.
+        Capture the NIfTI header and generate an empty
+        np.ndarray of the same size as the template.
+
+        Parameters
+        ----------
+        tpl_path : path
+            Location and name of template
 
         Attributes
         ----------
+        img_header : obj, nibabel.nifti1.Nifti1Header
+            Header data of template
+        empty_matrix : np.ndarray
+            Matrix containing zeros that is the same size as
+            the template.
 
         """
         if not os.path.exists(tpl_path):
             raise FileNotFoundError(f"Missing file : {tpl_path}")
 
-        print(f"Mining domain info from : {tpl_path}")
+        print(f"\tMining domain info from : {tpl_path}")
         img = self.nifti_to_img(tpl_path)
         img_data = img.get_fdata()
         self.img_header = img.header
         self.empty_matrix = np.zeros(img_data.shape)
 
-    def emo_mask(self, df, mask_path):
-        """Title.
+    def make_mask(self, df, mask_path):
+        """Convert row values into matrix and save as NIfTI mask.
 
-        Desc.
+        Using the dataframe column names, fill an empty matrix
+        with row values and then save the file as a NIfTI mask.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            A header and single row containing classifier importance.
+            Column names should be formatted as coordinate, e.g.
+            "(45, 31, 90)".
+        mask_path : path
+            Location and name of output NIfTI file
+
+        Returns
+        -------
+        nd.array
+            Matrix of template size filled with classifier
+            importance values.
+
+        Raises
+        ------
+        AttributeError
+            Missing required attributes
+        KeyError
+        ValueError
+            Improper formatting of dataframe
 
         """
-        print(f"Building importance map : {mask_path}")
-        arr_fill = self.empty_matrix.copy()
+        # Check for required attrs
+        if not hasattr(self, "empty_matrix") and not hasattr(
+            self, "img_header"
+        ):
+            raise AttributeError(
+                "Attributes empty_matrix, img_header "
+                + "required. Try ImportanceMask.mine_template."
+            )
 
+        # Validate dataframe
+        if df.shape[0] != 1:
+            raise ValueError("Dataframe must have only one row")
+        chk_col = df.columns[0]
+        try:
+            int(re.sub("[^0-9]", "", chk_col))
+        except ValueError:
+            raise KeyError("Improperly formatted df column name.")
+        if len(re.sub("[^0-9]", " ", chk_col).split()) != 3:
+            raise KeyError("Improperly formatted df column name.")
+
+        # Convert column names into a list of coordinate values
+        print(f"\tBuilding importance map : {mask_path}")
+        arr_fill = self.empty_matrix.copy()
         col_emo = [re.sub("[^0-9]", " ", x).split() for x in df.columns]
+
+        # Add each column's value to the appropriate coordinate
+        # in the empty matrix.
         for col_idx in col_emo:
             x = int(col_idx[0])
             y = int(col_idx[1])
             z = int(col_idx[2])
             arr_fill[x][y][z] = df.loc[0, f"({x}, {y}, {z})"]
 
-        #
+        # Write matrix as a nii, embed template header
         emo_img = nib.Nifti1Image(
             arr_fill, affine=None, header=self.img_header
         )
         nib.save(emo_img, mask_path)
-        return emo_img
+        return arr_fill

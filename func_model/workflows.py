@@ -746,13 +746,57 @@ def fsl_extract(
 def fsl_classify_mask(
     proj_dir, model_name, model_level, con_name, task_name, tpl_path
 ):
-    """Title.
+    """Convert a dataframe of classifier values into NIfTI masks.
+
+    Orient to NIfTI header and matrix size from a template, then
+    iterate through each row of the classifier importance output
+    and make a mask in template space from the row values.
+
+    Check for data in, and writes files to:
+        <proj_dir>/analyses/classify_plsda
 
     Parameters
     ----------
+    proj_dir : path
+        Location of project directory
+    model_name : str
+        [sep]
+        FSL model identifier
+    model_level : str
+        [first]
+        FSL model level
+    con_name : str
+        [stim | replay]
+        Contrast name of extracted coefficients
+    task_name
+        [movies | scenarios]
+        Name of stimulus type
+    tpl_path : path
+        Location and name of template
+
+    Raises
+    ------
+    FileNotFoundError
+        Missing template
+        Missing dataframe, or wrong dataframe name
+    ValueError
+        Unexpected user-specified parameters
+        Unexpected number of emotions/rows in dataframe
 
     """
-    #
+    # Check user input
+    if not fsl.helper.valid_name(model_name):
+        raise ValueError(f"Unsupported model name : {model_name}")
+    if not fsl.helper.valid_level(model_level):
+        raise ValueError(f"Unsupported model level : {model_level}")
+    if not fsl.helper.valid_contrast(con_name):
+        raise ValueError(f"Unsupported contrast name : {con_name}")
+    if task_name not in ["movies", "scenarios"]:
+        raise ValueError(f"Unexpected value for task : {task_name}")
+    if not os.path.exists(tpl_path):
+        raise FileNotFoundError(f"Missing file : {tpl_path}")
+
+    # Identify classifier dataframe
     data_dir = os.path.join(proj_dir, "analyses/classify_plsda")
     class_path = os.path.join(
         data_dir,
@@ -763,6 +807,8 @@ def fsl_classify_mask(
         raise FileNotFoundError(
             f"Check filename -- failed to find : {class_path}"
         )
+
+    # Load, check dataframe
     df_import = pd.read_csv(class_path, sep="\t")
     emo_list = df_import["emo_id"].tolist()
     if len(emo_list) != 15:
@@ -770,13 +816,11 @@ def fsl_classify_mask(
             f"Unexpected number of emotions from df.emo_id : {emo_list}"
         )
 
-    #
+    # Make a mask for each emotion in dataframe
     mk_mask = fsl.group.ImportanceMask()
     mk_mask.mine_template(tpl_path)
-
-    #
     for emo_name in emo_list:
-        print(f"Making imporance mask for : {emo_name}")
+        print(f"Making importance mask for : {emo_name}")
         df_emo = df_import[df_import["emo_id"] == emo_name]
         df_emo = df_emo.drop("emo_id", axis=1).reset_index(drop=True)
         mask_path = os.path.join(
@@ -784,4 +828,4 @@ def fsl_classify_mask(
             f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
             + f"task-{task_name}_emo-{emo_name}_map.nii.gz",
         )
-        _ = mk_mask.emo_mask(df_emo, mask_path)
+        _ = mk_mask.make_mask(df_emo, mask_path)

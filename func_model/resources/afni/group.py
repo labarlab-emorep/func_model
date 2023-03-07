@@ -14,6 +14,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
     extract all voxel beta weights for sub-labels of interest.
     Convert extracted weights into a dataframe.
 
+    Inherits general.matrix.NiftiArray.
+
     Methods
     -------
     get_label_names()
@@ -420,6 +422,8 @@ class EtacTest(_SetupTest):
     input, then construct and run ETAC tests. ETAC shell script and
     output files are written to <out_dir>.
 
+    Inherits _SetupTest.
+
     Methods
     --------
     write_exec(*args)
@@ -563,6 +567,8 @@ class MvmTest(_SetupTest):
 
     Construct a two-factor repeated-measures ANOVA for sanity checking.
     3dMVM scripts and output are written to <out_dir>.
+
+    Inherits _SetupTest.
 
     Methods
     --------

@@ -1,12 +1,17 @@
-"""Title.
+"""Generate NIfTI masks from classifier output.
 
 Written for the local labarserv2 environment.
 
+Convert each row of a feature importance dataframe into
+a NIfTI file in template space.
 
+Check for data in, and writes files to:
+    <proj-dir>/analyses/classify_plsda
 
 Examples
 --------
 fsl_map -t movies
+fsl_map -t movies --contrast-name replay
 
 """
 # %%
@@ -132,7 +137,7 @@ def main():
         "tpl-MNI152NLin6Asym_res-02_T1w.nii.gz",
     )
     if not os.path.exists(tpl_path):
-        raise (FileNotFoundError(f"Expected to find template : {tpl_path}"))
+        raise FileNotFoundError(f"Expected to find template : {tpl_path}")
 
     # Submit workflow
     workflows.fsl_classify_mask(

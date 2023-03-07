@@ -1,4 +1,4 @@
-"""Resource dealing with NIfTI matrices."""
+"""Resources dealing with NIfTI matrices."""
 import os
 import numpy as np
 import pandas as pd
@@ -30,7 +30,8 @@ class NiftiArray:
     na_obj = matrix.NiftiArray(4)
     na_obj.mask_coord("/path/to/mask/nii")
     img_flat = na_obj.nifti_to_arr("/path/to/nii")
-    df_flat = na_obj.arr_to_df(img_flat)
+    id_flat = na_obj.add_arr_id("ER0009", "movies", "fear", img_flat)
+    df_flat = na_obj.arr_to_df(id_flat)
 
     """
 
