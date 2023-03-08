@@ -2,6 +2,7 @@
 import os
 import glob
 import re
+import json
 import pandas as pd
 import numpy as np
 import nibabel as nib
@@ -126,6 +127,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         con_name,
         design_list,
         subj_out,
+        mot_thresh=0.2,
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
 
@@ -158,6 +160,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
             Paths to participant design.con files
         subj_out : path
             Output location for betas dataframe
+        mot_thresh : float, optional
+            Runs with a proportion of volumes >= mot_thresh will
+            not be included in output dataframe
 
         Returns
         -------
@@ -166,6 +171,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         Raises
         ------
+        FileNotFoundError
+            Missing outlier proportion file
         ValueError
             Unexpected task, model_name, model_level
             Trouble deriving run number
@@ -195,8 +202,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
         self._con_name = con_name
-        if os.path.exists(out_path):
-            return out_path
+        # if os.path.exists(out_path):
+        #     return out_path
 
         # Mine files from each design.con
         for self._design_path in design_list:
@@ -206,6 +213,22 @@ class ExtractTaskBetas(matrix.NiftiArray):
             run_num = run_dir.split("_")[0].split("-")[1]
             if len(run_num) != 2:
                 raise ValueError("Error parsing path for run number")
+
+            # Compare proportion of outliers to criterion, skip run
+            # if the the threshold is exceeded
+            prop_path = os.path.join(
+                subj_out,
+                "confounds_proportions",
+                f"{subj}_{sess}_{task}_run-{run_num}_"
+                + "desc-confounds_proportion.json",
+            )
+            if not os.path.exists(prop_path):
+                raise FileNotFoundError(f"Expected to find : {prop_path}")
+            with open(prop_path) as jf:
+                prop_dict = json.load(jf)
+            prop_mot = prop_dict["CensorProp"]
+            if prop_mot >= mot_thresh:
+                continue
 
             # Find and match copes to emotions, get voxel betas
             cope_dict = self._find_copes()

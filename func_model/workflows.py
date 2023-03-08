@@ -724,7 +724,7 @@ def fsl_extract(
             design_list = sorted(
                 glob.glob(f"{subj_func_dir}/run-*/design.con")
             )
-            get_betas.make_func_matrix(
+            _ = get_betas.make_func_matrix(
                 subj,
                 sess,
                 task,
