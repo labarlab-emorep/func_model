@@ -6,6 +6,8 @@ def main():
     print(
         f"""
 
+    Version : {ver.__version__}
+
     The package func_model consists of sub-packages that can be accessed
     from their respective entrypoints:
 
@@ -23,8 +25,6 @@ def main():
     The sub-packages afni_model, fsl_model are written specifically for the
     Duke Compute Cluster (DCC), while afni_extract, afni_univ, afni_mvm,
     fsl_extract, and fsl_map are written for labarserv2.
-
-    Version : {ver.__version__}
 
     """
     )
