@@ -1,9 +1,10 @@
 """Print entrypoint help."""
+import func_model._version as ver
 
 
 def main():
     print(
-        """
+        f"""
 
     The package func_model consists of sub-packages that can be accessed
     from their respective entrypoints:
@@ -23,6 +24,7 @@ def main():
     Duke Compute Cluster (DCC), while afni_extract, afni_univ, afni_mvm,
     fsl_extract, and fsl_map are written for labarserv2.
 
+    Version : {ver.__version__}
 
     """
     )
