@@ -1,6 +1,6 @@
 """Conduct multivariate testing using AFNI-based methods.
 
-Written for the remote Duke Compute Cluster (DCC) environment.
+Written for the local labarserv2 environment.
 
 Construct and execute simple multivariate tests for sanity checking
 pipeline output. Output is written to:
@@ -16,6 +16,7 @@ Model names:
 Examples
 --------
 afni_mvm -n rm
+afni_mvm -n rm --emo-name fear disgust
 
 """
 # %%
@@ -42,6 +43,17 @@ def _get_args():
             (default : %(default)s)
             """
         ),
+    )
+    parser.add_argument(
+        "--emo-name",
+        nargs="+",
+        help=textwrap.dedent(
+            """\
+            List of emotions to test specifically
+            (default : None -- all emotions tested)
+            """
+        ),
+        type=str,
     )
 
     required_args = parser.add_argument_group("Required Arguments")
@@ -72,13 +84,21 @@ def main():
     args = _get_args().parse_args()
     proj_dir = args.proj_dir
     model_name = args.model_name
+    emo_list = args.emo_name
     if not afni.helper.valid_mvm_test(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
-    # Submit workflow for each emotion
+    # Get, validate emotion list
     emo_dict = afni.helper.emo_switch()
-    for emo_name in emo_dict.keys():
+    if emo_list:
+        for emo in emo_list:
+            if emo not in emo_dict.keys():
+                raise ValueError(f"Invalid emotion specified : {emo}")
+
+    # Submit workflow for each emotion
+    emo_iter = emo_list if emo_list else emo_dict.keys()
+    for emo_name in emo_iter:
         workflows.afni_mvm(proj_dir, model_name, emo_name)
 
 
@@ -91,3 +111,5 @@ if __name__ == "__main__":
         print("\tHint: $labar_env emorep\n")
         sys.exit(1)
     main()
+
+# %%
