@@ -101,8 +101,6 @@ def _get_args():
 # %%
 def main():
     """Setup working environment."""
-
-    # Capture CLI arguments
     args = _get_args().parse_args()
     subj_list = args.sub_list
     proj_dir = args.proj_dir
@@ -148,7 +146,7 @@ def main():
             subj_deriv = os.path.join(
                 proj_deriv, "pre_processing", "fsl_denoise", subj, sess, "func"
             )
-            fsl_pp = glob.glob(f"{subj_deriv}/*tfiltMasked_bold.nii.gz")
+            fsl_pp = glob.glob(f"{subj_deriv}/*scaled_bold.nii.gz")
             if not fsl_pp:
                 print(f"No preprocessed files detected for {subj}, {sess}")
                 continue

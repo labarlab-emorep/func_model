@@ -103,7 +103,7 @@ def make_confound_files(subj, sess, task, subj_work, proj_deriv):
 
     # Make confound files
     for conf_path in sess_confounds:
-        _ = model.confounds(conf_path, subj_work)
+        _ = model.confounds(conf_path, subj_work, fd_thresh=0.5)
 
 
 def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
@@ -181,7 +181,7 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
         proj_deriv, "pre_processing/fsl_denoise", subj, sess
     )
     sess_preproc = sorted(
-        glob.glob(f"{fd_subj_sess}/func/*{task}*tfiltMasked_bold.nii.gz")
+        glob.glob(f"{fd_subj_sess}/func/*{task}*desc-scaled_bold.nii.gz")
     )
     if not sess_preproc:
         raise FileNotFoundError(
@@ -199,7 +199,10 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
         num_vol = img_header.get_data_shape()[3]
         del img
 
-        # Find confounds file
+        # Find confounds file - failing to find a confounds may be
+        # due to excessive motion detected, whether or not to model
+        # a run is being decided by whether a confounds file exists.
+        # See resources.fsl.model.confounds for more details.
         run = _get_run(os.path.basename(preproc_path))
         search_conf = f"{subj_work}/confounds_files"
         confound_path = _get_file(search_conf, run, "desc-confounds")

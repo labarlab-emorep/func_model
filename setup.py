@@ -1,8 +1,10 @@
 from setuptools import setup, find_packages
 
+exec(open("func_model/_version.py").read())
+
 setup(
     name="func_model",
-    version="0.2",
+    version=__version__,  # noqa: F821
     packages=find_packages(),
     entry_points={
         "console_scripts": [
@@ -13,6 +15,7 @@ setup(
             "afni_mvm=func_model.cli.afni_mvm:main",
             "fsl_model=func_model.cli.fsl_model:main",
             "fsl_extract=func_model.cli.fsl_extract:main",
+            "fsl_map=func_model.cli.fsl_map:main",
         ]
     },
     include_package_data=True,

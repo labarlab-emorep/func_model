@@ -1,4 +1,4 @@
-"""Resource dealing with NIfTI matrices."""
+"""Resources dealing with NIfTI matrices."""
 import os
 import numpy as np
 import pandas as pd
@@ -22,13 +22,16 @@ class NiftiArray:
         Identify coordinates outside of group-level binary mask
     nifti_to_arr(nifti_path)
         Convert 3D NIfTI to 1D array
+    nifti_to_img(nifti_path)
+        Convert NIfTI to Nibabel image
 
     Example
     -------
     na_obj = matrix.NiftiArray(4)
     na_obj.mask_coord("/path/to/mask/nii")
     img_flat = na_obj.nifti_to_arr("/path/to/nii")
-    df_flat = na_obj.arr_to_df(img_flat)
+    id_flat = na_obj.add_arr_id("ER0009", "movies", "fear", img_flat)
+    df_flat = na_obj.arr_to_df(id_flat)
 
     """
 
@@ -56,10 +59,14 @@ class NiftiArray:
 
     def nifti_to_arr(self, nifti_path: str) -> np.ndarray:
         """Generate flat array of NIfTI voxel values."""
-        img = nib.load(nifti_path)
+        img = self.nifti_to_img(nifti_path)
         img_data = img.get_fdata()
         img_flat = self._flatten_array(img_data)
         return img_flat
+
+    def nifti_to_img(self, nifti_path: str):
+        """Return Nibabel Image."""
+        return nib.load(nifti_path)
 
     def add_arr_id(
         self,
