@@ -613,6 +613,163 @@ def fsl_rest_first(
 
 
 # %%
+class FslFirst:
+    """Title."""
+
+    def __init__(
+        self,
+        subj,
+        sess,
+        model_name,
+        model_level,
+        proj_rawdata,
+        proj_deriv,
+        work_deriv,
+        log_dir,
+    ):
+        """Initialize."""
+        if not fsl.helper.valid_name(model_name):
+            raise ValueError(f"Unexpected model name : {model_name}")
+        if not fsl.helper.valid_level(model_level):
+            raise ValueError(f"Unexpected model level : {model_level}")
+        chk_sess = os.path.join(proj_rawdata, subj, sess)
+        if not os.path.exists(chk_sess):
+            print(f"Directory not detected : {chk_sess}\n\tSkipping.")
+            return
+
+        self._subj = subj
+        self._sess = sess
+        self._model_name = model_name
+        self._model_level = model_level
+        self._proj_rawdata = proj_rawdata
+        self._proj_deriv = proj_deriv
+        self._work_deriv = work_deriv
+        self._log_dir = log_dir
+
+    def _setup(self):
+        """Make work and final directories."""
+        self._subj_work = os.path.join(
+            self._work_deriv,
+            f"model_fsl-{self._model_name}",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._subj_final = os.path.join(
+            self._proj_deriv, "model_fsl", self._subj, self._sess
+        )
+        for _dir in [self._subj_work, self._subj_final]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+    def _find_task(self):
+        """Determine task name."""
+        if self._model_name == "rest":
+            self._task = "task-rest"
+        else:
+            search_path = os.path.join(
+                self._proj_rawdata, self._subj, self._sess, "func"
+            )
+            event_path = glob.glob(f"{search_path}/*events.tsv")[0]
+            event_file = os.path.basename(event_path)
+            self._task = "task-" + event_file.split("task-")[-1].split("_")[0]
+        if not fsl.helper.valid_task(self._task):
+            raise ValueError(f"Unexpected task name : {self._task}")
+
+    def model_rest(self):
+        """Title."""
+        self._setup()
+        self._find_task()
+
+        conf_list = fsl.wrap.make_confound_files(
+            self._subj,
+            self._sess,
+            self._task,
+            self._subj_work,
+            self._proj_deriv,
+        )
+
+        #
+        run = "run-01"
+        rest_preproc = os.path.join(
+            self._proj_deriv,
+            "pre_processing",
+            "fsl_denoise",
+            self._subj,
+            self._sess,
+            "func",
+            f"{self._subj}_{self._sess}_{self._task}_{run}_"
+            + "space-MNI152NLin6Asym_res-2_desc-scaled_bold.nii.gz",
+        )
+        if not os.path.exists(rest_preproc):
+            raise FileNotFoundError(
+                f"Expected resting preproc : {rest_preproc}"
+            )
+
+        #
+        num_vol = fsl.helper.count_vol(rest_preproc)
+        make_fsf = fsl.model.MakeFirstFsf(
+            self._subj_work, self._proj_deriv, self._model_name
+        )
+        rest_design = make_fsf.write_rest_fsf(
+            run, num_vol, rest_preproc, conf_list[0]
+        )
+
+        #
+        _ = fsl.model.run_feat(
+            rest_design,
+            self._subj,
+            self._sess,
+            self._model_name,
+            self._model_level,
+            self._log_dir,
+        )
+        fsl.helper.clean_up(self._subj_work, self._subj_final)
+
+    def model_task(self):
+        """Title."""
+        self._setup()
+        self._find_task()
+
+        # Make condition, confound, and design files
+        fsl.wrap.make_condition_files(
+            self._subj,
+            self._sess,
+            self._task,
+            self._model_name,
+            self._subj_work,
+            self._proj_rawdata,
+        )
+        _ = fsl.wrap.make_confound_files(
+            self._subj,
+            self._sess,
+            self._task,
+            self._subj_work,
+            self._proj_deriv,
+        )
+        fsf_list = fsl.wrap.task_first_fsf(
+            self._subj,
+            self._sess,
+            self._task,
+            self._model_name,
+            self._subj_work,
+            self._proj_deriv,
+        )
+
+        # Execute each run's model
+        for fsf_path in fsf_list:
+            _ = fsl.model.run_feat(
+                fsf_path,
+                self._subj,
+                self._sess,
+                self._model_name,
+                self._model_level,
+                self._log_dir,
+            )
+        fsl.helper.clean_up(self._subj_work, self._subj_final)
+
+
+# %%
 def fsl_task_first(
     subj,
     sess,

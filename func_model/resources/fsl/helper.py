@@ -22,7 +22,7 @@ def valid_level(model_level: str) -> bool:
 
 def valid_task(task: str) -> bool:
     "Check if task name is valid."
-    return task in ["task-movies", "task-scenarios"]
+    return task in ["task-movies", "task-scenarios", "task-rest"]
 
 
 def valid_contrast(con: str) -> bool:
