@@ -543,6 +543,76 @@ def afni_mvm(proj_dir, model_name, emo_name):
 
 
 # %%
+def fsl_rest_first(
+    subj,
+    sess,
+    model_name,
+    model_level,
+    proj_rawdata,
+    proj_deriv,
+    work_deriv,
+    log_dir,
+):
+    """Title.
+
+    TODO
+
+    """
+    # Check arguments, that data exist
+    if not fsl.helper.valid_name(model_name):
+        raise ValueError(f"Unexpected model name : {model_name}")
+    if model_level != "first":
+        raise ValueError(f"Unexpected model level : {model_level}")
+    chk_sess = os.path.join(proj_rawdata, subj, sess)
+    if not os.path.exists(chk_sess):
+        print(f"Directory not detected : {chk_sess}\n\tSkipping.")
+        return
+
+    # Setup output locations
+    subj_work = os.path.join(
+        work_deriv, f"model_fsl-{model_name}", subj, sess, "func"
+    )
+    subj_final = os.path.join(proj_deriv, "model_fsl", subj, sess)
+    for _dir in [subj_work, subj_final]:
+        if not os.path.exists(_dir):
+            os.makedirs(_dir)
+
+    #
+    task = "task-rest"
+    conf_list = fsl.wrap.make_confound_files(
+        subj, sess, task, subj_work, proj_deriv
+    )
+
+    #
+    run = "run-01"
+    rest_preproc = os.path.join(
+        proj_deriv,
+        "pre_processing",
+        "fsl_denoise",
+        subj,
+        sess,
+        "func",
+        f"{subj}_{sess}_{task}_{run}_"
+        + "space-MNI152NLin6Asym_res-2_desc-scaled_bold.nii.gz",
+    )
+    if not os.path.exists(rest_preproc):
+        raise FileNotFoundError(f"Expected resting preproc : {rest_preproc}")
+
+    #
+    num_vol = fsl.helper.count_vol(rest_preproc)
+    make_fsf = fsl.model.MakeFirstFsf(subj_work, proj_deriv, model_name)
+    rest_design = make_fsf.write_rest_fsf(
+        run, num_vol, rest_preproc, conf_list[0]
+    )
+
+    #
+    _ = fsl.model.run_feat(
+        rest_design, subj, sess, model_name, model_level, log_dir
+    )
+    fsl.helper.clean_up(subj_work, subj_final)
+
+
+# %%
 def fsl_task_first(
     subj,
     sess,
@@ -618,7 +688,7 @@ def fsl_task_first(
     fsl.wrap.make_condition_files(
         subj, sess, task, model_name, subj_work, proj_rawdata
     )
-    fsl.wrap.make_confound_files(subj, sess, task, subj_work, proj_deriv)
+    _ = fsl.wrap.make_confound_files(subj, sess, task, subj_work, proj_deriv)
     fsf_list = fsl.wrap.write_first_fsf(
         subj, sess, task, model_name, subj_work, proj_deriv
     )

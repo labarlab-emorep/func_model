@@ -6,6 +6,7 @@ import glob
 import json
 import pandas as pd
 import numpy as np
+from typing import Union
 from func_model.resources.general import submit
 from func_model.resources import fsl
 
@@ -391,8 +392,9 @@ def confounds(
 
     Returns
     -------
-    pd.DataFrame
-        Confounds of interest data
+    tuple
+        [0] = pd.DataFrame, confounds of interest data
+        [1] = path, location of confound file
 
     Raises
     ------
@@ -481,7 +483,7 @@ def confounds(
     out_name = os.path.basename(conf_path).replace(".tsv", ".txt")
     out_path = os.path.join(out_dir, out_name)
     df_out.to_csv(out_path, index=False, sep="\t", na_rep=na_value)
-    return df_out
+    return (df_out, out_path)
 
 
 # %%
@@ -496,14 +498,14 @@ class MakeFirstFsf:
 
     Attributes
     ----------
-    write_fsf
+    write_task_fsf
         Find appropriate method for model name, write run design.fsf
 
     Example
     -------
     make_fsf = model.MakeFirstFsf(**args)
     for run in [list, of, run, files]:
-        fsf_path = make_fsf.write_fsf(**args)
+        fsf_path = make_fsf.write_task_fsf(**args)
 
     """
 
@@ -537,17 +539,107 @@ class MakeFirstFsf:
         self._load_templates()
 
     def _load_templates(self):
-        """Load full, short first-level templates as private attributes."""
-        self._tp_full = fsl.helper.load_reference(
-            "design_template_level-first_"
-            + f"name-{self._model_name}_desc-full.fsf"
-        )
-        self._tp_short = fsl.helper.load_reference(
-            "design_template_level-first_"
-            + f"name-{self._model_name}_desc-short.fsf"
-        )
+        """Load design templates."""
+        if self._model_name == "rest":
+            self._tp_full = fsl.helper.load_reference(
+                "design_template_level-first_" + f"name-{self._model_name}.fsf"
+            )
+        else:
+            self._tp_full = fsl.helper.load_reference(
+                "design_template_level-first_"
+                + f"name-{self._model_name}_desc-full.fsf"
+            )
+            self._tp_short = fsl.helper.load_reference(
+                "design_template_level-first_"
+                + f"name-{self._model_name}_desc-short.fsf"
+            )
 
-    def write_fsf(
+    def _pp_path(
+        self, preproc_path: Union[str, os.PathLike]
+    ) -> Union[str, os.PathLike]:
+        """Return path to preprocessed file sans extension."""
+        _pp_ext = preproc_path.split(".")[-1]
+        if _pp_ext == "gz":
+            return preproc_path[:-7]
+        elif _pp_ext == "nii":
+            return preproc_path[:-4]
+        else:
+            raise ValueError(
+                "Expected preproc to have .nii or .nii.gz extension."
+            )
+
+    def write_rest_fsf(
+        self,
+        run,
+        num_vol,
+        preproc_path,
+        confound_path,
+    ):
+        """Title.
+
+        TODO
+
+        Parameters
+        ----------
+        run : str
+            BIDS run identifier
+        num_vol : int, str
+            Number of EPI volumes
+        preproc_path : path
+            Location and name of preprocessed EPI file
+        confound_path : path
+            Location, name of confounds file
+
+        Returns
+        -------
+        path
+            Location, name of generated design FSF
+
+        """
+        # Validate user input
+        for h_path in [
+            preproc_path,
+            confound_path,
+        ]:
+            if not os.path.exists(h_path):
+                raise FileNotFoundError(f"Missing expected file : {h_path}")
+
+        # Set attrs, variables
+        self._run = run
+        pp_file = self._pp_path(preproc_path)
+
+        # Setup replace dictionary
+        self._field_switch = {
+            "[[run]]": run,
+            "[[num_vol]]": f"{num_vol}",
+            "[[preproc_path]]": pp_file,
+            "[[conf_path]]": confound_path,
+            "[[subj_work]]": self._subj_work,
+            "[[deriv_dir]]": self._proj_deriv,
+        }
+        fsf_edit = self._tp_full
+        for old, new in self._field_switch.items():
+            fsf_edit = fsf_edit.replace(old, new)
+
+        # Write out
+        design_path = self._write_design(fsf_edit)
+        return design_path
+
+    def _write_design(self, fsf_info: str) -> Union[str, os.PathLike]:
+        """Write design.fsf and return file location."""
+        # Write out
+        out_dir = os.path.join(self._subj_work, "design_files")
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        out_path = os.path.join(
+            out_dir,
+            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
+        )
+        with open(out_path, "w") as tf:
+            tf.write(fsf_info)
+        return out_path
+
+    def write_task_fsf(
         self,
         run,
         num_vol,
@@ -559,7 +651,7 @@ class MakeFirstFsf:
         emoint_path,
         use_short,
     ):
-        """Write first-level FSF design.
+        """Write first-level FSF design for task EPI.
 
         Update select fields of template FSF files according to user input.
         Wrapper method, identifies and executes appropriate private method
@@ -624,16 +716,7 @@ class MakeFirstFsf:
         # Set attrs, variables
         self._run = run
         self._use_short = use_short
-
-        _pp_ext = preproc_path.split(".")[-1]
-        if _pp_ext == "gz":
-            pp_file = preproc_path[:-7]
-        elif _pp_ext == "nii":
-            pp_file = preproc_path["-4"]
-        else:
-            raise ValueError(
-                "Expected preproc to have .nii or .nii.gz extension."
-            )
+        pp_file = self._pp_path(preproc_path)
 
         # Setup replace dictionary
         self._field_switch = {
@@ -741,16 +824,20 @@ class MakeFirstFsf:
             fsf_edit = fsf_edit.replace(old, new)
 
         # Write out
-        out_dir = os.path.join(self._subj_work, "design_files")
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        out_path = os.path.join(
-            out_dir,
-            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
-        )
-        with open(out_path, "w") as tf:
-            tf.write(fsf_edit)
-        return out_path
+        design_path = self._write_design(fsf_edit)
+        return design_path
+
+        # # Write out
+        # out_dir = os.path.join(self._subj_work, "design_files")
+        # if not os.path.exists(out_dir):
+        #     os.makedirs(out_dir)
+        # out_path = os.path.join(
+        #     out_dir,
+        #     f"{self._run}_level-first_name-{self._model_name}_design.fsf",
+        # )
+        # with open(out_path, "w") as tf:
+        #     tf.write(fsf_edit)
+        # return out_path
 
 
 # %%

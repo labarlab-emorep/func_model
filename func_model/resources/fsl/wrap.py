@@ -8,8 +8,7 @@ required inputs.
 import os
 import glob
 from typing import Union
-import nibabel as nib
-from . import model, helper
+from func_model.resources.fsl import model, helper
 
 
 # %%
@@ -83,6 +82,11 @@ def make_confound_files(subj, sess, task, subj_work, proj_deriv):
         Location of project BIDs derivatives, for finding
         fMRIPrep output
 
+    Returns
+    -------
+    list
+        paths to generated confound files
+
     Raises
     ------
     FileNotFoundError
@@ -102,11 +106,14 @@ def make_confound_files(subj, sess, task, subj_work, proj_deriv):
         )
 
     # Make confound files
+    conf_list = []
     for conf_path in sess_confounds:
-        _ = model.confounds(conf_path, subj_work, fd_thresh=0.5)
+        _, conf_out = model.confounds(conf_path, subj_work, fd_thresh=0.5)
+        conf_list.append(conf_out)
+    return conf_list
 
 
-def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
+def task_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
     """Write first-level FSF design files.
 
     Identify required files and wrap class fsl.model.MakeFirstFsf. Requires
@@ -192,12 +199,8 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
     make_fsf = model.MakeFirstFsf(subj_work, proj_deriv, model_name)
     fsf_list = []
     for preproc_path in sess_preproc:
-
         # Determine number of volumes
-        img = nib.load(preproc_path)
-        img_header = img.header
-        num_vol = img_header.get_data_shape()[3]
-        del img
+        num_vol = helper.count_vol(preproc_path)
 
         # Find confounds file - failing to find a confounds may be
         # due to excessive motion detected, whether or not to model
@@ -219,7 +222,7 @@ def write_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
 
         # Write design file
         use_short = True if run == "run-04" or run == "run-08" else False
-        fsf_path = make_fsf.write_fsf(
+        fsf_path = make_fsf.write_task_fsf(
             run,
             num_vol,
             preproc_path,

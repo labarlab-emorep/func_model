@@ -4,13 +4,15 @@ import os
 import glob
 import subprocess
 import shutil
+from typing import Union
+import nibabel as nib
 import importlib.resources as pkg_resources
 from func_model import reference_files
 
 
 def valid_name(model_name: str) -> bool:
     "Check if model name is valid."
-    return model_name in ["sep"]
+    return model_name in ["sep", "rest"]
 
 
 def valid_level(model_level: str) -> bool:
@@ -33,6 +35,14 @@ def load_reference(file_name: str) -> str:
     with pkg_resources.open_text(reference_files, file_name) as tf:
         tp_line = tf.read()
     return tp_line
+
+
+def count_vol(in_epi: Union[str, os.PathLike]) -> int:
+    """Return number of EPI volumes."""
+    img = nib.load(in_epi)
+    img_header = img.header
+    num_vol = img_header.get_data_shape()[3]
+    return num_vol
 
 
 def clean_up(subj_work, subj_final):
