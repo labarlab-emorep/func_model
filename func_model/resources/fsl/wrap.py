@@ -199,13 +199,9 @@ def task_first_fsf(subj, sess, task, model_name, subj_work, proj_deriv):
     make_fsf = model.MakeFirstFsf(subj_work, proj_deriv, model_name)
     fsf_list = []
     for preproc_path in sess_preproc:
-        # Determine number of volumes
-        num_vol = helper.count_vol(preproc_path)
 
-        # Find confounds file - failing to find a confounds may be
-        # due to excessive motion detected, whether or not to model
-        # a run is being decided by whether a confounds file exists.
-        # See resources.fsl.model.confounds for more details.
+        # Determine number of volumes, find confounds
+        num_vol = helper.count_vol(preproc_path)
         run = _get_run(os.path.basename(preproc_path))
         search_conf = f"{subj_work}/confounds_files"
         confound_path = _get_file(search_conf, run, "desc-confounds")

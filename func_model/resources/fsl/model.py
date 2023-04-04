@@ -353,24 +353,12 @@ class ConditionFiles:
 
 
 # %%
-def confounds(
-    conf_path, subj_work, na_value="n/a", fd_thresh=None, prop_thresh=0.2
-):
-    """Make confounds files for FSL modelling.
+def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
+    """Make confounds files for FSL modeling.
 
-    Use fMRIPrep timeseries files to generate motion and censoring
-    regressors. If the proportion of censored volumes is less than
-    prop_thresh, a confound file will be written; failing to write
-    a confound file due to excessive motion allows for
-    resources.fsl.wrap.write_first_fsf to skip constructing the
-    design.fsf file for the run, resulting in the run not
-    being modelled in workflows.fsl_task_first.
-
-    Confounds files are potentially written to:
-        <subj_work>/confounds_files
-
-    Censoring stats are written to:
-        <subj_work>/confounds_proportions
+    Mine fMRIPrep timeseries.tsv files for confound regressors. Also
+    calculate the proportion of volumes censored for downstream
+    analytics.
 
     Parameters
     ----------
@@ -385,10 +373,6 @@ def confounds(
         If specified, use value to identify volumes requiring
         censoring and build output dataframe columns. Otherwise
         simply grab fMRIPrep confounds motion_outlierX columns.
-    prop_thresh : float
-        If the proportion of censored volumes exceeds this value,
-        then the confounds file will not be written, resulting
-        in first-level modelling skipping the run.
 
     Returns
     -------
@@ -403,7 +387,6 @@ def confounds(
     TypeError
         Unexpected parameter type
 
-
     """
     if not os.path.exists(conf_path):
         raise FileNotFoundError(f"Expected to find file : {conf_path}")
@@ -412,8 +395,6 @@ def confounds(
     if fd_thresh:
         if not isinstance(fd_thresh, float):
             raise TypeError("Unexpected type for fd_thresh")
-    if not isinstance(prop_thresh, float):
-        raise TypeError("Unexpected type for prop_thresh")
 
     # Setup output location
     prop_dir = os.path.join(subj_work, "confounds_proportions")
@@ -476,8 +457,6 @@ def confounds(
             },
             jf,
         )
-    if prop_drop >= prop_thresh:
-        return df_out
 
     # Write out df
     out_name = os.path.basename(conf_path).replace(".tsv", ".txt")

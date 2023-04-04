@@ -689,7 +689,7 @@ def fsl_task_first(
         subj, sess, task, model_name, subj_work, proj_rawdata
     )
     _ = fsl.wrap.make_confound_files(subj, sess, task, subj_work, proj_deriv)
-    fsf_list = fsl.wrap.write_first_fsf(
+    fsf_list = fsl.wrap.task_first_fsf(
         subj, sess, task, model_name, subj_work, proj_deriv
     )
 
