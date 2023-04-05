@@ -2,6 +2,7 @@
 # %%
 import os
 import glob
+from typing import Union
 import pandas as pd
 from pathlib import Path
 from func_model.resources import afni, fsl
@@ -543,76 +544,6 @@ def afni_mvm(proj_dir, model_name, emo_name):
 
 
 # %%
-def fsl_rest_first(
-    subj,
-    sess,
-    model_name,
-    model_level,
-    proj_rawdata,
-    proj_deriv,
-    work_deriv,
-    log_dir,
-):
-    """Title.
-
-    TODO
-
-    """
-    # Check arguments, that data exist
-    if not fsl.helper.valid_name(model_name):
-        raise ValueError(f"Unexpected model name : {model_name}")
-    if model_level != "first":
-        raise ValueError(f"Unexpected model level : {model_level}")
-    chk_sess = os.path.join(proj_rawdata, subj, sess)
-    if not os.path.exists(chk_sess):
-        print(f"Directory not detected : {chk_sess}\n\tSkipping.")
-        return
-
-    # Setup output locations
-    subj_work = os.path.join(
-        work_deriv, f"model_fsl-{model_name}", subj, sess, "func"
-    )
-    subj_final = os.path.join(proj_deriv, "model_fsl", subj, sess)
-    for _dir in [subj_work, subj_final]:
-        if not os.path.exists(_dir):
-            os.makedirs(_dir)
-
-    #
-    task = "task-rest"
-    conf_list = fsl.wrap.make_confound_files(
-        subj, sess, task, subj_work, proj_deriv
-    )
-
-    #
-    run = "run-01"
-    rest_preproc = os.path.join(
-        proj_deriv,
-        "pre_processing",
-        "fsl_denoise",
-        subj,
-        sess,
-        "func",
-        f"{subj}_{sess}_{task}_{run}_"
-        + "space-MNI152NLin6Asym_res-2_desc-scaled_bold.nii.gz",
-    )
-    if not os.path.exists(rest_preproc):
-        raise FileNotFoundError(f"Expected resting preproc : {rest_preproc}")
-
-    #
-    num_vol = fsl.helper.count_vol(rest_preproc)
-    make_fsf = fsl.model.MakeFirstFsf(subj_work, proj_deriv, model_name)
-    rest_design = make_fsf.write_rest_fsf(
-        run, num_vol, rest_preproc, conf_list[0]
-    )
-
-    #
-    _ = fsl.model.run_feat(
-        rest_design, subj, sess, model_name, model_level, log_dir
-    )
-    fsl.helper.clean_up(subj_work, subj_final)
-
-
-# %%
 class FslFirst:
     """Title."""
 
@@ -646,48 +577,12 @@ class FslFirst:
         self._work_deriv = work_deriv
         self._log_dir = log_dir
 
-    def _setup(self):
-        """Make work and final directories."""
-        self._subj_work = os.path.join(
-            self._work_deriv,
-            f"model_fsl-{self._model_name}",
-            self._subj,
-            self._sess,
-            "func",
-        )
-        self._subj_final = os.path.join(
-            self._proj_deriv, "model_fsl", self._subj, self._sess
-        )
-        for _dir in [self._subj_work, self._subj_final]:
-            if not os.path.exists(_dir):
-                os.makedirs(_dir)
-
-    def _find_task(self):
-        """Determine task name."""
-        if self._model_name == "rest":
-            self._task = "task-rest"
-        else:
-            search_path = os.path.join(
-                self._proj_rawdata, self._subj, self._sess, "func"
-            )
-            event_path = glob.glob(f"{search_path}/*events.tsv")[0]
-            event_file = os.path.basename(event_path)
-            self._task = "task-" + event_file.split("task-")[-1].split("_")[0]
-        if not fsl.helper.valid_task(self._task):
-            raise ValueError(f"Unexpected task name : {self._task}")
-
     def model_rest(self):
         """Title."""
         self._setup()
-        self._find_task()
+        self._get_task()
 
-        conf_list = fsl.wrap.make_confound_files(
-            self._subj,
-            self._sess,
-            self._task,
-            self._subj_work,
-            self._proj_deriv,
-        )
+        conf_list = self._make_conf()
 
         #
         run = "run-01"
@@ -716,48 +611,193 @@ class FslFirst:
         )
 
         #
-        _ = fsl.model.run_feat(
-            rest_design,
-            self._subj,
-            self._sess,
-            self._model_name,
-            self._model_level,
-            self._log_dir,
-        )
-        fsl.helper.clean_up(self._subj_work, self._subj_final)
+        self._run_feat([rest_design])
 
     def model_task(self):
-        """Title."""
+        """Run an FSL first-level model for task EPI data.
+
+        Generate required confounds, condition, and design files and then
+        use FSL's FEAT to run a first-level model.
+
+        """
+        # Set output directories and identify taskname
         self._setup()
-        self._find_task()
+        self._get_task()
 
         # Make condition, confound, and design files
-        fsl.wrap.make_condition_files(
-            self._subj,
-            self._sess,
-            self._task,
-            self._model_name,
-            self._subj_work,
-            self._proj_rawdata,
-        )
-        _ = fsl.wrap.make_confound_files(
-            self._subj,
-            self._sess,
-            self._task,
-            self._subj_work,
-            self._proj_deriv,
-        )
-        fsf_list = fsl.wrap.task_first_fsf(
-            self._subj,
-            self._sess,
-            self._task,
-            self._model_name,
-            self._subj_work,
-            self._proj_deriv,
-        )
+        self._make_cond()
+        _ = self._make_conf()
+        fsf_list = self._make_task_design()
 
-        # Execute each run's model
-        for fsf_path in fsf_list:
+        # Execute design files
+        self._run_feat(fsf_list)
+
+    def _setup(self):
+        """Make work and final directories."""
+        self._subj_work = os.path.join(
+            self._work_deriv,
+            f"model_fsl-{self._model_name}",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._subj_final = os.path.join(
+            self._proj_deriv, "model_fsl", self._subj, self._sess
+        )
+        for _dir in [self._subj_work, self._subj_final]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+    def _get_task(self):
+        """Determine task name."""
+        if self._model_name == "rest":
+            self._task = "task-rest"
+        else:
+            search_path = os.path.join(
+                self._proj_rawdata, self._subj, self._sess, "func"
+            )
+            event_path = glob.glob(f"{search_path}/*events.tsv")[0]
+            event_file = os.path.basename(event_path)
+            self._task = "task-" + event_file.split("task-")[-1].split("_")[0]
+        if not fsl.helper.valid_task(self._task):
+            raise ValueError(f"Unexpected task name : {self._task}")
+
+    def _make_cond(self):
+        """Generate condition files from BIDS events files."""
+        subj_sess_raw = os.path.join(
+            self._proj_rawdata, self._subj, self._sess, "func"
+        )
+        sess_events = sorted(glob.glob(f"{subj_sess_raw}/*events.tsv"))
+        if not sess_events:
+            raise FileNotFoundError(
+                f"Expected BIDs events files in {subj_sess_raw}"
+            )
+        make_cf = fsl.model.ConditionFiles(
+            self._subj, self._sess, self._task, self._subj_work, sess_events
+        )
+        for run_num in make_cf.run_list:
+            make_cf.common_events(run_num)
+            if self._model_name == "sep":
+                make_cf.session_separate_events(run_num)
+
+    def _make_conf(self) -> list:
+        """Generate confounds files from fMRIPrep output."""
+        fp_subj_sess = os.path.join(
+            self._proj_deriv, "pre_processing/fmriprep", self._subj, self._sess
+        )
+        sess_confounds = sorted(
+            glob.glob(f"{fp_subj_sess}/func/*{self._task}*timeseries.tsv")
+        )
+        if not sess_confounds:
+            raise FileNotFoundError(
+                f"Expected fMRIPrep confounds files in {fp_subj_sess}"
+            )
+        conf_list = []
+        for conf_path in sess_confounds:
+            _, conf_out = fsl.model.confounds(
+                conf_path, self._subj_work, fd_thresh=0.5
+            )
+            conf_list.append(conf_out)
+        return conf_list
+
+    def _make_task_design(self):
+        """Write first-level FSF design files for task EPI."""
+
+        def _get_run(file_name: str) -> str:
+            "Return run field from temporal filtered filename."
+            try:
+                _su, _se, _ta, run, _sp, _re, _de, _su = file_name.split("_")
+                return run
+            except IndexError:
+                raise ValueError(
+                    "Improperly formatted file name for preprocessed BOLD."
+                )
+
+        def _get_file(
+            search_path: str, run: str, desc: str
+        ) -> Union[str, None]:
+            """Return path to condition/confound file or None."""
+            try:
+                return glob.glob(f"{search_path}/*_{run}_{desc}*.txt")[0]
+            except IndexError:
+                return None
+
+        def _get_cond(search_path: str, run: str) -> dict:
+            """Return dict of paths to common conditions."""
+            # cond_common values match BIDS description field of
+            # condition files.
+            cond_common = ["judgment", "washout", "emoSelect", "emoIntensity"]
+            out_dict = {}
+            for cond in cond_common:
+                out_dict[cond] = _get_file(search_path, run, f"desc-{cond}")
+            return out_dict
+
+        def _none_in_dict(search_dict: dict) -> bool:
+            """Check dictionary values for None types."""
+            for _key, value in search_dict.items():
+                if value is None:
+                    return True
+            return False
+
+        # Identify preprocessed FSL files
+        fd_subj_sess = os.path.join(
+            self._proj_deriv,
+            "pre_processing/fsl_denoise",
+            self._subj,
+            self._sess,
+        )
+        sess_preproc = sorted(
+            glob.glob(
+                f"{fd_subj_sess}/func/*{self._task}*desc-scaled_bold.nii.gz"
+            )
+        )
+        if not sess_preproc:
+            raise FileNotFoundError(
+                f"Expected fsl_denoise files in {fd_subj_sess}"
+            )
+
+        # Make run-specific design files
+        make_fsf = fsl.model.MakeFirstFsf(
+            self._subj_work, self._proj_deriv, self._model_name
+        )
+        fsf_list = []
+        for preproc_path in sess_preproc:
+
+            # Determine number of volumes, find confounds
+            num_vol = fsl.helper.count_vol(preproc_path)
+            run = _get_run(os.path.basename(preproc_path))
+            search_conf = f"{self._subj_work}/confounds_files"
+            confound_path = _get_file(search_conf, run, "desc-confounds")
+            if not confound_path:
+                print(f"\tNo confound found for {run}, skipping")
+                continue
+
+            # Find condition files
+            search_cond = f"{self._subj_work}/condition_files"
+            cond_dict = _get_cond(search_cond, run)
+            if _none_in_dict(cond_dict):
+                print(f"\tMissing required condition file for {run}, skipping")
+                continue
+
+            # Write design file
+            use_short = True if run == "run-04" or run == "run-08" else False
+            fsf_path = make_fsf.write_task_fsf(
+                run,
+                num_vol,
+                preproc_path,
+                confound_path,
+                cond_dict["judgment"],
+                cond_dict["washout"],
+                cond_dict["emoSelect"],
+                cond_dict["emoIntensity"],
+                use_short,
+            )
+            fsf_list.append(fsf_path)
+        return fsf_list
+
+    def _run_feat(self, design_list: list):
+        """Run FSL FEAT and clean output."""
+        for fsf_path in design_list:
             _ = fsl.model.run_feat(
                 fsf_path,
                 self._subj,
@@ -767,95 +807,6 @@ class FslFirst:
                 self._log_dir,
             )
         fsl.helper.clean_up(self._subj_work, self._subj_final)
-
-
-# %%
-def fsl_task_first(
-    subj,
-    sess,
-    model_name,
-    model_level,
-    proj_rawdata,
-    proj_deriv,
-    work_deriv,
-    log_dir,
-):
-    """Run an FSL first-level model for task EPI data.
-
-    Generate required confounds, condition, and design files and then
-    use FSL's FEAT to run a first-level model.
-
-    Parameters
-    ----------
-    subj : str
-        BIDS subject identifier
-    sess : str
-        BIDS session identifier
-    model_name : str
-        Name of FSL model, for keeping condition files and
-        output organized
-    model_level : str
-        [first]
-        Level of FSL model
-    proj_rawdata : path
-        Location of BIDS rawdata
-    proj_deriv : path
-        Location of project BIDs derivatives, for finding
-        preprocessed output
-    work_deriv : path
-        Output location for intermediates
-    log_dir : path
-        Output location for log files and scripts
-
-    Raises
-    ------
-    ValueError
-        Unexpected parameter values
-        Unexpected task name
-
-    """
-    # Check arguments, that data exist
-    if not fsl.helper.valid_name(model_name):
-        raise ValueError(f"Unexpected model name : {model_name}")
-    if model_level != "first":
-        raise ValueError(f"Unexpected model level : {model_level}")
-    chk_sess = os.path.join(proj_rawdata, subj, sess)
-    if not os.path.exists(chk_sess):
-        print(f"Directory not detected : {chk_sess}\n\tSkipping.")
-        return
-
-    # Setup output locations
-    subj_work = os.path.join(
-        work_deriv, f"model_fsl-{model_name}", subj, sess, "func"
-    )
-    subj_final = os.path.join(proj_deriv, "model_fsl", subj, sess)
-    for _dir in [subj_work, subj_final]:
-        if not os.path.exists(_dir):
-            os.makedirs(_dir)
-
-    # Determine and check task name
-    search_path = os.path.join(proj_rawdata, subj, sess, "func")
-    event_path = glob.glob(f"{search_path}/*events.tsv")[0]
-    event_file = os.path.basename(event_path)
-    task = "task-" + event_file.split("task-")[-1].split("_")[0]
-    if not fsl.helper.valid_task(task):
-        raise ValueError(f"Unexpected task name : {task}")
-
-    # Make condition, confound, and design files
-    fsl.wrap.make_condition_files(
-        subj, sess, task, model_name, subj_work, proj_rawdata
-    )
-    _ = fsl.wrap.make_confound_files(subj, sess, task, subj_work, proj_deriv)
-    fsf_list = fsl.wrap.task_first_fsf(
-        subj, sess, task, model_name, subj_work, proj_deriv
-    )
-
-    # Execute each run's model
-    for fsf_path in fsf_list:
-        _ = fsl.model.run_feat(
-            fsf_path, subj, sess, model_name, model_level, log_dir
-        )
-    fsl.helper.clean_up(subj_work, subj_final)
 
 
 # %%

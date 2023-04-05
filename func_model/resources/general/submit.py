@@ -260,12 +260,9 @@ def schedule_fsl(
     if not fsl.helper.valid_level(model_level):
         raise ValueError(f"Unexpected model level : {model_level}")
 
-    # Determine workflow method
-    wf_meth = (
-        f"fsl_rest_{model_level}"
-        if model_name == "rest"
-        else f"fsl_task_{model_level}"
-    )
+    # Determine workflow methods
+    wf_class = f"Fsl{model_level.capitalize()}"
+    wf_meth = "model_rest" if model_name == "rest" else "model_task"
 
     # Write parent python script
     subj_short = subj[6:]
@@ -282,7 +279,7 @@ def schedule_fsl(
         import sys
         from func_model import workflows
 
-        workflows.{wf_meth}(
+        wf_obj = workflows.{wf_class}(
             "{subj}",
             "{sess}",
             "{model_name}",
@@ -292,6 +289,7 @@ def schedule_fsl(
             "{work_deriv}",
             "{log_dir}",
         )
+        wf_obj.{wf_meth}()
 
     """
     sbatch_cmd = textwrap.dedent(sbatch_cmd)

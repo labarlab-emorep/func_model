@@ -80,10 +80,14 @@ class ConditionFiles:
         self._sess = sess
         self._task = task
         self._sess_events = sess_events
-        self._subj_cf_dir = os.path.join(subj_work, "condition_files")
-        if not os.path.exists(self._subj_cf_dir):
-            os.makedirs(self._subj_cf_dir)
+        self._subj_out = os.path.join(subj_work, "condition_files")
+        if not os.path.exists(self._subj_out):
+            os.makedirs(self._subj_out)
         self._event_dataframe()
+
+    # def load_events(self, events_path):
+    #     """Title."""
+    #     self._df_run = pd.read_table(events_path)
 
     def _event_dataframe(self):
         """Combine data from events files into dataframe.
@@ -165,7 +169,7 @@ class ConditionFiles:
             f"{self._subj}_{self._sess}_{self._task}_run-0{run_num}_"
             + f"desc-{event_name}_events.txt"
         )
-        out_path = os.path.join(self._subj_cf_dir, out_name)
+        out_path = os.path.join(self._subj_out, out_name)
         df.to_csv(out_path, index=False, header=False, sep="\t")
         return df
 
@@ -805,18 +809,6 @@ class MakeFirstFsf:
         # Write out
         design_path = self._write_design(fsf_edit)
         return design_path
-
-        # # Write out
-        # out_dir = os.path.join(self._subj_work, "design_files")
-        # if not os.path.exists(out_dir):
-        #     os.makedirs(out_dir)
-        # out_path = os.path.join(
-        #     out_dir,
-        #     f"{self._run}_level-first_name-{self._model_name}_design.fsf",
-        # )
-        # with open(out_path, "w") as tf:
-        #     tf.write(fsf_edit)
-        # return out_path
 
 
 # %%

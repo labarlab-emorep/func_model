@@ -10,8 +10,8 @@ to participant derivatives:
 Model names:
     - sep = emotion stimulus (scenarios, movies) and replay are
         modeled separately
-    - both = TODO, emotion stimulus and replay modeled together
     - rest = model resting-state data to remove nuissance regressors
+    - both = TODO, emotion stimulus and replay modeled together
 
 Level names:
     - first = first-level GLM
