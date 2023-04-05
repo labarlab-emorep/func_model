@@ -24,9 +24,9 @@ class ConditionFiles:
     Condition files are written to:
         <subj_work>/condition_files
 
-    Attributes
-    ----------
-    run_list
+
+    TODO
+
 
     Methods
     -------
@@ -38,14 +38,10 @@ class ConditionFiles:
 
     Example
     -------
-    make_cf = model.ConditionFiles(**args)
-    for run_num in make_cf.run_list:
-        make_cf.common_events(run_num)
-        make_cf.session_separate_events(run_num)
 
     """
 
-    def __init__(self, subj, sess, task, subj_work, sess_events):
+    def __init__(self, subj, sess, task, subj_work):
         """Initialize.
 
         Parameters
@@ -58,9 +54,6 @@ class ConditionFiles:
             BIDS task name
         subj_work : path
             Location of working directory for intermediates
-        sess_events : list
-            Paths to subject, session BIDS events files sorted
-            by run number
 
         Raises
         ------
@@ -69,8 +62,6 @@ class ConditionFiles:
             Empty sess_events
 
         """
-        if len(sess_events) < 1:
-            raise ValueError("Cannot make timing files from 0 events.tsv")
         if not fsl.helper.valid_task(task):
             raise ValueError(f"Uncexpected task name : {task}")
 
@@ -79,61 +70,19 @@ class ConditionFiles:
         self._subj = subj
         self._sess = sess
         self._task = task
-        self._sess_events = sess_events
         self._subj_out = os.path.join(subj_work, "condition_files")
         if not os.path.exists(self._subj_out):
             os.makedirs(self._subj_out)
-        self._event_dataframe()
 
-    # def load_events(self, events_path):
-    #     """Title."""
-    #     self._df_run = pd.read_table(events_path)
+    def load_events(self, events_path):
+        """Title."""
+        print(f"\tLoading {os.path.basename(events_path)}")
+        self._df_run = pd.read_table(events_path)
+        _sub, _ses, _task, self._run, _suff = os.path.basename(
+            events_path
+        ).split("_")
 
-    def _event_dataframe(self):
-        """Combine data from events files into dataframe.
-
-        Attributes
-        ----------
-        run_list : list
-            List of run integers
-        _df_events : pd.DataFrame
-            Column names == events files, run column added
-        _events_run : list
-            Run identifier extracted from event file name
-
-        Raises
-        ------
-        ValueError
-            The number of events files and number of runs are unequal
-
-        """
-        print("\tCompiling dataframe from session events ...")
-
-        # Read-in events files, construct list of dataframes. Determine
-        # run info from file name.
-        events_data = [pd.read_table(x) for x in self._sess_events]
-        self._events_run = [
-            int(x.split("_run-")[1].split("_")[0]) for x in self._sess_events
-        ]
-        if len(events_data) != len(self._events_run):
-            raise ValueError("Number of runs and events files differ")
-
-        # Add run info to listed dataframes, construct session dataframe
-        for idx, _ in enumerate(events_data):
-            events_data[idx]["run"] = self._events_run[idx]
-        self._df_events = pd.concat(events_data).reset_index(drop=True)
-        self.run_list = [int(x) for x in self._df_events["run"].unique()]
-
-    def _get_run_df(self, run_num: int):
-        """Set _df_run attribute for run data."""
-        if not isinstance(run_num, int):
-            raise TypeError("Expected int type for run_num")
-        self._df_run = self._df_events[
-            self._df_events["run"] == run_num
-        ].copy()
-        self._df_run = self._df_run.reset_index(drop=True)
-
-    def _write_cond(self, event_onset, event_duration, event_name, run_num):
+    def _write_cond(self, event_onset, event_duration, event_name):
         """Compile and write conditions file.
 
         Parameters
@@ -144,13 +93,12 @@ class ConditionFiles:
             Event durations
         event_name : str
             Event label
-        run_num : int, str
-            Run label
 
         Returns
         -------
-        pd.DataFrame
-            Conditions data
+        tuple
+            [0] = pd.DataFrame, conditions data
+            [1] = condition file path
 
         Raises
         ------
@@ -166,14 +114,14 @@ class ConditionFiles:
             {"onset": event_onset, "duration": event_duration, "mod": 1}
         )
         out_name = (
-            f"{self._subj}_{self._sess}_{self._task}_run-0{run_num}_"
+            f"{self._subj}_{self._sess}_{self._task}_{self._run}_"
             + f"desc-{event_name}_events.txt"
         )
         out_path = os.path.join(self._subj_out, out_name)
         df.to_csv(out_path, index=False, header=False, sep="\t")
-        return df
+        return (df, out_path)
 
-    def session_combined_events(self, run_num):
+    def session_combined_events(self):
         """Generate combined stimulus+replay conditions for each run.
 
         Session-specific events (scenarios, videos) are extract for each
@@ -184,10 +132,7 @@ class ConditionFiles:
         in the format combEmotionReplay. Output files are written to:
             <subj_work>/condition_files
 
-        Parameters
-        ----------
-        run_num : int
-            Run number
+        TODO
 
         Raises
         ------
@@ -197,12 +142,6 @@ class ConditionFiles:
             Index and position lists are not equal
 
         """
-        # Validate run_num, get data
-        if not isinstance(run_num, int):
-            raise TypeError("Expected int type for run_num")
-        print(f"\tBuilding session conditions for run : {run_num}")
-        self._get_run_df(run_num)
-
         # Identify indices of onset, offset, and emotions. With lists
         # being an equal length, an emotion can match in pos_emo_all
         # in order to find the onset and offset indices by following
@@ -222,6 +161,7 @@ class ConditionFiles:
         # Get emotion categories, clean
         emo_list = self._df_run["emotion"].unique()
         emo_list = [x for x in emo_list if x == x]
+        out_dict = {}
         for emo in emo_list:
 
             # Find onset, offset index of emotion trials
@@ -237,11 +177,13 @@ class ConditionFiles:
                 round(j - i, 2) for i, j in zip(emo_onset, emo_offset)
             ]
             t_emo = emo.title()
-            _ = self._write_cond(
-                emo_onset, emo_duration, f"comb{t_emo}Replay", run_num
+            _, emo_path = self._write_cond(
+                emo_onset, emo_duration, f"comb{t_emo}Replay"
             )
+            out_dict[f"comb{t_emo}Replay"] = emo_path
+        return out_dict
 
-    def session_separate_events(self, run_num):
+    def session_separate_events(self):
         """Generate separate stimulus and replay conditions for each run.
 
         Make condition files for each session-specific stimulus (videos,
@@ -251,10 +193,7 @@ class ConditionFiles:
         in the format [stim|replay]Emotion. Output files are written to:
             <subj_work>/condition_files
 
-        Parameters
-        ----------
-        run_num : int
-            Run number
+        TODO
 
         Raises
         ------
@@ -264,12 +203,6 @@ class ConditionFiles:
             Index and position lists are not equal
 
         """
-        # Validate run_num, get data
-        if not isinstance(run_num, int):
-            raise TypeError("Expected int type for run_num")
-        print(f"\tBuilding session conditions for run : {run_num}")
-        self._get_run_df(run_num)
-
         # As in session_combined_events, use list position and index to
         # align replay with the appropriate emotion.
         task_short = self._task.split("-")[-1]
@@ -281,6 +214,7 @@ class ConditionFiles:
         # Get unique emotions and clean.
         emo_list = self._df_run["emotion"].unique()
         emo_list = [x for x in emo_list if x == x]
+        out_dict = {}
         for emo in emo_list:
 
             # Identify the position of the emotion in pos_emo_all
@@ -301,14 +235,17 @@ class ConditionFiles:
 
             # Write condition files
             t_emo = emo.title()
-            _ = self._write_cond(
-                stim_onset, stim_duration, f"stim{t_emo}", run_num
+            _, stim_out = self._write_cond(
+                stim_onset, stim_duration, f"stim{t_emo}"
             )
-            _ = self._write_cond(
-                replay_onset, replay_duration, f"replay{t_emo}", run_num
+            _, rep_out = self._write_cond(
+                replay_onset, replay_duration, f"replay{t_emo}"
             )
+            out_dict[f"stim{t_emo}"] = stim_out
+            out_dict[f"replay{t_emo}"] = rep_out
+        return out_dict
 
-    def common_events(self, run_num):
+    def common_events(self):
         """Make condition files for common events for run.
 
         Condition files for common events (judgment, washout, emotion select,
@@ -318,10 +255,7 @@ class ConditionFiles:
         Output files are written to:
             <subj_work>/condition_files
 
-        Parameters
-        ----------
-        run_num : int
-            Run number
+        TODO
 
         Raises
         ------
@@ -331,12 +265,6 @@ class ConditionFiles:
             Index and position lists are not equal
 
         """
-        # Validate run_num, get data
-        if not isinstance(run_num, int):
-            raise TypeError("Expected int type for run_num")
-        print(f"\tBuilding common conditions for run : {run_num}")
-        self._get_run_df(run_num)
-
         # Set BIDS description field for each event
         common_switch = {
             "judge": "judgment",
@@ -346,6 +274,7 @@ class ConditionFiles:
         }
 
         # Make and write condition files
+        out_dict = {}
         for com, com_name in common_switch.items():
             print(f"\t\tBuilding conditions for common : {com}")
             idx_com = self._df_run.index[
@@ -353,7 +282,9 @@ class ConditionFiles:
             ].tolist()
             com_onset = self._df_run.loc[idx_com, "onset"].tolist()
             com_duration = self._df_run.loc[idx_com, "duration"].tolist()
-            _ = self._write_cond(com_onset, com_duration, com_name, run_num)
+            _, com_out = self._write_cond(com_onset, com_duration, com_name)
+            out_dict[com_name] = com_out
+        return out_dict
 
 
 # %%

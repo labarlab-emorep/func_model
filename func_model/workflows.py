@@ -2,7 +2,6 @@
 # %%
 import os
 import glob
-from typing import Union
 import pandas as pd
 from pathlib import Path
 from func_model.resources import afni, fsl
@@ -579,35 +578,32 @@ class FslFirst:
 
     def model_rest(self):
         """Title."""
+        # Set output directories and identify taskname
         self._setup()
         self._get_task()
 
-        conf_list = self._make_conf()
-
-        #
-        run = "run-01"
-        rest_preproc = os.path.join(
-            self._proj_deriv,
-            "pre_processing",
-            "fsl_denoise",
-            self._subj,
-            self._sess,
-            "func",
-            f"{self._subj}_{self._sess}_{self._task}_{run}_"
-            + "space-MNI152NLin6Asym_res-2_desc-scaled_bold.nii.gz",
-        )
-        if not os.path.exists(rest_preproc):
-            raise FileNotFoundError(
-                f"Expected resting preproc : {rest_preproc}"
-            )
-
-        #
-        num_vol = fsl.helper.count_vol(rest_preproc)
+        # Initialize needed classes
         make_fsf = fsl.model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
+
+        # Get preprocessed resting state
+        self._get_preproc()
+        rest_preproc = self._sess_preproc[0]
+
+        # Set run and make confound file
+        self._run = "run-01"
+        self._make_conf()
+        if not self._conf_path:
+            return
+
+        # Write and execute design.fsf
+        num_vol = fsl.helper.count_vol(rest_preproc)
         rest_design = make_fsf.write_rest_fsf(
-            run, num_vol, rest_preproc, conf_list[0]
+            self._run,
+            num_vol,
+            rest_preproc,
+            self._conf_path,
         )
 
         #
@@ -624,10 +620,48 @@ class FslFirst:
         self._setup()
         self._get_task()
 
-        # Make condition, confound, and design files
-        self._make_cond()
-        _ = self._make_conf()
-        fsf_list = self._make_task_design()
+        # Initialize needed classes
+        make_fsf = fsl.model.MakeFirstFsf(
+            self._subj_work, self._proj_deriv, self._model_name
+        )
+        self._make_cf = fsl.model.ConditionFiles(
+            self._subj, self._sess, self._task, self._subj_work
+        )
+
+        # Generate design files for each preprocessed run
+        fsf_list = []
+        self._get_preproc()
+        for preproc_path in self._sess_preproc:
+
+            # Generate run-specific condition and confound files,
+            # account for missing confound, events files.
+            self._get_run(os.path.basename(preproc_path))
+            self._make_cond()
+            self._make_conf()
+            if not self._cond_comm or not self._conf_path:
+                continue
+
+            # Determine number of volumes
+            num_vol = fsl.helper.count_vol(preproc_path)
+
+            # Write design file
+            use_short = (
+                True
+                if self._run == "run-04" or self._run == "run-08"
+                else False
+            )
+            fsf_path = make_fsf.write_task_fsf(
+                self._run,
+                num_vol,
+                preproc_path,
+                self._conf_path,
+                self._cond_comm["judgment"],
+                self._cond_comm["washout"],
+                self._cond_comm["emoSelect"],
+                self._cond_comm["emoIntensity"],
+                use_short,
+            )
+            fsf_list.append(fsf_path)
 
         # Execute design files
         self._run_feat(fsf_list)
@@ -648,8 +682,23 @@ class FslFirst:
             if not os.path.exists(_dir):
                 os.makedirs(_dir)
 
+    def _get_preproc(self):
+        """Get preprocessed EPI paths."""
+        fd_subj_sess = os.path.join(
+            self._proj_deriv,
+            "pre_processing/fsl_denoise",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._sess_preproc = sorted(
+            glob.glob(f"{fd_subj_sess}/*{self._task}*desc-scaled_bold.nii.gz")
+        )
+        if not self._sess_preproc:
+            raise FileNotFoundError(f"Expected scaled files in {fd_subj_sess}")
+
     def _get_task(self):
-        """Determine task name."""
+        """Determine task name from BIDS events file."""
         if self._model_name == "rest":
             self._task = "task-rest"
         else:
@@ -662,138 +711,66 @@ class FslFirst:
         if not fsl.helper.valid_task(self._task):
             raise ValueError(f"Unexpected task name : {self._task}")
 
+    def _get_run(self, file_name: str) -> str:
+        "Return run field from preprocessed EPI filename."
+        try:
+            (
+                _sub,
+                _ses,
+                _task,
+                self._run,
+                _space,
+                _res,
+                _desc,
+                _suff,
+            ) = file_name.split("_")
+        except IndexError:
+            raise ValueError(
+                "Improperly formatted file name for preprocessed BOLD."
+            )
+
     def _make_cond(self):
-        """Generate condition files from BIDS events files."""
+        """Generate condition files from BIDS events files for single run."""
         subj_sess_raw = os.path.join(
             self._proj_rawdata, self._subj, self._sess, "func"
         )
-        sess_events = sorted(glob.glob(f"{subj_sess_raw}/*events.tsv"))
-        if not sess_events:
-            raise FileNotFoundError(
-                f"Expected BIDs events files in {subj_sess_raw}"
-            )
-        make_cf = fsl.model.ConditionFiles(
-            self._subj, self._sess, self._task, self._subj_work, sess_events
+        sess_events = sorted(
+            glob.glob(f"{subj_sess_raw}/*{self._run}*events.tsv")
         )
-        for run_num in make_cf.run_list:
-            make_cf.common_events(run_num)
-            if self._model_name == "sep":
-                make_cf.session_separate_events(run_num)
+        if not sess_events or len(sess_events) != 1:
+            self._cond_comm = None
+            return
 
-    def _make_conf(self) -> list:
-        """Generate confounds files from fMRIPrep output."""
+        # Generate common condition files
+        self._make_cf.load_events(sess_events[0])
+        self._cond_comm = self._make_cf.common_events()
+
+        # Generate model-name specific cond files
+        if self._model_name == "sep":
+            self._cond_spec = self._make_cf.session_separate_events()
+
+    def _make_conf(self):
+        """Generate confounds files from fMRIPrep output for single run."""
         fp_subj_sess = os.path.join(
-            self._proj_deriv, "pre_processing/fmriprep", self._subj, self._sess
-        )
-        sess_confounds = sorted(
-            glob.glob(f"{fp_subj_sess}/func/*{self._task}*timeseries.tsv")
-        )
-        if not sess_confounds:
-            raise FileNotFoundError(
-                f"Expected fMRIPrep confounds files in {fp_subj_sess}"
-            )
-        conf_list = []
-        for conf_path in sess_confounds:
-            _, conf_out = fsl.model.confounds(
-                conf_path, self._subj_work, fd_thresh=0.5
-            )
-            conf_list.append(conf_out)
-        return conf_list
-
-    def _make_task_design(self):
-        """Write first-level FSF design files for task EPI."""
-
-        def _get_run(file_name: str) -> str:
-            "Return run field from temporal filtered filename."
-            try:
-                _su, _se, _ta, run, _sp, _re, _de, _su = file_name.split("_")
-                return run
-            except IndexError:
-                raise ValueError(
-                    "Improperly formatted file name for preprocessed BOLD."
-                )
-
-        def _get_file(
-            search_path: str, run: str, desc: str
-        ) -> Union[str, None]:
-            """Return path to condition/confound file or None."""
-            try:
-                return glob.glob(f"{search_path}/*_{run}_{desc}*.txt")[0]
-            except IndexError:
-                return None
-
-        def _get_cond(search_path: str, run: str) -> dict:
-            """Return dict of paths to common conditions."""
-            # cond_common values match BIDS description field of
-            # condition files.
-            cond_common = ["judgment", "washout", "emoSelect", "emoIntensity"]
-            out_dict = {}
-            for cond in cond_common:
-                out_dict[cond] = _get_file(search_path, run, f"desc-{cond}")
-            return out_dict
-
-        def _none_in_dict(search_dict: dict) -> bool:
-            """Check dictionary values for None types."""
-            for _key, value in search_dict.items():
-                if value is None:
-                    return True
-            return False
-
-        # Identify preprocessed FSL files
-        fd_subj_sess = os.path.join(
             self._proj_deriv,
-            "pre_processing/fsl_denoise",
+            "pre_processing/fmriprep",
             self._subj,
             self._sess,
+            "func",
         )
-        sess_preproc = sorted(
+        sess_confounds = sorted(
             glob.glob(
-                f"{fd_subj_sess}/func/*{self._task}*desc-scaled_bold.nii.gz"
+                f"{fp_subj_sess}/*{self._task}*{self._run}*timeseries.tsv"
             )
         )
-        if not sess_preproc:
-            raise FileNotFoundError(
-                f"Expected fsl_denoise files in {fd_subj_sess}"
-            )
+        if not sess_confounds or len(sess_confounds) != 1:
+            self._conf_path = None
+            return
 
-        # Make run-specific design files
-        make_fsf = fsl.model.MakeFirstFsf(
-            self._subj_work, self._proj_deriv, self._model_name
+        # Generate confound files
+        _, self._conf_path = fsl.model.confounds(
+            sess_confounds[0], self._subj_work, fd_thresh=0.5
         )
-        fsf_list = []
-        for preproc_path in sess_preproc:
-
-            # Determine number of volumes, find confounds
-            num_vol = fsl.helper.count_vol(preproc_path)
-            run = _get_run(os.path.basename(preproc_path))
-            search_conf = f"{self._subj_work}/confounds_files"
-            confound_path = _get_file(search_conf, run, "desc-confounds")
-            if not confound_path:
-                print(f"\tNo confound found for {run}, skipping")
-                continue
-
-            # Find condition files
-            search_cond = f"{self._subj_work}/condition_files"
-            cond_dict = _get_cond(search_cond, run)
-            if _none_in_dict(cond_dict):
-                print(f"\tMissing required condition file for {run}, skipping")
-                continue
-
-            # Write design file
-            use_short = True if run == "run-04" or run == "run-08" else False
-            fsf_path = make_fsf.write_task_fsf(
-                run,
-                num_vol,
-                preproc_path,
-                confound_path,
-                cond_dict["judgment"],
-                cond_dict["washout"],
-                cond_dict["emoSelect"],
-                cond_dict["emoIntensity"],
-                use_short,
-            )
-            fsf_list.append(fsf_path)
-        return fsf_list
 
     def _run_feat(self, design_list: list):
         """Run FSL FEAT and clean output."""
