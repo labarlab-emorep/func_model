@@ -1,4 +1,13 @@
-"""Pipelines supporting AFNI and FSL."""
+"""Pipelines supporting AFNI and FSL.
+
+afni_task       : GLM task data via AFNI
+afni_rest       : GLM rest data via AFNI
+afni_extract    : extract task beta-coefficients from AFNI GLM
+FslFirst        : GLM task, rest data via FSL
+fsl_extract     : extract task beta-coefficiens from FSL GLM
+fsl_classify_mask   : generate template mask from classifier output
+
+"""
 # %%
 import os
 import glob
@@ -543,92 +552,298 @@ def afni_mvm(proj_dir, model_name, emo_name):
 
 
 # %%
-def fsl_task_first(
-    subj,
-    sess,
-    model_name,
-    model_level,
-    proj_rawdata,
-    proj_deriv,
-    work_deriv,
-    log_dir,
-):
-    """Run an FSL first-level model for task EPI data.
+class FslFirst:
+    """Conduct first-level models of EPI data.
 
-    Generate required confounds, condition, and design files and then
-    use FSL's FEAT to run a first-level model.
+    Coordinate the generation of confound and design files, and
+    condition files for task-based models, then model the data
+    via FSL's feat.
 
-    Parameters
-    ----------
-    subj : str
-        BIDS subject identifier
-    sess : str
-        BIDS session identifier
-    model_name : str
-        Name of FSL model, for keeping condition files and
-        output organized
-    model_level : str
-        [first]
-        Level of FSL model
-    proj_rawdata : path
-        Location of BIDS rawdata
-    proj_deriv : path
-        Location of project BIDs derivatives, for finding
-        preprocessed output
-    work_deriv : path
-        Output location for intermediates
-    log_dir : path
-        Output location for log files and scripts
+    Methods
+    -------
+    model_rest()
+        Generate confounds and design files, conduct first-level
+        GLM via feat
+    model_task()
+        Generate confounds, condition, and design files, conduct
+        first-level GLM via feat
 
-    Raises
-    ------
-    ValueError
-        Unexpected parameter values
-        Unexpected task name
+    Example
+    -------
+    wf_fsl = workflows.FslFirst(**args)
+    wf_fsl.model_rest()
+    wf_fsl.model_task()
 
     """
-    # Check arguments, that data exist
-    if not fsl.helper.valid_name(model_name):
-        raise ValueError(f"Unexpected model name : {model_name}")
-    if model_level != "first":
-        raise ValueError(f"Unexpected model level : {model_level}")
-    chk_sess = os.path.join(proj_rawdata, subj, sess)
-    if not os.path.exists(chk_sess):
-        print(f"Directory not detected : {chk_sess}\n\tSkipping.")
-        return
 
-    # Setup output locations
-    subj_work = os.path.join(
-        work_deriv, f"model_fsl-{model_name}", subj, sess, "func"
-    )
-    subj_final = os.path.join(proj_deriv, "model_fsl", subj, sess)
-    for _dir in [subj_work, subj_final]:
-        if not os.path.exists(_dir):
-            os.makedirs(_dir)
+    def __init__(
+        self,
+        subj,
+        sess,
+        model_name,
+        model_level,
+        proj_rawdata,
+        proj_deriv,
+        work_deriv,
+        log_dir,
+    ):
+        """Initialize.
 
-    # Determine and check task name
-    search_path = os.path.join(proj_rawdata, subj, sess, "func")
-    event_path = glob.glob(f"{search_path}/*events.tsv")[0]
-    event_file = os.path.basename(event_path)
-    task = "task-" + event_file.split("task-")[-1].split("_")[0]
-    if not fsl.helper.valid_task(task):
-        raise ValueError(f"Unexpected task name : {task}")
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        model_name : str
+            Name of FSL model, for keeping condition files and
+            output organized
+        model_level : str
+            Level of FSL model
+        proj_rawdata : path
+            Location of BIDS rawdata
+        proj_deriv : path
+            Location of project BIDs derivatives, for finding
+            preprocessed output
+        work_deriv : path
+            Output location for intermediates
+        log_dir : path
+            Output location for log files and scripts
 
-    # Make condition, confound, and design files
-    fsl.wrap.make_condition_files(
-        subj, sess, task, model_name, subj_work, proj_rawdata
-    )
-    fsl.wrap.make_confound_files(subj, sess, task, subj_work, proj_deriv)
-    fsf_list = fsl.wrap.write_first_fsf(
-        subj, sess, task, model_name, subj_work, proj_deriv
-    )
+        Raises
+        ------
+        ValueError
+            Unexpected argument parameters
 
-    # Execute each run's model
-    for fsf_path in fsf_list:
-        _ = fsl.model.run_feat(
-            fsf_path, subj, sess, model_name, model_level, log_dir
+        """
+        if not fsl.helper.valid_name(model_name):
+            raise ValueError(f"Unexpected model name : {model_name}")
+        if not fsl.helper.valid_level(model_level):
+            raise ValueError(f"Unexpected model level : {model_level}")
+        chk_sess = os.path.join(proj_rawdata, subj, sess)
+        if not os.path.exists(chk_sess):
+            print(f"Directory not detected : {chk_sess}\n\tSkipping.")
+            return
+
+        print("Initializing FslFirst")
+        self._subj = subj
+        self._sess = sess
+        self._model_name = model_name
+        self._model_level = model_level
+        self._proj_rawdata = proj_rawdata
+        self._proj_deriv = proj_deriv
+        self._work_deriv = work_deriv
+        self._log_dir = log_dir
+
+    def model_rest(self):
+        """Run an FSL first-level model for resting EPI data.
+
+        Generate required a confounds and design file, then
+        use FSL's FEAT to run a first-level model.
+
+        """
+        # Set output directories and identify taskname
+        print("\tRunning first-level rest model")
+        self._setup()
+        self._get_task()
+
+        # Initialize needed classes, find preprocessed resting EPI
+        make_fsf = fsl.model.MakeFirstFsf(
+            self._subj_work, self._proj_deriv, self._model_name
         )
-    fsl.helper.clean_up(subj_work, subj_final)
+        self._get_preproc()
+        rest_preproc = self._sess_preproc[0]
+
+        # Set run and make confound file
+        self._run = "run-01"
+        self._make_conf()
+        if not self._conf_path:
+            return
+
+        # Write and execute design.fsf
+        num_vol = fsl.helper.count_vol(rest_preproc)
+        rest_design = make_fsf.write_rest_fsf(
+            self._run,
+            num_vol,
+            rest_preproc,
+            self._conf_path,
+        )
+        self._run_feat([rest_design])
+
+    def model_task(self):
+        """Run an FSL first-level model for task EPI data.
+
+        Generate required confounds, condition, and design files and then
+        use FSL's FEAT to run a first-level model.
+
+        """
+        # Set output directories and identify taskname
+        print("\tRunning first-level task model")
+        self._setup()
+        self._get_task()
+
+        # Initialize needed classes
+        make_fsf = fsl.model.MakeFirstFsf(
+            self._subj_work, self._proj_deriv, self._model_name
+        )
+        self._make_cf = fsl.model.ConditionFiles(
+            self._subj, self._sess, self._task, self._subj_work
+        )
+
+        # Generate design files for each preprocessed run
+        fsf_list = []
+        self._get_preproc()
+        for preproc_path in self._sess_preproc:
+
+            # Generate run-specific condition and confound files,
+            # account for missing confound, events files.
+            self._get_run(os.path.basename(preproc_path))
+            self._make_cond()
+            self._make_conf()
+            if not self._cond_comm or not self._conf_path:
+                continue
+
+            # Determine number of volumes
+            num_vol = fsl.helper.count_vol(preproc_path)
+
+            # Write design file
+            use_short = (
+                True
+                if self._run == "run-04" or self._run == "run-08"
+                else False
+            )
+            fsf_path = make_fsf.write_task_fsf(
+                self._run,
+                num_vol,
+                preproc_path,
+                self._conf_path,
+                self._cond_comm,
+                use_short,
+            )
+            fsf_list.append(fsf_path)
+
+        # Execute design files
+        self._run_feat(fsf_list)
+
+    def _setup(self):
+        """Make work and final directories."""
+        self._subj_work = os.path.join(
+            self._work_deriv,
+            f"model_fsl-{self._model_name}",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._subj_final = os.path.join(
+            self._proj_deriv, "model_fsl", self._subj, self._sess
+        )
+        for _dir in [self._subj_work, self._subj_final]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+    def _get_preproc(self):
+        """Get preprocessed EPI paths."""
+        fd_subj_sess = os.path.join(
+            self._proj_deriv,
+            "pre_processing/fsl_denoise",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._sess_preproc = sorted(
+            glob.glob(f"{fd_subj_sess}/*{self._task}*desc-scaled_bold.nii.gz")
+        )
+        if not self._sess_preproc:
+            raise FileNotFoundError(f"Expected scaled files in {fd_subj_sess}")
+
+    def _get_task(self):
+        """Determine task name from BIDS events file."""
+        if self._model_name == "rest":
+            self._task = "task-rest"
+        else:
+            search_path = os.path.join(
+                self._proj_rawdata, self._subj, self._sess, "func"
+            )
+            event_path = glob.glob(f"{search_path}/*events.tsv")[0]
+            event_file = os.path.basename(event_path)
+            self._task = "task-" + event_file.split("task-")[-1].split("_")[0]
+        if not fsl.helper.valid_task(self._task):
+            raise ValueError(f"Unexpected task name : {self._task}")
+
+    def _get_run(self, file_name: str) -> str:
+        "Return run field from preprocessed EPI filename."
+        try:
+            (
+                _sub,
+                _ses,
+                _task,
+                self._run,
+                _space,
+                _res,
+                _desc,
+                _suff,
+            ) = file_name.split("_")
+        except IndexError:
+            raise ValueError(
+                "Improperly formatted file name for preprocessed BOLD."
+            )
+
+    def _make_cond(self):
+        """Generate condition files from BIDS events files for single run."""
+        # Find events files in rawdata
+        subj_sess_raw = os.path.join(
+            self._proj_rawdata, self._subj, self._sess, "func"
+        )
+        sess_events = sorted(
+            glob.glob(f"{subj_sess_raw}/*{self._run}*events.tsv")
+        )
+        if not sess_events or len(sess_events) != 1:
+            self._cond_comm = None
+            return
+
+        # Generate common condition files
+        self._make_cf.load_events(sess_events[0])
+        self._cond_comm = self._make_cf.common_events()
+
+        # Generate model-name specific cond files
+        if self._model_name == "sep":
+            self._cond_spec = self._make_cf.session_separate_events()
+
+    def _make_conf(self):
+        """Generate confounds files from fMRIPrep output for single run."""
+        fp_subj_sess = os.path.join(
+            self._proj_deriv,
+            "pre_processing/fmriprep",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        sess_confounds = sorted(
+            glob.glob(
+                f"{fp_subj_sess}/*{self._task}*{self._run}*timeseries.tsv"
+            )
+        )
+        if not sess_confounds or len(sess_confounds) != 1:
+            self._conf_path = None
+            return
+
+        # Generate confound files
+        _, self._conf_path = fsl.model.confounds(
+            sess_confounds[0], self._subj_work, fd_thresh=0.5
+        )
+
+    def _run_feat(self, design_list: list):
+        """Run FSL FEAT and clean output."""
+        for fsf_path in design_list:
+            _ = fsl.model.run_feat(
+                fsf_path,
+                self._subj,
+                self._sess,
+                self._model_name,
+                self._model_level,
+                self._log_dir,
+            )
+        fsl.helper.clean_up(self._subj_work, self._subj_final)
 
 
 # %%

@@ -3,15 +3,15 @@
 Written for the remote Duke Compute Cluster (DCC) environment.
 
 Setup and run first- and second-level models in FSL for task
-and resting-state EPI data. First-level output are written
-to participant derivatives:
+and resting-state EPI data. Output are written to participant
+derivatives:
     <proj-dir>/derivatives/model_fsl/<subj>/<sess>/func/run-*_<level>_<name>
 
 Model names:
     - sep = emotion stimulus (scenarios, movies) and replay are
         modeled separately
+    - rest = model resting-state data to remove nuissance regressors
     - both = TODO, emotion stimulus and replay modeled together
-    - rest = TODO, model resting-state data
 
 Level names:
     - first = first-level GLM
@@ -20,6 +20,8 @@ Level names:
 Examples
 --------
 fsl_model -s sub-ER0009
+fsl_model -s sub-ER0009 sub-ER0016
+fsl_model -s sub-ER0009 --model-name rest
 
 """
 
@@ -59,7 +61,7 @@ def _get_args():
         default="sep",
         help=textwrap.dedent(
             """\
-            [sep]
+            [sep | rest]
             FSL model name, for triggering different workflows
             (default : %(default)s)
             """
@@ -111,7 +113,7 @@ def main():
     if not fsl.helper.valid_name(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
-    if not fsl.helper.valid_name(model_name):
+    if not fsl.helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
 
