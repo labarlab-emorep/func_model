@@ -1,4 +1,11 @@
-"""Modeling methods for FSL-based pipelines."""
+"""Modeling methods for FSL-based pipelines.
+
+ConditionFiles  : make condition files for task-based EPI pipelines.
+confounds       : make confounds files from fMRIPrep output.
+MakeFirstFsf    : write first-level design.fsf files
+run_feat        : execute design.fsf via FEAT
+
+"""
 # %%
 import os
 import time
@@ -6,38 +13,42 @@ import glob
 import json
 import pandas as pd
 import numpy as np
-from typing import Union
+from typing import Union, Tuple
 from func_model.resources.general import submit
 from func_model.resources import fsl
 
 
 # %%
 class ConditionFiles:
-    """Make FSL-style condition files for each event of each run.
+    """Make FSL-style condition files.
 
-    Aggregate all BIDS task events files for a participant's session,
-    and then generate condition files with for each event of each run,
-    using one row for each trial and columns for onset, duration, and
-    modulation. Condition files are named using a BIDS format, with
-    a unique value in the description field.
+    Generate FSL-style condition files from BIDS task events.tsv files.
+    One row for each trial, and columns for onset, duration, and modulation.
 
     Condition files are written to:
         <subj_work>/condition_files
 
-
-    TODO
-
-
     Methods
     -------
-    session_events(run_num)
-        Make condition files for session-specific events (videos, scenarios)
-    common_events(run_num)
+    common_events()
         Make condition files for common events (judgment, washout, intensity,
-        selection)
+        selection).
+    load_events(events_path)
+        Read-in BIDS events file as pd.DataFrame
+    session_combined_events()
+        For use when model_name == comb. Make condition files for
+        session-specific events, combining stimulus and replay.
+    session_separate_events()
+        For use when model_name == sep. Make condition files for
+        session-specific events, generating separate condition
+        files for stimulus and replay.
 
     Example
     -------
+    make_cond = model.ConditionFiles(**args)
+    make_cond.load_events("/path/to/*events.tsv")
+    comm_dict = make_cond.common_events()
+    comb_dict = make_Cond.session_combined_events()
 
     """
 
@@ -58,14 +69,12 @@ class ConditionFiles:
         Raises
         ------
         ValueError
-            Unexpected task name
-            Empty sess_events
+            Task name not found in fsl.helper.valid_task
 
         """
         if not fsl.helper.valid_task(task):
-            raise ValueError(f"Uncexpected task name : {task}")
+            raise ValueError(f"Unexpected task name : {task}")
 
-        # Set attributes, make output location, make dataframe
         print("\nInitializing ConditionFiles")
         self._subj = subj
         self._sess = sess
@@ -75,37 +84,33 @@ class ConditionFiles:
             os.makedirs(self._subj_out)
 
     def load_events(self, events_path):
-        """Title."""
+        """Read-in BIDS events file as dataframe.
+
+        Load events file and determine run identifier from filename.
+
+        Parameters
+        ----------
+        events_path : str, os.PathLike
+            Location of BIDS-formatted events file
+
+        Raises
+        ------
+        FileNotFoundError
+            Unable to read events_path
+
+        """
+        if not os.path.exists(events_path):
+            raise FileNotFoundError(f"Expected events file : {events_path}")
         print(f"\tLoading {os.path.basename(events_path)}")
         self._df_run = pd.read_table(events_path)
         _sub, _ses, _task, self._run, _suff = os.path.basename(
             events_path
         ).split("_")
 
-    def _write_cond(self, event_onset, event_duration, event_name):
-        """Compile and write conditions file.
-
-        Parameters
-        ----------
-        event_onset : list
-            Event onset times
-        event_duration : list
-            Event durations
-        event_name : str
-            Event label
-
-        Returns
-        -------
-        tuple
-            [0] = pd.DataFrame, conditions data
-            [1] = condition file path
-
-        Raises
-        ------
-        ValueError
-            event_onset, event_duration lengths unequal
-
-        """
+    def _write_cond(
+        self, event_onset: list, event_duration: list, event_name: str
+    ) -> Tuple[pd.DataFrame, os.PathLike]:
+        """Compile and write conditions file."""
         if len(event_onset) != len(event_duration):
             raise ValueError(
                 "Lengths of event_onset, event_duration do not match"
@@ -122,17 +127,17 @@ class ConditionFiles:
         return (df, out_path)
 
     def session_combined_events(self):
-        """Generate combined stimulus+replay conditions for each run.
+        """Generate combined stimulus+replay condition files for emotions.
 
-        Session-specific events (scenarios, videos) are extract for each
-        run, and then condition files for each emotion are generated, with
-        duration including the following replay trial.
+        Session-specific events (scenarios, videos) are extracted and
+        then condition files for each emotion are generated, with duration
+        including the following replay trial.
 
-        Condition files follow a BIDS naming scheme, with a description field
-        in the format combEmotionReplay. Output files are written to:
-            <subj_work>/condition_files
-
-        TODO
+        Returns
+        -------
+        dict
+            key = event description
+            value = path, location of condition file
 
         Raises
         ------
@@ -184,16 +189,17 @@ class ConditionFiles:
         return out_dict
 
     def session_separate_events(self):
-        """Generate separate stimulus and replay conditions for each run.
+        """Generate separate stimulus and replay condition files for emotions.
 
-        Make condition files for each session-specific stimulus (videos,
-        scenarios) and the following replay, organized by emotion and run.
+        Session-specific events (scenarios, videos) are extracted and
+        then condition files for each emotion are generated. Separate
+        condition files are made for stimulus and replay events.
 
-        Condition files follow a BIDS naming scheme, with a description field
-        in the format [stim|replay]Emotion. Output files are written to:
-            <subj_work>/condition_files
-
-        TODO
+        Returns
+        -------
+        dict
+            key = event description
+            value = path, location of condition file
 
         Raises
         ------
@@ -246,16 +252,16 @@ class ConditionFiles:
         return out_dict
 
     def common_events(self):
-        """Make condition files for common events for run.
+        """Make condition files for common events of both sessions.
 
         Condition files for common events (judgment, washout, emotion select,
-        emotion intensity) of each run are generated. Condition files follow
-        a BIDS naming scheme, with event type in the description field.
+        emotion intensity) of each run are generated.
 
-        Output files are written to:
-            <subj_work>/condition_files
-
-        TODO
+        Returns
+        -------
+        dict
+            key = event description
+            value = path, location of condition file
 
         Raises
         ------
@@ -332,6 +338,7 @@ def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
             raise TypeError("Unexpected type for fd_thresh")
 
     # Setup output location
+    print("\tMaking confounds")
     prop_dir = os.path.join(subj_work, "confounds_proportions")
     out_dir = os.path.join(subj_work, "confounds_files")
     for _dir in [prop_dir, out_dir]:
@@ -410,16 +417,19 @@ class MakeFirstFsf:
     Design files are written to:
         <subj_work>/design_files/<run>_level-first_name-<model_name>.fsf
 
-    Attributes
-    ----------
-    write_task_fsf
-        Find appropriate method for model name, write run design.fsf
+    Methods
+    -------
+    write_rest_fsf(**args)
+        Generate design.fsf file for resting state EPI data
+    write_task_fsf(**args)
+        Generate design.fsf files for task-based EPI data, according to
+        model_name (triggers model_name-specific private method).
 
     Example
     -------
     make_fsf = model.MakeFirstFsf(**args)
-    for run in [list, of, run, files]:
-        fsf_path = make_fsf.write_task_fsf(**args)
+    task_design = make_fsf.write_task_fsf(**args)
+    rest_design = make_fsf.write_rest_fsf(**args)
 
     """
 
@@ -447,6 +457,7 @@ class MakeFirstFsf:
         if not fsl.helper.valid_name(model_name):
             raise ValueError(f"Unexpected value for model_name : {model_name}")
 
+        print("\t\tInitializing MakeFirstFSF")
         self._subj_work = subj_work
         self._proj_deriv = proj_deriv
         self._model_name = model_name
@@ -468,20 +479,6 @@ class MakeFirstFsf:
                 + f"name-{self._model_name}_desc-short.fsf"
             )
 
-    def _pp_path(
-        self, preproc_path: Union[str, os.PathLike]
-    ) -> Union[str, os.PathLike]:
-        """Return path to preprocessed file sans extension."""
-        _pp_ext = preproc_path.split(".")[-1]
-        if _pp_ext == "gz":
-            return preproc_path[:-7]
-        elif _pp_ext == "nii":
-            return preproc_path[:-4]
-        else:
-            raise ValueError(
-                "Expected preproc to have .nii or .nii.gz extension."
-            )
-
     def write_rest_fsf(
         self,
         run,
@@ -489,9 +486,9 @@ class MakeFirstFsf:
         preproc_path,
         confound_path,
     ):
-        """Title.
+        """Write first-level FSF design for resting-state EPI.
 
-        TODO
+        Update select fields of template FSF files according to user input.
 
         Parameters
         ----------
@@ -517,12 +514,15 @@ class MakeFirstFsf:
         ]:
             if not os.path.exists(h_path):
                 raise FileNotFoundError(f"Missing expected file : {h_path}")
+        if len(run) != 6:
+            raise ValueError("Improperly formatted run description")
 
         # Set attrs, variables
+        print("\t\t\tBuilding resting design.fsf")
         self._run = run
         pp_file = self._pp_path(preproc_path)
 
-        # Setup replace dictionary
+        # Setup replace dictionary, update design template
         self._field_switch = {
             "[[run]]": run,
             "[[num_vol]]": f"{num_vol}",
@@ -539,30 +539,13 @@ class MakeFirstFsf:
         design_path = self._write_design(fsf_edit)
         return design_path
 
-    def _write_design(self, fsf_info: str) -> Union[str, os.PathLike]:
-        """Write design.fsf and return file location."""
-        # Write out
-        out_dir = os.path.join(self._subj_work, "design_files")
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        out_path = os.path.join(
-            out_dir,
-            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
-        )
-        with open(out_path, "w") as tf:
-            tf.write(fsf_info)
-        return out_path
-
     def write_task_fsf(
         self,
         run,
         num_vol,
         preproc_path,
         confound_path,
-        judge_path,
-        wash_path,
-        emosel_path,
-        emoint_path,
+        common_cond,
         use_short,
     ):
         """Write first-level FSF design for task EPI.
@@ -581,22 +564,15 @@ class MakeFirstFsf:
             Location and name of preprocessed EPI file
         confound_path : path
             Location, name of confounds file
-        judge_path : path
-            Location, name of judgment condition file
-        wash_path : path
-            Location, name of washout condition file
-        emosel_path : path
-            Location, name of emotion selection condition file
-        emoint_path : path
-            Location, name of emotion intensity condition file
+        common_cond : dict
+            Contains paths to condition files common
+            between both sessions. Requires the following keys:
+            -   ["judgment"]
+            -   ["washout"]
+            -   ["emoSelect"]
+            -   ["emoIntensity"]
         use_short : bool
             Whether to use short or full template design
-
-        Attributes
-        ----------
-        _field_switch : dict
-            Find (key) and replace (value) strings for building
-            run-specific design FSF from template.
 
         Returns
         -------
@@ -607,6 +583,8 @@ class MakeFirstFsf:
         ------
         FileNotFoundError
             Missing input file (preproc, condition)
+        KeyError
+            Missing required key in common_cond
         TypeError
             Incorrect input type
         ValueError
@@ -617,17 +595,19 @@ class MakeFirstFsf:
         for h_path in [
             preproc_path,
             confound_path,
-            judge_path,
-            wash_path,
-            emosel_path,
-            emoint_path,
         ]:
             if not os.path.exists(h_path):
                 raise FileNotFoundError(f"Missing expected file : {h_path}")
         if not isinstance(use_short, bool):
             raise TypeError("Expected use_short as type bool")
+        for req_key in ["judgment", "washout", "emoSelect", "emoIntensity"]:
+            if req_key not in common_cond.keys():
+                raise KeyError(
+                    f"Missing expected key in common_cond : {req_key}"
+                )
 
         # Set attrs, variables
+        print("\t\t\tBuilding task design.fsf")
         self._run = run
         self._use_short = use_short
         pp_file = self._pp_path(preproc_path)
@@ -638,10 +618,10 @@ class MakeFirstFsf:
             "[[num_vol]]": f"{num_vol}",
             "[[preproc_path]]": pp_file,
             "[[conf_path]]": confound_path,
-            "[[judge_path]]": judge_path,
-            "[[wash_path]]": wash_path,
-            "[[emosel_path]]": emosel_path,
-            "[[emoint_path]]": emoint_path,
+            "[[judge_path]]": common_cond["judgment"],
+            "[[wash_path]]": common_cond["washout"],
+            "[[emosel_path]]": common_cond["emoSelect"],
+            "[[emoint_path]]": common_cond["emoIntensity"],
             "[[subj_work]]": self._subj_work,
             "[[deriv_dir]]": self._proj_deriv,
         }
@@ -651,8 +631,36 @@ class MakeFirstFsf:
         fsf_path = write_meth()
         return fsf_path
 
-    def _stim_replay_switch(self):
-        """Update replace dict for model sep.
+    def _write_design(self, fsf_info: str) -> Union[str, os.PathLike]:
+        """Write design.fsf and return file location."""
+        # Write out
+        out_dir = os.path.join(self._subj_work, "design_files")
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        out_path = os.path.join(
+            out_dir,
+            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
+        )
+        with open(out_path, "w") as tf:
+            tf.write(fsf_info)
+        return out_path
+
+    def _pp_path(
+        self, preproc_path: Union[str, os.PathLike]
+    ) -> Union[str, os.PathLike]:
+        """Return path to preprocessed file sans extension."""
+        _pp_ext = preproc_path.split(".")[-1]
+        if _pp_ext == "gz":
+            return preproc_path[:-7]
+        elif _pp_ext == "nii":
+            return preproc_path[:-4]
+        else:
+            raise ValueError(
+                "Expected preproc to have .nii or .nii.gz extension."
+            )
+
+    def _sep_switch(self):
+        """Update switch dictionary for model "sep".
 
         Find replay and stimulus emotion condition files for run,
         update private method _field_switch for model_name == sep
@@ -670,11 +678,11 @@ class MakeFirstFsf:
             """Return description field from condition filename."""
             try:
                 _su, _se, _ta, _ru, desc, _su = file_name.split("_")
+                return desc.split("-")[-1]
             except IndexError:
                 raise ValueError(
                     "Improperly formatted file name for condition file."
                 )
-            return desc.split("-")[-1]
 
         def _stim_replay(stim_emo: list, rep_emo: list) -> dict:
             """Return replacement dict for stim, replay events."""
@@ -732,7 +740,7 @@ class MakeFirstFsf:
         """
 
         # Update field_switch, make design file
-        self._stim_replay_switch()
+        self._sep_switch()
         fsf_edit = self._tp_short if self._use_short else self._tp_full
         for old, new in self._field_switch.items():
             fsf_edit = fsf_edit.replace(old, new)

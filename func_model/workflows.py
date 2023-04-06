@@ -1,4 +1,13 @@
-"""Pipelines supporting AFNI and FSL."""
+"""Pipelines supporting AFNI and FSL.
+
+afni_task       : GLM task data via AFNI
+afni_rest       : GLM rest data via AFNI
+afni_extract    : extract task beta-coefficients from AFNI GLM
+FslFirst        : GLM task, rest data via FSL
+fsl_extract     : extract task beta-coefficiens from FSL GLM
+fsl_classify_mask   : generate template mask from classifier output
+
+"""
 # %%
 import os
 import glob
@@ -544,7 +553,28 @@ def afni_mvm(proj_dir, model_name, emo_name):
 
 # %%
 class FslFirst:
-    """Title."""
+    """Conduct first-level models of EPI data.
+
+    Coordinate the generation of confound and design files, and
+    condition files for task-based models, then model the data
+    via FSL's feat.
+
+    Methods
+    -------
+    model_rest()
+        Generate confounds and design files, conduct first-level
+        GLM via feat
+    model_task()
+        Generate confounds, condition, and design files, conduct
+        first-level GLM via feat
+
+    Example
+    -------
+    wf_fsl = workflows.FslFirst(**args)
+    wf_fsl.model_rest()
+    wf_fsl.model_task()
+
+    """
 
     def __init__(
         self,
@@ -557,7 +587,35 @@ class FslFirst:
         work_deriv,
         log_dir,
     ):
-        """Initialize."""
+        """Initialize.
+
+        Parameters
+        ----------
+        subj : str
+            BIDS subject identifier
+        sess : str
+            BIDS session identifier
+        model_name : str
+            Name of FSL model, for keeping condition files and
+            output organized
+        model_level : str
+            Level of FSL model
+        proj_rawdata : path
+            Location of BIDS rawdata
+        proj_deriv : path
+            Location of project BIDs derivatives, for finding
+            preprocessed output
+        work_deriv : path
+            Output location for intermediates
+        log_dir : path
+            Output location for log files and scripts
+
+        Raises
+        ------
+        ValueError
+            Unexpected argument parameters
+
+        """
         if not fsl.helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
         if not fsl.helper.valid_level(model_level):
@@ -567,6 +625,7 @@ class FslFirst:
             print(f"Directory not detected : {chk_sess}\n\tSkipping.")
             return
 
+        print("Initializing FslFirst")
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
@@ -577,17 +636,21 @@ class FslFirst:
         self._log_dir = log_dir
 
     def model_rest(self):
-        """Title."""
+        """Run an FSL first-level model for resting EPI data.
+
+        Generate required a confounds and design file, then
+        use FSL's FEAT to run a first-level model.
+
+        """
         # Set output directories and identify taskname
+        print("\tRunning first-level rest model")
         self._setup()
         self._get_task()
 
-        # Initialize needed classes
+        # Initialize needed classes, find preprocessed resting EPI
         make_fsf = fsl.model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
-
-        # Get preprocessed resting state
         self._get_preproc()
         rest_preproc = self._sess_preproc[0]
 
@@ -605,8 +668,6 @@ class FslFirst:
             rest_preproc,
             self._conf_path,
         )
-
-        #
         self._run_feat([rest_design])
 
     def model_task(self):
@@ -617,6 +678,7 @@ class FslFirst:
 
         """
         # Set output directories and identify taskname
+        print("\tRunning first-level task model")
         self._setup()
         self._get_task()
 
@@ -655,10 +717,7 @@ class FslFirst:
                 num_vol,
                 preproc_path,
                 self._conf_path,
-                self._cond_comm["judgment"],
-                self._cond_comm["washout"],
-                self._cond_comm["emoSelect"],
-                self._cond_comm["emoIntensity"],
+                self._cond_comm,
                 use_short,
             )
             fsf_list.append(fsf_path)
@@ -731,6 +790,7 @@ class FslFirst:
 
     def _make_cond(self):
         """Generate condition files from BIDS events files for single run."""
+        # Find events files in rawdata
         subj_sess_raw = os.path.join(
             self._proj_rawdata, self._subj, self._sess, "func"
         )

@@ -3,8 +3,8 @@
 Written for the remote Duke Compute Cluster (DCC) environment.
 
 Setup and run first- and second-level models in FSL for task
-and resting-state EPI data. First-level output are written
-to participant derivatives:
+and resting-state EPI data. Output are written to participant
+derivatives:
     <proj-dir>/derivatives/model_fsl/<subj>/<sess>/func/run-*_<level>_<name>
 
 Model names:
