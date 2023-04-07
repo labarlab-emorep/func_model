@@ -5,6 +5,7 @@ import glob
 import subprocess
 import shutil
 from typing import Union
+import pandas as pd
 import nibabel as nib
 import importlib.resources as pkg_resources
 from func_model import reference_files
@@ -43,6 +44,11 @@ def count_vol(in_epi: Union[str, os.PathLike]) -> int:
     img_header = img.header
     num_vol = img_header.get_data_shape()[3]
     return num_vol
+
+
+def load_tsv(tsv_path: Union[str, os.PathLike]) -> pd.DataFrame:
+    print(f"\t\tLoading {tsv_path} ...")
+    return pd.read_csv(tsv_path, sep="\t")
 
 
 def clean_up(subj_work, subj_final):

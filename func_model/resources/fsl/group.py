@@ -356,17 +356,11 @@ def comb_matrices(
         x for x in df_list if os.path.basename(x).split("_")[0] in subj_list
     ]
 
-    # Combine dataframes and write out
-    for beta_path in beta_list:
-        print(f"\t\tAdding {beta_path} ...")
-        if "df_betas_all" not in locals() and "df_betas_all" not in globals():
-            df_betas_all = pd.read_csv(beta_path, sep="\t")
-        else:
-            df_tmp = pd.read_csv(beta_path, sep="\t")
-            df_betas_all = pd.concat(
-                [df_betas_all, df_tmp], axis=0, ignore_index=True
-            )
-
+    # Combine all beta TSVs, load data in parallel
+    all_betas = Pool().starmap(
+        helper.load_tsv, [(beta_path,) for beta_path in beta_list]
+    )
+    df_betas_all = pd.concat(all_betas, axis=0, ignore_index=True)
     out_path = os.path.join(
         out_dir,
         f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
