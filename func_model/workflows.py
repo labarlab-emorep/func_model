@@ -857,6 +857,7 @@ def fsl_extract(
     model_name,
     model_level,
     con_name,
+    overwrite,
     group_mask="template",
     comb_all=True,
 ):
@@ -887,6 +888,8 @@ def fsl_extract(
     con_name : str
         [stim | replay]
         Desired contrast from which coefficients will be extracted
+    overwrite : bool
+        Whether to overwrite existing beta TSV files
     group_mask : str, optional
         [template]
         Generate a group-level mask, used to identify and remove
@@ -908,6 +911,8 @@ def fsl_extract(
         raise ValueError(f"Unsupported value for model_level : {model_level}")
     if group_mask not in ["template"]:
         raise ValueError("unexpected group_mask parameter")
+    if not isinstance(overwrite, bool):
+        raise TypeError("Expected type bool for overwrite")
 
     # Orient to project directory
     out_dir = os.path.join(proj_dir, "analyses/model_fsl_group")
@@ -949,6 +954,7 @@ def fsl_extract(
             con_name,
             design_list,
             subj_func_dir,
+            overwrite,
         )
 
     # Make beta dataframe for each subject, session

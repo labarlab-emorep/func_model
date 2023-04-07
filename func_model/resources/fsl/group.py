@@ -129,6 +129,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         design_list,
         subj_out,
         mot_thresh=0.2,
+        overwrite=False,
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
 
@@ -164,6 +165,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
         mot_thresh : float, optional
             Runs with a proportion of volumes >= mot_thresh will
             not be included in output dataframe
+        overwrite : bool, optional
+            Whether to overwrite existing beta TSV files
 
         Returns
         -------
@@ -192,6 +195,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             )
         if not helper.valid_contrast(con_name):
             raise ValueError(f"Unsupported value for con_name : {con_name}")
+        if not isinstance(overwrite, bool):
+            raise TypeError("Expected type bool for overwrite")
 
         # Setup and check for existing work
         print(f"\tGetting betas from {subj}, {sess}")
@@ -200,6 +205,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             f"{subj}_{sess}_{task}_level-{model_level}_"
             + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
+        if os.path.exists(out_path) and overwrite:
+            return out_path
         self._con_name = con_name
 
         # Mine files from each design.con, run in parallel

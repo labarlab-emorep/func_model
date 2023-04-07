@@ -23,7 +23,7 @@ Examples
 --------
 fsl_extract --sub-all
 fsl_extract --sub-all --contrast-name replay
-fsl_extract --sub-list sub-ER0009 sub-ER0016
+fsl_extract --sub-list sub-ER0009 sub-ER0016 --overwrite
 
 """
 # %%
@@ -80,6 +80,11 @@ def _get_args():
         ),
     )
     parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Whether to overwrite subject-level beta TSV files",
+    )
+    parser.add_argument(
         "--proj-dir",
         type=str,
         default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
@@ -128,6 +133,7 @@ def main():
     con_name = args.contrast_name
     model_name = args.model_name
     model_level = args.model_level
+    overwrite = args.overwrite
 
     # Check user input
     if model_name != "sep":
@@ -160,7 +166,7 @@ def main():
 
     # Submit workflow
     workflows.fsl_extract(
-        proj_dir, subj_list, model_name, model_level, con_name
+        proj_dir, subj_list, model_name, model_level, con_name, overwrite
     )
 
 
