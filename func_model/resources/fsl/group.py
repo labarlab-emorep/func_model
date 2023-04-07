@@ -202,7 +202,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         )
         self._con_name = con_name
 
-        # Mine files from each design.con
+        # Mine files from each design.con, run in parallel
         mult_df = Pool(processes=8).starmap(
             self._mine_copes,
             [
