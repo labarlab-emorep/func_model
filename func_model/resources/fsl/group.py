@@ -5,6 +5,7 @@ import re
 import json
 import pandas as pd
 import numpy as np
+from multiprocessing import Pool
 import nibabel as nib
 from func_model.resources.fsl import helper
 from func_model.resources.general import matrix
@@ -194,62 +195,30 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         # Setup and check for existing work
         print(f"\tGetting betas from {subj}, {sess}")
-        subj_short = subj.split("-")[-1]
-        task_short = task.split("-")[-1]
         out_path = os.path.join(
             subj_out,
             f"{subj}_{sess}_{task}_level-{model_level}_"
             + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
         self._con_name = con_name
-        # if os.path.exists(out_path):
-        #     return out_path
 
         # Mine files from each design.con
-        for self._design_path in design_list:
-
-            # Determine run number for identifier columns
-            run_dir = os.path.basename(os.path.dirname(self._design_path))
-            run_num = run_dir.split("_")[0].split("-")[1]
-            if len(run_num) != 2:
-                raise ValueError("Error parsing path for run number")
-
-            # Compare proportion of outliers to criterion, skip run
-            # if the the threshold is exceeded
-            prop_path = os.path.join(
-                subj_out,
-                "confounds_proportions",
-                f"{subj}_{sess}_{task}_run-{run_num}_"
-                + "desc-confounds_proportion.json",
-            )
-            if not os.path.exists(prop_path):
-                raise FileNotFoundError(f"Expected to find : {prop_path}")
-            with open(prop_path) as jf:
-                prop_dict = json.load(jf)
-            prop_mot = prop_dict["CensorProp"]
-            if prop_mot >= mot_thresh:
-                continue
-
-            # Find and match copes to emotions, get voxel betas
-            cope_dict = self._find_copes()
-            for emo, cope_path in cope_dict.items():
-                print(f"\t\tExtracting betas for run-{run_num}: {emo}")
-                h_arr = self.nifti_to_arr(cope_path)
-                img_arr = self.add_arr_id(
-                    subj_short, task_short, emo, h_arr, run=run_num
+        mult_df = Pool(processes=8).starmap(
+            self._mine_copes,
+            [
+                (
+                    design_path,
+                    subj,
+                    sess,
+                    task,
+                    subj_out,
+                    mot_thresh,
                 )
-                del h_arr
-
-                # Create/update dataframe
-                if "df_betas" not in locals() and "df_betas" not in globals():
-                    df_betas = self.arr_to_df(img_arr)
-                else:
-                    df_tmp = self.arr_to_df(img_arr)
-                    df_betas = pd.concat(
-                        [df_betas, df_tmp], axis=0, ignore_index=True
-                    )
-                    del df_tmp
-                del img_arr
+                for design_path in design_list
+            ],
+        )
+        df_betas = pd.concat(mult_df, axis=0, ignore_index=True)
+        del mult_df
 
         # Clean if workflow uses mask_coord
         print("\tCleaning dataframe ...")
@@ -261,6 +230,66 @@ class ExtractTaskBetas(matrix.NiftiArray):
         print(f"\t\tWrote : {out_path}")
         del df_betas
         return out_path
+
+    def _mine_copes(
+        self,
+        design_path,
+        subj,
+        sess,
+        task,
+        subj_out,
+        mot_thresh,
+    ):
+        """Title."""
+        self._design_path = design_path
+        subj_short = subj.split("-")[-1]
+        task_short = task.split("-")[-1]
+
+        # Determine run number for identifier columns
+        run_dir = os.path.basename(os.path.dirname(self._design_path))
+        run_num = run_dir.split("_")[0].split("-")[1]
+        if len(run_num) != 2:
+            raise ValueError("Error parsing path for run number")
+
+        # Compare proportion of outliers to criterion, skip run
+        # if the the threshold is exceeded
+        prop_path = os.path.join(
+            subj_out,
+            "confounds_proportions",
+            f"{subj}_{sess}_{task}_run-{run_num}_"
+            + "desc-confounds_proportion.json",
+        )
+        if not os.path.exists(prop_path):
+            raise FileNotFoundError(f"Expected to find : {prop_path}")
+        with open(prop_path) as jf:
+            prop_dict = json.load(jf)
+        prop_mot = prop_dict["CensorProp"]
+        if prop_mot >= mot_thresh:
+            return
+
+        # Find and match copes to emotions, get voxel betas
+        cope_dict = self._find_copes()
+        for emo, cope_path in cope_dict.items():
+            h_arr = self.nifti_to_arr(cope_path)
+            img_arr = self.add_arr_id(
+                subj_short,
+                task_short,
+                emo,
+                h_arr,
+                run=run_num,
+            )
+
+            # Create/update dataframe
+            if "df_out" not in locals():
+                df_out = self.arr_to_df(img_arr)
+            else:
+                df_tmp = self.arr_to_df(img_arr)
+                df_out = pd.concat(
+                    [df_out, df_tmp],
+                    axis=0,
+                    ignore_index=True,
+                )
+        return df_out
 
 
 def comb_matrices(
