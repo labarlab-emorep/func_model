@@ -136,7 +136,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         for an event of interest.
 
         Dataframe is written to:
-            <out_dir>/<subj>_<sess>_<task>_name-<model_name>_level-<model_level>_betas.tsv
+            <out_dir>/<subj>_<sess>_<task>_<level>_<name>_<contrast>_betas.tsv
 
         Parameters
         ----------
@@ -181,7 +181,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         # Validate model variables
         if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
-        if not helper.valid_name(model_name):
+        if model_name != "sep":
             raise ValueError(
                 f"Unsupported value for model_name : {model_name}"
             )
@@ -369,7 +369,7 @@ class ImportanceMask(matrix.NiftiArray):
     -------
     im_obj = group.ImportanceMask()
     im_obj.mine_template("/path/to/template.nii.gz")
-    im_obj.emo_mask(pd.DataFrame, "/path/to/output/mask.nii.gz")
+    im_obj.make_mask(pd.DataFrame, "/path/to/output/mask.nii.gz")
 
     """
 

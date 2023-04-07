@@ -10,12 +10,14 @@ Dataframes are written for each subject in --subj-list/all, and
 a group dataframe can be generated from all subject dataframes.
 
 Subject-level dataframes are titled
-    <subj>_<sess>_<task>_name-<model_name>_level-<model_level>_betas.tsv
+    <subj>_<sess>_<task>_<model-level>_<model-name>_betas.tsv
 and written to:
     <proj_dir>/data_scanner_BIDS/derivatives/model_fsl/<subj>/<sess>/func
 
-The group-level dataframe is written to:
-    <proj_dir>/analyses/model_fsl/fsl_<model_name>_betas.tsv
+The group-level dataframe is titled:
+    <model-level>_<model-name>_<contrast>_voxel-betas.tsv
+and written to:
+    <proj_dir>/analyses/model_fsl_group
 
 Examples
 --------
@@ -128,7 +130,7 @@ def main():
     model_level = args.model_level
 
     # Check user input
-    if not fsl.helper.valid_name(model_name):
+    if model_name != "sep":
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
     if not fsl.helper.valid_level(model_level):
