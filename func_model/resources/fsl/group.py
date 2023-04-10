@@ -5,6 +5,7 @@ import re
 import json
 import pandas as pd
 import numpy as np
+from multiprocessing import Pool
 import nibabel as nib
 from func_model.resources.fsl import helper
 from func_model.resources.general import matrix
@@ -128,6 +129,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         design_list,
         subj_out,
         mot_thresh=0.2,
+        overwrite=False,
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
 
@@ -136,7 +138,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         for an event of interest.
 
         Dataframe is written to:
-            <out_dir>/<subj>_<sess>_<task>_name-<model_name>_level-<model_level>_betas.tsv
+            <out_dir>/<subj>_<sess>_<task>_<level>_<name>_<contrast>_betas.tsv
 
         Parameters
         ----------
@@ -163,6 +165,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
         mot_thresh : float, optional
             Runs with a proportion of volumes >= mot_thresh will
             not be included in output dataframe
+        overwrite : bool, optional
+            Whether to overwrite existing beta TSV files
 
         Returns
         -------
@@ -181,7 +185,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         # Validate model variables
         if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
-        if not helper.valid_name(model_name):
+        if model_name != "sep":
             raise ValueError(
                 f"Unsupported value for model_name : {model_name}"
             )
@@ -191,65 +195,37 @@ class ExtractTaskBetas(matrix.NiftiArray):
             )
         if not helper.valid_contrast(con_name):
             raise ValueError(f"Unsupported value for con_name : {con_name}")
+        if not isinstance(overwrite, bool):
+            raise TypeError("Expected type bool for overwrite")
 
         # Setup and check for existing work
         print(f"\tGetting betas from {subj}, {sess}")
-        subj_short = subj.split("-")[-1]
-        task_short = task.split("-")[-1]
         out_path = os.path.join(
             subj_out,
             f"{subj}_{sess}_{task}_level-{model_level}_"
             + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
+        if os.path.exists(out_path) and not overwrite:
+            return out_path
         self._con_name = con_name
-        # if os.path.exists(out_path):
-        #     return out_path
 
-        # Mine files from each design.con
-        for self._design_path in design_list:
-
-            # Determine run number for identifier columns
-            run_dir = os.path.basename(os.path.dirname(self._design_path))
-            run_num = run_dir.split("_")[0].split("-")[1]
-            if len(run_num) != 2:
-                raise ValueError("Error parsing path for run number")
-
-            # Compare proportion of outliers to criterion, skip run
-            # if the the threshold is exceeded
-            prop_path = os.path.join(
-                subj_out,
-                "confounds_proportions",
-                f"{subj}_{sess}_{task}_run-{run_num}_"
-                + "desc-confounds_proportion.json",
-            )
-            if not os.path.exists(prop_path):
-                raise FileNotFoundError(f"Expected to find : {prop_path}")
-            with open(prop_path) as jf:
-                prop_dict = json.load(jf)
-            prop_mot = prop_dict["CensorProp"]
-            if prop_mot >= mot_thresh:
-                continue
-
-            # Find and match copes to emotions, get voxel betas
-            cope_dict = self._find_copes()
-            for emo, cope_path in cope_dict.items():
-                print(f"\t\tExtracting betas for run-{run_num}: {emo}")
-                h_arr = self.nifti_to_arr(cope_path)
-                img_arr = self.add_arr_id(
-                    subj_short, task_short, emo, h_arr, run=run_num
+        # Mine files from each design.con, run in parallel
+        mult_df = Pool(processes=8).starmap(
+            self._mine_copes,
+            [
+                (
+                    design_path,
+                    subj,
+                    sess,
+                    task,
+                    subj_out,
+                    mot_thresh,
                 )
-                del h_arr
-
-                # Create/update dataframe
-                if "df_betas" not in locals() and "df_betas" not in globals():
-                    df_betas = self.arr_to_df(img_arr)
-                else:
-                    df_tmp = self.arr_to_df(img_arr)
-                    df_betas = pd.concat(
-                        [df_betas, df_tmp], axis=0, ignore_index=True
-                    )
-                    del df_tmp
-                del img_arr
+                for design_path in design_list
+            ],
+        )
+        df_betas = pd.concat(mult_df, axis=0, ignore_index=True)
+        del mult_df
 
         # Clean if workflow uses mask_coord
         print("\tCleaning dataframe ...")
@@ -261,6 +237,66 @@ class ExtractTaskBetas(matrix.NiftiArray):
         print(f"\t\tWrote : {out_path}")
         del df_betas
         return out_path
+
+    def _mine_copes(
+        self,
+        design_path,
+        subj,
+        sess,
+        task,
+        subj_out,
+        mot_thresh,
+    ):
+        """Title."""
+        self._design_path = design_path
+        subj_short = subj.split("-")[-1]
+        task_short = task.split("-")[-1]
+
+        # Determine run number for identifier columns
+        run_dir = os.path.basename(os.path.dirname(self._design_path))
+        run_num = run_dir.split("_")[0].split("-")[1]
+        if len(run_num) != 2:
+            raise ValueError("Error parsing path for run number")
+
+        # Compare proportion of outliers to criterion, skip run
+        # if the the threshold is exceeded
+        prop_path = os.path.join(
+            subj_out,
+            "confounds_proportions",
+            f"{subj}_{sess}_{task}_run-{run_num}_"
+            + "desc-confounds_proportion.json",
+        )
+        if not os.path.exists(prop_path):
+            raise FileNotFoundError(f"Expected to find : {prop_path}")
+        with open(prop_path) as jf:
+            prop_dict = json.load(jf)
+        prop_mot = prop_dict["CensorProp"]
+        if prop_mot >= mot_thresh:
+            return
+
+        # Find and match copes to emotions, get voxel betas
+        cope_dict = self._find_copes()
+        for emo, cope_path in cope_dict.items():
+            h_arr = self.nifti_to_arr(cope_path)
+            img_arr = self.add_arr_id(
+                subj_short,
+                task_short,
+                emo,
+                h_arr,
+                run=run_num,
+            )
+
+            # Create/update dataframe
+            if "df_out" not in locals():
+                df_out = self.arr_to_df(img_arr)
+            else:
+                df_tmp = self.arr_to_df(img_arr)
+                df_out = pd.concat(
+                    [df_out, df_tmp],
+                    axis=0,
+                    ignore_index=True,
+                )
+        return df_out
 
 
 def comb_matrices(
@@ -327,17 +363,11 @@ def comb_matrices(
         x for x in df_list if os.path.basename(x).split("_")[0] in subj_list
     ]
 
-    # Combine dataframes and write out
-    for beta_path in beta_list:
-        print(f"\t\tAdding {beta_path} ...")
-        if "df_betas_all" not in locals() and "df_betas_all" not in globals():
-            df_betas_all = pd.read_csv(beta_path, sep="\t")
-        else:
-            df_tmp = pd.read_csv(beta_path, sep="\t")
-            df_betas_all = pd.concat(
-                [df_betas_all, df_tmp], axis=0, ignore_index=True
-            )
-
+    # Combine all beta TSVs, load data in parallel
+    all_betas = Pool().starmap(
+        helper.load_tsv, [(beta_path,) for beta_path in beta_list]
+    )
+    df_betas_all = pd.concat(all_betas, axis=0, ignore_index=True)
     out_path = os.path.join(
         out_dir,
         f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
@@ -369,7 +399,7 @@ class ImportanceMask(matrix.NiftiArray):
     -------
     im_obj = group.ImportanceMask()
     im_obj.mine_template("/path/to/template.nii.gz")
-    im_obj.emo_mask(pd.DataFrame, "/path/to/output/mask.nii.gz")
+    im_obj.make_mask(pd.DataFrame, "/path/to/output/mask.nii.gz")
 
     """
 

@@ -5,8 +5,11 @@ Written for the local labarserv2 environment.
 Convert each row of a feature importance dataframe into
 a NIfTI file in template space.
 
-Check for data in, and writes files to:
-    <proj-dir>/analyses/classify_plsda
+Check for data in:
+    <proj-dir>/analyses/classify_fMRI_plsda/classifier_output
+
+and writes output to:
+    <proj-dir>/analyses/classify_fMRI_plsda/voxel_importance_maps
 
 Examples
 --------
@@ -111,7 +114,7 @@ def main():
     task_name = args.task_name
 
     # Check user input
-    if not fsl.helper.valid_name(model_name):
+    if model_name != "sep":
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
     if not fsl.helper.valid_level(model_level):

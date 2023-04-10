@@ -10,18 +10,20 @@ Dataframes are written for each subject in --subj-list/all, and
 a group dataframe can be generated from all subject dataframes.
 
 Subject-level dataframes are titled
-    <subj>_<sess>_<task>_name-<model_name>_level-<model_level>_betas.tsv
+    <subj>_<sess>_<task>_<model-level>_<model-name>_betas.tsv
 and written to:
     <proj_dir>/data_scanner_BIDS/derivatives/model_fsl/<subj>/<sess>/func
 
-The group-level dataframe is written to:
-    <proj_dir>/analyses/model_fsl/fsl_<model_name>_betas.tsv
+The group-level dataframe is titled:
+    <model-level>_<model-name>_<contrast>_voxel-betas.tsv
+and written to:
+    <proj_dir>/analyses/model_fsl_group
 
 Examples
 --------
 fsl_extract --sub-all
 fsl_extract --sub-all --contrast-name replay
-fsl_extract --sub-list sub-ER0009 sub-ER0016
+fsl_extract --sub-list sub-ER0009 sub-ER0016 --overwrite
 
 """
 # %%
@@ -78,6 +80,11 @@ def _get_args():
         ),
     )
     parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Whether to overwrite subject-level beta TSV files",
+    )
+    parser.add_argument(
         "--proj-dir",
         type=str,
         default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
@@ -126,9 +133,10 @@ def main():
     con_name = args.contrast_name
     model_name = args.model_name
     model_level = args.model_level
+    overwrite = args.overwrite
 
     # Check user input
-    if not fsl.helper.valid_name(model_name):
+    if model_name != "sep":
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
     if not fsl.helper.valid_level(model_level):
@@ -158,7 +166,7 @@ def main():
 
     # Submit workflow
     workflows.fsl_extract(
-        proj_dir, subj_list, model_name, model_level, con_name
+        proj_dir, subj_list, model_name, model_level, con_name, overwrite
     )
 
 
