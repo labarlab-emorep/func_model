@@ -205,7 +205,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             f"{subj}_{sess}_{task}_level-{model_level}_"
             + f"name-{model_name}_con-{con_name}_betas.tsv",
         )
-        if os.path.exists(out_path) and overwrite:
+        if os.path.exists(out_path) and not overwrite:
             return out_path
         self._con_name = con_name
 
