@@ -46,6 +46,14 @@ def count_vol(in_epi: Union[str, os.PathLike]) -> int:
     return num_vol
 
 
+def get_tr(in_epi: Union[str, os.PathLike]) -> float:
+    """Return TR length."""
+    img = nib.load(in_epi)
+    img_header = img.header
+    len_tr = img_header.get_zooms()[3]
+    return len_tr
+
+
 def load_tsv(tsv_path: Union[str, os.PathLike]) -> pd.DataFrame:
     print(f"\t\tLoading {tsv_path} ...")
     return pd.read_csv(tsv_path, sep="\t")

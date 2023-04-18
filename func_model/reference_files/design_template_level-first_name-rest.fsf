@@ -33,7 +33,7 @@ set fmri(sscleanup_yn) 0
 set fmri(outputdir) "[[subj_work]]/[[run]]_level-first_name-rest"
 
 # TR(s)
-set fmri(tr) 2.000000
+set fmri(tr) [[len_tr]]
 
 # Total volumes
 set fmri(npts) [[num_vol]]

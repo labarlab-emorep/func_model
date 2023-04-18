@@ -666,9 +666,11 @@ class FslFirst:
 
         # Write and execute design.fsf
         num_vol = fsl.helper.count_vol(rest_preproc)
+        len_tr = fsl.helper.get_tr(rest_preproc)
         rest_design = make_fsf.write_rest_fsf(
             self._run,
             num_vol,
+            len_tr,
             rest_preproc,
             self._conf_path,
         )
