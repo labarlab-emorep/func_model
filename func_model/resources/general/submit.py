@@ -211,10 +211,13 @@ def schedule_fsl(
     sess,
     model_name,
     model_level,
+    preproc_type,
     proj_rawdata,
     proj_deriv,
     work_deriv,
     log_dir,
+    user_name,
+    rsa_key,
 ):
     """Write and schedule pipeline.
 
@@ -233,6 +236,11 @@ def schedule_fsl(
         output organized
     model_level : str
         Level of FSL model
+
+    TODO
+    preproc_type : str
+        [smoothed | scaled]
+
     proj_rawdata : path
         Location of BIDS rawdata
     proj_deriv : path
@@ -242,6 +250,10 @@ def schedule_fsl(
         Output location for intermediates
     log_dir : path
         Output location for log files and scripts
+
+    TODO
+    user_name
+    rsa_key
 
     Returns
     -------
@@ -284,10 +296,13 @@ def schedule_fsl(
             "{sess}",
             "{model_name}",
             "{model_level}",
+            "{preproc_type}",
             "{proj_rawdata}",
             "{proj_deriv}",
             "{work_deriv}",
             "{log_dir}",
+            "{user_name}",
+            "{rsa_key}",
         )
         wf_obj.{wf_meth}()
 

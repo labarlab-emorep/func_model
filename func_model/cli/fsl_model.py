@@ -1,4 +1,4 @@
-"""CLI for initiating FSL regressions.
+r"""CLI for initiating FSL regressions.
 
 Written for the remote Duke Compute Cluster (DCC) environment.
 
@@ -19,9 +19,12 @@ Level names:
 
 Examples
 --------
-fsl_model -s sub-ER0009
-fsl_model -s sub-ER0009 sub-ER0016
-fsl_model -s sub-ER0009 --model-name rest
+fsl_model -s sub-ER0009 -k $RSA_LS2
+fsl_model -s sub-ER0009 sub-ER0016 -k $RSA_LS2
+fsl_model -s sub-ER0009 \
+    -k /path/to/.ssh/id_rsa_labarserv2 \
+    --model-name rest
+    --preproc-type smoothed
 
 """
 
@@ -68,6 +71,18 @@ def _get_args():
         ),
     )
     parser.add_argument(
+        "--preproc-type",
+        type=str,
+        default="scaled",
+        help=textwrap.dedent(
+            """\
+            [scaled | smoothed]
+            Determine whether to use scaled or smoothed preprocessed EPIs
+            (default : %(default)s)
+            """
+        ),
+    )
+    parser.add_argument(
         "--proj-dir",
         type=str,
         default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
@@ -84,12 +99,15 @@ def _get_args():
         "-s",
         "--sub-list",
         nargs="+",
-        help=textwrap.dedent(
-            """\
-            List of subject IDs to submit for pre-processing
-            """
-        ),
+        help="List of subject IDs to submit for pre-processing",
         type=str,
+        required=True,
+    )
+    required_args.add_argument(
+        "-k",
+        "--rsa-key",
+        type=str,
+        help="Location of labarserv2 RSA key",
         required=True,
     )
 
@@ -108,6 +126,8 @@ def main():
     proj_dir = args.proj_dir
     model_name = args.model_name
     model_level = args.model_level
+    rsa_key = args.rsa_key
+    preproc_type = args.preproc_type
 
     # Check model_name, model_level
     if not fsl.helper.valid_name(model_name):
@@ -116,6 +136,10 @@ def main():
     if not fsl.helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
+    if not os.path.exists(rsa_key):
+        raise FileNotFoundError(f"Expected path to RSA key, found : {rsa_key}")
+    if preproc_type not in ["scaled", "smoothed"]:
+        raise ValueError(f"Unspported preproc type : {preproc_type}")
 
     # Setup group project directory, paths
     proj_deriv = os.path.join(proj_dir, "derivatives")
@@ -144,14 +168,14 @@ def main():
     for subj in subj_list:
         for sess in ["ses-day2", "ses-day3"]:
 
-            # Check for preprocessed data
-            subj_deriv = os.path.join(
-                proj_deriv, "pre_processing", "fsl_denoise", subj, sess, "func"
-            )
-            fsl_pp = glob.glob(f"{subj_deriv}/*scaled_bold.nii.gz")
-            if not fsl_pp:
-                print(f"No preprocessed files detected for {subj}, {sess}")
-                continue
+            # # Check for preprocessed data
+            # subj_deriv = os.path.join(
+            #     proj_deriv, "pre_processing", "fsl_denoise", subj, sess, "func"
+            # )
+            # fsl_pp = glob.glob(f"{subj_deriv}/*scaled_bold.nii.gz")
+            # if not fsl_pp:
+            #     print(f"No preprocessed files detected for {subj}, {sess}")
+            #     continue
 
             # Schedule work
             _, _ = submit.schedule_fsl(
@@ -159,10 +183,13 @@ def main():
                 sess,
                 model_name,
                 model_level,
+                preproc_type,
                 proj_rawdata,
                 proj_deriv,
                 work_deriv,
                 log_dir,
+                user_name,
+                rsa_key,
             )
             time.sleep(3)
 
