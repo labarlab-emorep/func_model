@@ -17,7 +17,7 @@ from typing import Union, Tuple
 import subprocess
 import pandas as pd
 from pathlib import Path
-from multiprocessing import Process
+from multiprocessing import Process, Pool
 from func_model.resources import afni, fsl
 
 
@@ -654,8 +654,10 @@ class FslFirst:
         self._proj_deriv = proj_deriv
         self._work_deriv = work_deriv
         self._log_dir = log_dir
+        self._user_name = user_name
+        self._keoki_ip = "ccn-labarserv2.vm.duke.edu"
         self._keoki_proj = (
-            f"{user_name}@ccn-labarserv2.vm.duke.edu:"
+            f"{self._user_name}@{self._keoki_ip}:"
             + "/mnt/keoki/experiments2/EmoRep/"
             + "Exp2_Compute_Emotion/data_scanner_BIDS"
         )
@@ -695,6 +697,7 @@ class FslFirst:
             self._conf_path,
         )
         self._run_feat([rest_design])
+        self._push_data()
 
     def model_task(self):
         """Run an FSL first-level model for task EPI data.
@@ -748,10 +751,10 @@ class FslFirst:
 
         # Execute design files
         self._run_feat(fsf_list)
+        self._push_data()
 
     def _setup(self):
         """Get, organize data."""
-        # Set relevant paths
         self._subj_work = os.path.join(
             self._work_deriv,
             f"model_fsl-{self._model_name}",
@@ -852,6 +855,20 @@ class FslFirst:
                 + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
             )
 
+    def _push_data(self):
+        """Title."""
+        dst = os.path.join(
+            self._keoki_proj, "derivatives", "model_fsl", self._subj
+        )
+        make_dst = f"""\
+            ssh \
+                -i {self._rsa_key} \
+                {self._user_name}@{self._keoki_ip} \
+                " command ; bash -c 'mkdir -p {dst}'"
+            """
+        _, _ = self._quick_sp(make_dst)
+        _, _ = self._submit_rsync(self._subj_final, dst)
+
     def _submit_rsync(self, src: str, dst: str) -> Tuple:
         """Execute rsync between DCC and labarserv2."""
         bash_cmd = f"""\
@@ -859,6 +876,11 @@ class FslFirst:
             -e "ssh -i {self._rsa_key}" \
             -rauv {src} {dst}
         """
+        h_out, h_err = self._quick_sp(bash_cmd)
+        return (h_out, h_err)
+
+    def _quick_sp(self, bash_cmd: str) -> Tuple:
+        """Spawn quick subprocess."""
         h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
         h_out, h_err = h_sp.communicate()
         h_sp.wait()
@@ -947,15 +969,20 @@ class FslFirst:
 
     def _run_feat(self, design_list: list):
         """Run FSL FEAT and clean output."""
-        for fsf_path in design_list:
-            _ = fsl.model.run_feat(
-                fsf_path,
-                self._subj,
-                self._sess,
-                self._model_name,
-                self._model_level,
-                self._log_dir,
-            )
+        _ = Pool().starmap(
+            fsl.model.run_feat,
+            [
+                (
+                    fsf_path,
+                    self._subj,
+                    self._sess,
+                    self._model_name,
+                    self._model_level,
+                    self._log_dir,
+                )
+                for fsf_path in design_list
+            ],
+        )
         fsl.helper.clean_up(self._subj_work, self._subj_final)
 
 

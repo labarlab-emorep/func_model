@@ -805,7 +805,7 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
         return out_path
 
     # Schedule feat job
-    job_name = subj[-4:] + "s" + sess[-1] + "feat"
+    job_name = f"{subj[-4:]}_s{sess[-1]}_r{run[-1]}_feat"
     _, _ = submit.submit_sbatch(
         f"feat {fsf_path}",
         job_name,
