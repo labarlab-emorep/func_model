@@ -856,7 +856,7 @@ class FslFirst:
             )
 
     def _push_data(self):
-        """Title."""
+        """Make remote destination and send data there."""
         dst = os.path.join(
             self._keoki_proj, "derivatives", "model_fsl", self._subj
         )
@@ -1063,7 +1063,7 @@ def fsl_extract(
     get_betas.mask_coord(mask_path)
 
     def _get_betas(subj: str, sess: str, subj_dir: Union[str, os.PathLike]):
-        """Title."""
+        """Flatten MRI beta matrix."""
         # Identify task name from condition files
         subj_func_dir = os.path.join(subj_dir, sess, "func")
         task_path = glob.glob(f"{subj_func_dir}/condition_files/*_events.txt")[
