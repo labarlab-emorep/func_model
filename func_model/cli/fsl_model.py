@@ -32,7 +32,6 @@ fsl_model -s sub-ER0009 \
 import os
 import sys
 import time
-import glob
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
@@ -138,7 +137,7 @@ def main():
         sys.exit(1)
     if not os.path.exists(rsa_key):
         raise FileNotFoundError(f"Expected path to RSA key, found : {rsa_key}")
-    if preproc_type not in ["scaled", "smoothed"]:
+    if not fsl.helper.valid_preproc(preproc_type):
         raise ValueError(f"Unspported preproc type : {preproc_type}")
 
     # Setup group project directory, paths
@@ -167,17 +166,6 @@ def main():
     # Submit jobs for each participant, session
     for subj in subj_list:
         for sess in ["ses-day2", "ses-day3"]:
-
-            # # Check for preprocessed data
-            # subj_deriv = os.path.join(
-            #     proj_deriv, "pre_processing", "fsl_denoise", subj, sess, "func"
-            # )
-            # fsl_pp = glob.glob(f"{subj_deriv}/*scaled_bold.nii.gz")
-            # if not fsl_pp:
-            #     print(f"No preprocessed files detected for {subj}, {sess}")
-            #     continue
-
-            # Schedule work
             _, _ = submit.schedule_fsl(
                 subj,
                 sess,

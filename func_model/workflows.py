@@ -594,6 +594,7 @@ class FslFirst:
         log_dir,
         user_name,
         rsa_key,
+        keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize.
 
@@ -608,11 +609,9 @@ class FslFirst:
             output organized
         model_level : str
             Level of FSL model
-
-        TODO
         preproc_type : str
             [smoothed | scaled]
-
+            Select preprocessed EPI file to model
         proj_rawdata : path
             Location of BIDS rawdata
         proj_deriv : path
@@ -622,10 +621,12 @@ class FslFirst:
             Output location for intermediates
         log_dir : path
             Output location for log files and scripts
-
-        TODO
-        user_name
-        rsa_key
+        user_name : str
+            User name for DCC, labarserv2
+        rsa_key : str, os.PathLike
+            Location of RSA key for labarserv2
+        keoki_path : str, os.PathLike, optional
+            Location of project directory on Keoki
 
         Raises
         ------
@@ -637,12 +638,8 @@ class FslFirst:
             raise ValueError(f"Unexpected model name : {model_name}")
         if not fsl.helper.valid_level(model_level):
             raise ValueError(f"Unexpected model level : {model_level}")
-        # chk_sess = os.path.join(proj_rawdata, subj, sess)
-        # if not os.path.exists(chk_sess):
-        #     print(f"Directory not detected : {chk_sess}\n\tSkipping.")
-        #     return
-        if preproc_type not in ["smoothed", "scaled"]:
-            raise ValueError(f"Unexpected preprocess type : {preproc_type}")
+        if not fsl.helper.valid_preproc(preproc_type):
+            raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
         self._subj = subj
@@ -656,11 +653,7 @@ class FslFirst:
         self._log_dir = log_dir
         self._user_name = user_name
         self._keoki_ip = "ccn-labarserv2.vm.duke.edu"
-        self._keoki_proj = (
-            f"{self._user_name}@{self._keoki_ip}:"
-            + "/mnt/keoki/experiments2/EmoRep/"
-            + "Exp2_Compute_Emotion/data_scanner_BIDS"
-        )
+        self._keoki_proj = f"{self._user_name}@{self._keoki_ip}:{keoki_path}"
         self._rsa_key = rsa_key
 
     def model_rest(self):

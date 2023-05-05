@@ -12,23 +12,28 @@ from func_model import reference_files
 
 
 def valid_name(model_name: str) -> bool:
-    "Check if model name is valid."
+    """Check if model name is valid."""
     return model_name in ["sep", "rest"]
 
 
 def valid_level(model_level: str) -> bool:
-    "Check if model level is valid."
+    """Check if model level is valid."""
     return model_level in ["first"]
 
 
 def valid_task(task: str) -> bool:
-    "Check if task name is valid."
+    """Check if task name is valid."""
     return task in ["task-movies", "task-scenarios", "task-rest"]
 
 
 def valid_contrast(con: str) -> bool:
-    "Check if contrast name is valid."
+    """Check if contrast name is valid."""
     return con in ["stim", "replay"]
+
+
+def valid_preproc(step: str) -> bool:
+    """Check if preproc step/type is valid."""
+    return step in ["smoothed", "scaled"]
 
 
 def load_reference(file_name: str) -> str:
