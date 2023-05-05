@@ -13,10 +13,11 @@ fsl_classify_mask   : generate template mask from classifier output
 # %%
 import os
 import glob
-from typing import Union
+from typing import Union, Tuple
+import subprocess
 import pandas as pd
 from pathlib import Path
-from multiprocessing import Process
+from multiprocessing import Process, Pool
 from func_model.resources import afni, fsl
 
 
@@ -586,10 +587,14 @@ class FslFirst:
         sess,
         model_name,
         model_level,
+        preproc_type,
         proj_rawdata,
         proj_deriv,
         work_deriv,
         log_dir,
+        user_name,
+        rsa_key,
+        keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize.
 
@@ -604,6 +609,9 @@ class FslFirst:
             output organized
         model_level : str
             Level of FSL model
+        preproc_type : str
+            [smoothed | scaled]
+            Select preprocessed EPI file to model
         proj_rawdata : path
             Location of BIDS rawdata
         proj_deriv : path
@@ -613,6 +621,12 @@ class FslFirst:
             Output location for intermediates
         log_dir : path
             Output location for log files and scripts
+        user_name : str
+            User name for DCC, labarserv2
+        rsa_key : str, os.PathLike
+            Location of RSA key for labarserv2
+        keoki_path : str, os.PathLike, optional
+            Location of project directory on Keoki
 
         Raises
         ------
@@ -624,20 +638,23 @@ class FslFirst:
             raise ValueError(f"Unexpected model name : {model_name}")
         if not fsl.helper.valid_level(model_level):
             raise ValueError(f"Unexpected model level : {model_level}")
-        chk_sess = os.path.join(proj_rawdata, subj, sess)
-        if not os.path.exists(chk_sess):
-            print(f"Directory not detected : {chk_sess}\n\tSkipping.")
-            return
+        if not fsl.helper.valid_preproc(preproc_type):
+            raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
         self._model_level = model_level
+        self._preproc_type = preproc_type
         self._proj_rawdata = proj_rawdata
         self._proj_deriv = proj_deriv
         self._work_deriv = work_deriv
         self._log_dir = log_dir
+        self._user_name = user_name
+        self._keoki_ip = "ccn-labarserv2.vm.duke.edu"
+        self._keoki_proj = f"{self._user_name}@{self._keoki_ip}:{keoki_path}"
+        self._rsa_key = rsa_key
 
     def model_rest(self):
         """Run an FSL first-level model for resting EPI data.
@@ -646,16 +663,14 @@ class FslFirst:
         use FSL's FEAT to run a first-level model.
 
         """
-        # Set output directories and identify taskname
+        # Setup and get required data
         print("\tRunning first-level rest model")
         self._setup()
-        self._get_task()
 
         # Initialize needed classes, find preprocessed resting EPI
         make_fsf = fsl.model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
-        self._get_preproc()
         rest_preproc = self._sess_preproc[0]
 
         # Set run and make confound file
@@ -675,6 +690,7 @@ class FslFirst:
             self._conf_path,
         )
         self._run_feat([rest_design])
+        self._push_data()
 
     def model_task(self):
         """Run an FSL first-level model for task EPI data.
@@ -683,10 +699,9 @@ class FslFirst:
         use FSL's FEAT to run a first-level model.
 
         """
-        # Set output directories and identify taskname
+        # Setup and get required data
         print("\tRunning first-level task model")
         self._setup()
-        self._get_task()
 
         # Initialize needed classes
         make_fsf = fsl.model.MakeFirstFsf(
@@ -698,7 +713,6 @@ class FslFirst:
 
         # Generate design files for each preprocessed run
         fsf_list = []
-        self._get_preproc()
         for preproc_path in self._sess_preproc:
 
             # Generate run-specific condition and confound files,
@@ -730,9 +744,10 @@ class FslFirst:
 
         # Execute design files
         self._run_feat(fsf_list)
+        self._push_data()
 
     def _setup(self):
-        """Make work and final directories."""
+        """Get, organize data."""
         self._subj_work = os.path.join(
             self._work_deriv,
             f"model_fsl-{self._model_name}",
@@ -743,41 +758,158 @@ class FslFirst:
         self._subj_final = os.path.join(
             self._proj_deriv, "model_fsl", self._subj, self._sess
         )
-        for _dir in [self._subj_work, self._subj_final]:
-            if not os.path.exists(_dir):
-                os.makedirs(_dir)
-
-    def _get_preproc(self):
-        """Get preprocessed EPI paths."""
-        fd_subj_sess = os.path.join(
+        self._subj_raw = os.path.join(
+            self._proj_rawdata, self._subj, self._sess, "func"
+        )
+        self._subj_fp = os.path.join(
             self._proj_deriv,
-            "pre_processing/fsl_denoise",
+            "pre_processing",
+            "fmriprep",
             self._subj,
             self._sess,
             "func",
         )
-        self._sess_preproc = sorted(
-            glob.glob(f"{fd_subj_sess}/*{self._task}*desc-scaled_bold.nii.gz")
+        self._subj_fsl = os.path.join(
+            self._proj_deriv,
+            "pre_processing",
+            "fsl_denoise",
+            self._subj,
+            self._sess,
+            "func",
         )
-        if not self._sess_preproc:
-            raise FileNotFoundError(f"Expected scaled files in {fd_subj_sess}")
 
-    def _get_task(self):
-        """Determine task name from BIDS events file."""
+        # Make needed paths for working, data download
+        for _dir in [
+            self._subj_work,
+            self._subj_final,
+            self._subj_raw,
+            self._subj_fp,
+            self._subj_fsl,
+        ]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+        # Download and find data
+        self._pull_data()
+        self._get_preproc()
+
+    def _pull_data(self):
+        """Download required files for modeling."""
+        # Set source paths and files for rest and task models
+        source_time = os.path.join(
+            self._keoki_proj,
+            "derivatives",
+            "pre_processing",
+            "fmriprep",
+            self._subj,
+            self._sess,
+            "func",
+            "*timeseries.tsv",
+        )
+        source_preproc = os.path.join(
+            self._keoki_proj,
+            "derivatives",
+            "pre_processing",
+            "fsl_denoise",
+            self._subj,
+            self._sess,
+            "func",
+            f"*desc-{self._preproc_type}_bold.nii.gz",
+        )
+
+        # Download source
+        dl_dict = {
+            source_time: self._subj_fp,
+            source_preproc: self._subj_fsl,
+        }
+        for src, dst in dl_dict.items():
+            std_out, std_err = self._submit_rsync(src, dst)
+            if not glob.glob(f"{dst}/{self._subj}*"):
+                raise FileNotFoundError(
+                    f"Missing required files at : {dst}"
+                    + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
+                )
+
+        # Get events for task
         if self._model_name == "rest":
-            self._task = "task-rest"
-        else:
-            search_path = os.path.join(
-                self._proj_rawdata, self._subj, self._sess, "func"
+            return
+        source_events = os.path.join(
+            self._keoki_proj,
+            "rawdata",
+            self._subj,
+            self._sess,
+            "func",
+            "*events.tsv",
+        )
+        std_out, std_err = self._submit_rsync(source_events, self._subj_raw)
+        if not glob.glob(f"{self._subj_raw}/{self._subj}*"):
+            raise FileNotFoundError(
+                f"Missing required events files at : {self._subj_raw}"
+                + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
             )
-            event_path = glob.glob(f"{search_path}/*events.tsv")[0]
-            event_file = os.path.basename(event_path)
-            self._task = "task-" + event_file.split("task-")[-1].split("_")[0]
+
+    def _push_data(self):
+        """Make remote destination and send data there."""
+        dst = os.path.join(
+            self._keoki_proj, "derivatives", "model_fsl", self._subj
+        )
+        make_dst = f"""\
+            ssh \
+                -i {self._rsa_key} \
+                {self._user_name}@{self._keoki_ip} \
+                " command ; bash -c 'mkdir -p {dst}'"
+            """
+        _, _ = self._quick_sp(make_dst)
+        _, _ = self._submit_rsync(self._subj_final, dst)
+
+    def _submit_rsync(self, src: str, dst: str) -> Tuple:
+        """Execute rsync between DCC and labarserv2."""
+        bash_cmd = f"""\
+            rsync \
+            -e "ssh -i {self._rsa_key}" \
+            -rauv {src} {dst}
+        """
+        h_out, h_err = self._quick_sp(bash_cmd)
+        return (h_out, h_err)
+
+    def _quick_sp(self, bash_cmd: str) -> Tuple:
+        """Spawn quick subprocess."""
+        h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+        h_out, h_err = h_sp.communicate()
+        h_sp.wait()
+        return (h_out, h_err)
+
+    def _get_preproc(self):
+        """Get preprocessed EPI paths of specific task."""
+        all_preproc = sorted(
+            glob.glob(f"{self._subj_fsl}/*{self._preproc_type}_bold.nii.gz")
+        )
+        if not all_preproc:
+            raise FileNotFoundError(
+                f"Expected {self._preproc_type} files in {self._subj_fsl}"
+            )
+
+        if self._model_name == "rest":
+            self._sess_preproc = [x for x in all_preproc if "rest" in x]
+        else:
+            self._sess_preproc = [x for x in all_preproc if "rest" not in x]
+        if not self._sess_preproc:
+            raise FileNotFoundError(
+                f"Expected {self._model_name} {self._preproc_type} "
+                + f"files in {self._subj_fsl}"
+            )
+
+        self._task = (
+            "task-"
+            + os.path.basename(self._sess_preproc[0])
+            .split("task-")[1]
+            .split("_")[0]
+        )
         if not fsl.helper.valid_task(self._task):
             raise ValueError(f"Unexpected task name : {self._task}")
 
     def _get_run(self, file_name: str) -> str:
-        "Return run field from preprocessed EPI filename."
+        "Determine run field from preprocessed EPI filename."
         try:
             (
                 _sub,
@@ -797,11 +929,8 @@ class FslFirst:
     def _make_cond(self):
         """Generate condition files from BIDS events files for single run."""
         # Find events files in rawdata
-        subj_sess_raw = os.path.join(
-            self._proj_rawdata, self._subj, self._sess, "func"
-        )
         sess_events = sorted(
-            glob.glob(f"{subj_sess_raw}/*{self._run}*events.tsv")
+            glob.glob(f"{self._subj_raw}/*{self._run}*events.tsv")
         )
         if not sess_events or len(sess_events) != 1:
             self._cond_comm = None
@@ -817,16 +946,9 @@ class FslFirst:
 
     def _make_conf(self):
         """Generate confounds files from fMRIPrep output for single run."""
-        fp_subj_sess = os.path.join(
-            self._proj_deriv,
-            "pre_processing/fmriprep",
-            self._subj,
-            self._sess,
-            "func",
-        )
         sess_confounds = sorted(
             glob.glob(
-                f"{fp_subj_sess}/*{self._task}*{self._run}*timeseries.tsv"
+                f"{self._subj_fp}/*{self._task}*{self._run}*timeseries.tsv"
             )
         )
         if not sess_confounds or len(sess_confounds) != 1:
@@ -840,15 +962,20 @@ class FslFirst:
 
     def _run_feat(self, design_list: list):
         """Run FSL FEAT and clean output."""
-        for fsf_path in design_list:
-            _ = fsl.model.run_feat(
-                fsf_path,
-                self._subj,
-                self._sess,
-                self._model_name,
-                self._model_level,
-                self._log_dir,
-            )
+        _ = Pool().starmap(
+            fsl.model.run_feat,
+            [
+                (
+                    fsf_path,
+                    self._subj,
+                    self._sess,
+                    self._model_name,
+                    self._model_level,
+                    self._log_dir,
+                )
+                for fsf_path in design_list
+            ],
+        )
         fsl.helper.clean_up(self._subj_work, self._subj_final)
 
 
@@ -929,7 +1056,7 @@ def fsl_extract(
     get_betas.mask_coord(mask_path)
 
     def _get_betas(subj: str, sess: str, subj_dir: Union[str, os.PathLike]):
-        """Title."""
+        """Flatten MRI beta matrix."""
         # Identify task name from condition files
         subj_func_dir = os.path.join(subj_dir, sess, "func")
         task_path = glob.glob(f"{subj_func_dir}/condition_files/*_events.txt")[
