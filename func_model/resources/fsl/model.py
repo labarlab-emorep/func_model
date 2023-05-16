@@ -333,9 +333,8 @@ def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
         raise FileNotFoundError(f"Expected to find file : {conf_path}")
     if not isinstance(na_value, str):
         raise TypeError("Unexpected type for na_value")
-    if fd_thresh:
-        if not isinstance(fd_thresh, float):
-            raise TypeError("Unexpected type for fd_thresh")
+    if fd_thresh and not isinstance(fd_thresh, float):
+        raise TypeError("Unexpected type for fd_thresh")
 
     # Setup output location
     print("\tMaking confounds")

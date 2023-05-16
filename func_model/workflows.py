@@ -957,7 +957,7 @@ class FslFirst:
 
         # Generate confound files
         _, self._conf_path = fsl.model.confounds(
-            sess_confounds[0], self._subj_work, fd_thresh=0.5
+            sess_confounds[0], self._subj_work
         )
 
     def _run_feat(self, design_list: list):
