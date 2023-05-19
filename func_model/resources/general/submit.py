@@ -1,4 +1,11 @@
-"""Methods for controlling sbatch and subprocess submissions."""
+"""Methods for controlling sbatch and subprocess submissions.
+
+submit_subprocess : submit and check for output of bash command
+submit_sbatch : schedule bash command with Slurm
+schedule_afni : schedule AFNI workflow with Slurm
+schedule_fsl : schedule FSL workflow with Slurm
+
+"""
 import os
 import sys
 import subprocess
@@ -211,10 +218,13 @@ def schedule_fsl(
     sess,
     model_name,
     model_level,
+    preproc_type,
     proj_rawdata,
     proj_deriv,
     work_deriv,
     log_dir,
+    user_name,
+    rsa_key,
 ):
     """Write and schedule pipeline.
 
@@ -233,6 +243,9 @@ def schedule_fsl(
         output organized
     model_level : str
         Level of FSL model
+    preproc_type : str
+        [smoothed | scaled]
+        Select preprocessed EPI file to model
     proj_rawdata : path
         Location of BIDS rawdata
     proj_deriv : path
@@ -242,6 +255,10 @@ def schedule_fsl(
         Output location for intermediates
     log_dir : path
         Output location for log files and scripts
+    user_name : str
+        User name for DCC, labarserv2
+    rsa_key : str, os.PathLike
+        Location of RSA key for labarserv2
 
     Returns
     -------
@@ -284,10 +301,13 @@ def schedule_fsl(
             "{sess}",
             "{model_name}",
             "{model_level}",
+            "{preproc_type}",
             "{proj_rawdata}",
             "{proj_deriv}",
             "{work_deriv}",
             "{log_dir}",
+            "{user_name}",
+            "{rsa_key}",
         )
         wf_obj.{wf_meth}()
 

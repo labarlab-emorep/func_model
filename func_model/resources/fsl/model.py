@@ -333,9 +333,8 @@ def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
         raise FileNotFoundError(f"Expected to find file : {conf_path}")
     if not isinstance(na_value, str):
         raise TypeError("Unexpected type for na_value")
-    if fd_thresh:
-        if not isinstance(fd_thresh, float):
-            raise TypeError("Unexpected type for fd_thresh")
+    if fd_thresh and not isinstance(fd_thresh, float):
+        raise TypeError("Unexpected type for fd_thresh")
 
     # Setup output location
     print("\tMaking confounds")
@@ -483,6 +482,7 @@ class MakeFirstFsf:
         self,
         run,
         num_vol,
+        len_tr,
         preproc_path,
         confound_path,
     ):
@@ -496,6 +496,8 @@ class MakeFirstFsf:
             BIDS run identifier
         num_vol : int, str
             Number of EPI volumes
+        len_tr : float, str
+            Length of TR
         preproc_path : path
             Location and name of preprocessed EPI file
         confound_path : path
@@ -525,7 +527,8 @@ class MakeFirstFsf:
         # Setup replace dictionary, update design template
         self._field_switch = {
             "[[run]]": run,
-            "[[num_vol]]": f"{num_vol}",
+            "[[num_vol]]": str(num_vol),
+            "[[len_tr]]": str(len_tr),
             "[[preproc_path]]": pp_file,
             "[[conf_path]]": confound_path,
             "[[subj_work]]": self._subj_work,
@@ -615,7 +618,7 @@ class MakeFirstFsf:
         # Setup replace dictionary
         self._field_switch = {
             "[[run]]": run,
-            "[[num_vol]]": f"{num_vol}",
+            "[[num_vol]]": str(num_vol),
             "[[preproc_path]]": pp_file,
             "[[conf_path]]": confound_path,
             "[[judge_path]]": common_cond["judgment"],
@@ -801,7 +804,7 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
         return out_path
 
     # Schedule feat job
-    job_name = subj[-4:] + "s" + sess[-1] + "feat"
+    job_name = f"{subj[-4:]}_s{sess[-1]}_r{run[-1]}_feat"
     _, _ = submit.submit_sbatch(
         f"feat {fsf_path}",
         job_name,

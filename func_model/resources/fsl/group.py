@@ -247,7 +247,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         subj_out,
         mot_thresh,
     ):
-        """Title."""
+        """Vectorize cope betas for run."""
         self._design_path = design_path
         subj_short = subj.split("-")[-1]
         task_short = task.split("-")[-1]
