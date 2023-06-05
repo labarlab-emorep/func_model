@@ -79,7 +79,7 @@ def submit_sbatch(
     num_cpus : int
         Number of CPUs required by job
     mem_gig : int
-        Job RAM requirement for each CPU (GB)
+        Job RAM requirement (GB)
     env_input : dict, None
         Extra environmental variables required by processes
         e.g. singularity reqs
@@ -101,7 +101,7 @@ def submit_sbatch(
         -J {job_name} \
         -t {num_hours}:00:00 \
         --cpus-per-task={num_cpus} \
-        --mem-per-cpu={mem_gig}000 \
+        --mem={mem_gig}G \
         -o {log_dir}/out_{job_name}.log \
         -e {log_dir}/err_{job_name}.log \
         --wait \
@@ -179,7 +179,7 @@ def schedule_afni(
         #SBATCH --job-name=p{subj[6:]}s{sess[-1]}
         #SBATCH --output={log_dir}/par{subj[6:]}s{sess[-1]}.txt
         #SBATCH --time={wall_time}:00:00
-        #SBATCH --mem=8000
+        #SBATCH --mem=8G
 
         import os
         import sys
@@ -290,7 +290,7 @@ def schedule_fsl(
         #SBATCH --job-name=p{subj_short}s{sess_short}
         #SBATCH --output={log_dir}/par{subj_short}s{sess_short}.txt
         #SBATCH --time=30:00:00
-        #SBATCH --mem=8000
+        #SBATCH --mem=8G
 
         import os
         import sys
