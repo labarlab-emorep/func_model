@@ -1749,7 +1749,7 @@ class RunReml:
             self._log_dir,
             num_hours=wall_time,
             num_cpus=6,
-            mem_gig=8,
+            mem_gig=12,
         )
         if not os.path.exists(out_path):
             raise FileNotFoundError(f"Expected to find {out_path}")
