@@ -564,6 +564,36 @@ class FslFirst:
     condition files for task-based models, then model the data
     via FSL's feat.
 
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    model_name : str
+        Name of FSL model, for keeping condition files and
+        output organized
+    model_level : str
+        Level of FSL model
+    preproc_type : str
+        [smoothed | scaled]
+        Select preprocessed EPI file to model
+    proj_rawdata : path
+        Location of BIDS rawdata
+    proj_deriv : path
+        Location of project BIDs derivatives, for finding
+        preprocessed output
+    work_deriv : path
+        Output location for intermediates
+    log_dir : path
+        Output location for log files and scripts
+    user_name : str
+        User name for DCC, labarserv2
+    rsa_key : str, os.PathLike
+        Location of RSA key for labarserv2
+    keoki_path : str, os.PathLike, optional
+        Location of project directory on Keoki
+
     Methods
     -------
     model_rest()
@@ -575,7 +605,7 @@ class FslFirst:
 
     Example
     -------
-    wf_fsl = workflows.FslFirst(**args)
+    wf_fsl = workflows.FslFirst(*args)
     wf_fsl.model_rest()
     wf_fsl.model_task()
 
@@ -596,44 +626,7 @@ class FslFirst:
         rsa_key,
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
-        """Initialize.
-
-        Parameters
-        ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        model_name : str
-            Name of FSL model, for keeping condition files and
-            output organized
-        model_level : str
-            Level of FSL model
-        preproc_type : str
-            [smoothed | scaled]
-            Select preprocessed EPI file to model
-        proj_rawdata : path
-            Location of BIDS rawdata
-        proj_deriv : path
-            Location of project BIDs derivatives, for finding
-            preprocessed output
-        work_deriv : path
-            Output location for intermediates
-        log_dir : path
-            Output location for log files and scripts
-        user_name : str
-            User name for DCC, labarserv2
-        rsa_key : str, os.PathLike
-            Location of RSA key for labarserv2
-        keoki_path : str, os.PathLike, optional
-            Location of project directory on Keoki
-
-        Raises
-        ------
-        ValueError
-            Unexpected argument parameters
-
-        """
+        """Initialize."""
         if not fsl.helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
         if not fsl.helper.valid_level(model_level):
@@ -680,12 +673,8 @@ class FslFirst:
             return
 
         # Write and execute design.fsf
-        num_vol = fsl.helper.count_vol(rest_preproc)
-        len_tr = fsl.helper.get_tr(rest_preproc)
         rest_design = make_fsf.write_rest_fsf(
             self._run,
-            num_vol,
-            len_tr,
             rest_preproc,
             self._conf_path,
         )
@@ -702,8 +691,6 @@ class FslFirst:
         # Setup and get required data
         print("\tRunning first-level task model")
         self._setup()
-
-        # Initialize needed classes
         make_fsf = fsl.model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
@@ -711,8 +698,8 @@ class FslFirst:
             self._subj, self._sess, self._task, self._subj_work
         )
 
-        # Generate design files for each preprocessed run
-        fsf_list = []
+        # Generate design files for each run
+        design_list = []
         for preproc_path in self._sess_preproc:
 
             # Generate run-specific condition and confound files,
@@ -720,11 +707,8 @@ class FslFirst:
             self._get_run(os.path.basename(preproc_path))
             self._make_cond()
             self._make_conf()
-            if not self._cond_comm or not self._conf_path:
+            if not self._cond_comm and not self._conf_path:
                 continue
-
-            # Determine number of volumes
-            num_vol = fsl.helper.count_vol(preproc_path)
 
             # Write design file
             use_short = (
@@ -732,18 +716,30 @@ class FslFirst:
                 if self._run == "run-04" or self._run == "run-08"
                 else False
             )
-            fsf_path = make_fsf.write_task_fsf(
-                self._run,
-                num_vol,
-                preproc_path,
-                self._conf_path,
-                self._cond_comm,
-                use_short,
-            )
-            fsf_list.append(fsf_path)
+            if self._model_name != "lss":
+                design_path = make_fsf.write_task_fsf(
+                    self._run,
+                    preproc_path,
+                    self._conf_path,
+                    self._cond_comm,
+                    use_short,
+                )
+                design_list.append(design_path)
+            else:
+                mult_design = make_fsf.write_task_fsf(
+                    self._run,
+                    preproc_path,
+                    self._conf_path,
+                    self._cond_comm,
+                    use_short,
+                    sep_cond=self._sep_cond,
+                    lss_cond=self._lss_cond,
+                )
+                for design_path in mult_design:
+                    design_list.append(design_path)
 
         # Execute design files
-        self._run_feat(fsf_list)
+        self._run_feat(design_list)
         self._push_data()
 
     def _setup(self):
@@ -942,7 +938,9 @@ class FslFirst:
 
         # Generate model-name specific cond files
         if self._model_name == "sep":
-            self._cond_spec = self._make_cf.session_separate_events()
+            _ = self._make_cf.session_separate_events()
+        elif self._model_name == "lss":
+            self._sep_cond, self._lss_cond = self._make_cf.lss_events()
 
     def _make_conf(self):
         """Generate confounds files from fMRIPrep output for single run."""

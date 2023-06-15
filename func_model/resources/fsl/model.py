@@ -28,6 +28,17 @@ class ConditionFiles:
     Condition files are written to:
         <subj_work>/condition_files
 
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    task : str
+        BIDS task name
+    subj_work : path
+        Location of working directory for intermediates
+
     Methods
     -------
     common_events()
@@ -45,33 +56,15 @@ class ConditionFiles:
 
     Example
     -------
-    make_cond = model.ConditionFiles(**args)
+    make_cond = model.ConditionFiles(*args)
     make_cond.load_events("/path/to/*events.tsv")
     comm_dict = make_cond.common_events()
-    comb_dict = make_Cond.session_combined_events()
+    comb_dict = make_cond.session_combined_events()
 
     """
 
     def __init__(self, subj, sess, task, subj_work):
-        """Initialize.
-
-        Parameters
-        ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        task : str
-            BIDS task name
-        subj_work : path
-            Location of working directory for intermediates
-
-        Raises
-        ------
-        ValueError
-            Task name not found in fsl.helper.valid_task
-
-        """
+        """Initialize."""
         if not fsl.helper.valid_task(task):
             raise ValueError(f"Unexpected task name : {task}")
 
@@ -250,6 +243,47 @@ class ConditionFiles:
             out_dict[f"stim{t_emo}"] = stim_out
             out_dict[f"replay{t_emo}"] = rep_out
         return out_dict
+
+    def lss_events(self):
+        """Title.
+
+        Returns
+        -------
+        tuple
+            [0] = dict, condition files from session_separate_events
+            [1] = dict, lss condition files
+
+        """
+        cond_dict = self.session_separate_events()
+        lss_dict = {}
+        for cond_name, cond_path in cond_dict.items():
+
+            #
+            lss_dict[cond_name] = {}
+            cond_path = cond_dict[cond_name]
+            out_dir = os.path.dirname(cond_path)
+            out_pref = os.path.basename(cond_path).split("_events")[0]
+            df_cond = pd.read_csv(cond_path, sep="\t", header=None)
+
+            #
+            for _idx in range(df_cond.shape[0]):
+                trial_num = _idx + 1
+                df_trial = df_cond[df_cond.index == _idx]
+                out_trial = os.path.join(
+                    out_dir, f"{out_pref}_trial-{trial_num}event.txt"
+                )
+                df_trial.to_csv(out_trial, index=False, header=False, sep="\t")
+
+                df_rest = df_cond[df_cond.index != _idx]
+                out_rest = os.path.join(
+                    out_dir, f"{out_pref}_trial-{trial_num}remain.txt"
+                )
+                df_rest.to_csv(out_rest, index=False, header=False, sep="\t")
+                lss_dict[cond_name][trial_num] = {
+                    "event": out_trial,
+                    "remain": out_rest,
+                }
+        return (cond_dict, lss_dict)
 
     def common_events(self):
         """Make condition files for common events of both sessions.
@@ -481,8 +515,6 @@ class MakeFirstFsf:
     def write_rest_fsf(
         self,
         run,
-        num_vol,
-        len_tr,
         preproc_path,
         confound_path,
     ):
@@ -494,10 +526,6 @@ class MakeFirstFsf:
         ----------
         run : str
             BIDS run identifier
-        num_vol : int, str
-            Number of EPI volumes
-        len_tr : float, str
-            Length of TR
         preproc_path : path
             Location and name of preprocessed EPI file
         confound_path : path
@@ -523,6 +551,8 @@ class MakeFirstFsf:
         print("\t\t\tBuilding resting design.fsf")
         self._run = run
         pp_file = self._pp_path(preproc_path)
+        num_vol = fsl.helper.count_vol(preproc_path)
+        len_tr = fsl.helper.get_tr(preproc_path)
 
         # Setup replace dictionary, update design template
         self._field_switch = {
@@ -545,11 +575,11 @@ class MakeFirstFsf:
     def write_task_fsf(
         self,
         run,
-        num_vol,
         preproc_path,
         confound_path,
         common_cond,
         use_short,
+        **kwargs,
     ):
         """Write first-level FSF design for task EPI.
 
@@ -561,8 +591,6 @@ class MakeFirstFsf:
         ----------
         run : str
             BIDS run identifier
-        num_vol : int, str
-            Number of EPI volumes
         preproc_path : path
             Location and name of preprocessed EPI file
         confound_path : path
@@ -576,6 +604,8 @@ class MakeFirstFsf:
             -   ["emoIntensity"]
         use_short : bool
             Whether to use short or full template design
+        **kwargs: dict, optional
+            Extra arguments for _write_first_lss: sep_cond and lss_cond
 
         Returns
         -------
@@ -608,12 +638,17 @@ class MakeFirstFsf:
                 raise KeyError(
                     f"Missing expected key in common_cond : {req_key}"
                 )
+        if "sep_cond" in kwargs:
+            self._sep_cond = kwargs["sep_cond"]
+        if "lss_cond" in kwargs:
+            self._lss_cond = kwargs["lss_cond"]
 
         # Set attrs, variables
         print("\t\t\tBuilding task design.fsf")
         self._run = run
         self._use_short = use_short
         pp_file = self._pp_path(preproc_path)
+        num_vol = fsl.helper.count_vol(preproc_path)
 
         # Setup replace dictionary
         self._field_switch = {
@@ -751,6 +786,10 @@ class MakeFirstFsf:
         # Write out
         design_path = self._write_design(fsf_edit)
         return design_path
+
+    def _write_first_lss(self):
+        """Title."""
+        pass
 
 
 # %%
