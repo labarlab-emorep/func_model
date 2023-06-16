@@ -940,7 +940,7 @@ class FslFirst:
         if self._model_name == "sep":
             _ = self._make_cf.session_separate_events()
         elif self._model_name == "lss":
-            self._sep_cond, self._lss_cond = self._make_cf.lss_events()
+            self._sep_cond, self._lss_cond = self._make_cf.session_lss_events()
 
     def _make_conf(self):
         """Generate confounds files from fMRIPrep output for single run."""

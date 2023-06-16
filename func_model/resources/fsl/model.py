@@ -244,7 +244,7 @@ class ConditionFiles:
             out_dict[f"replay{t_emo}"] = rep_out
         return out_dict
 
-    def lss_events(self):
+    def session_lss_events(self):
         """Title.
 
         Returns
@@ -450,43 +450,34 @@ class MakeFirstFsf:
     Design files are written to:
         <subj_work>/design_files/<run>_level-first_name-<model_name>.fsf
 
+    Parameters
+    ----------
+    subj_work : path
+        Output work location for intermediates
+    proj_deriv : path
+        Location of project deriviatives directory
+    model_name : str
+        FSL model name, specifies template selection from
+        func_model.reference_files.
+
     Methods
     -------
-    write_rest_fsf(**args)
+    write_rest_fsf(*args)
         Generate design.fsf file for resting state EPI data
-    write_task_fsf(**args)
+    write_task_fsf(*args, **kwargs)
         Generate design.fsf files for task-based EPI data, according to
         model_name (triggers model_name-specific private method).
 
     Example
     -------
-    make_fsf = model.MakeFirstFsf(**args)
-    task_design = make_fsf.write_task_fsf(**args)
-    rest_design = make_fsf.write_rest_fsf(**args)
+    make_fsf = model.MakeFirstFsf(*args)
+    task_design = make_fsf.write_task_fsf(*args, **kwargs)
+    rest_design = make_fsf.write_rest_fsf(*args)
 
     """
 
     def __init__(self, subj_work, proj_deriv, model_name):
-        """Initialize.
-
-        Read-in long and short templates.
-
-        Parameters
-        ----------
-        subj_work : path
-            Output work location for intermediates
-        proj_deriv : path
-            Location of project deriviatives directory
-        model_name : str
-            FSL model name, specifies template selection from
-            func_model.reference_files.
-
-        Raises
-        ------
-        ValueError
-            Inappropriate model name or level
-
-        """
+        """Initialize."""
         if not fsl.helper.valid_name(model_name):
             raise ValueError(f"Unexpected value for model_name : {model_name}")
 
@@ -609,7 +600,7 @@ class MakeFirstFsf:
 
         Returns
         -------
-        path
+        path, list
             Location, name of generated design FSF
 
         Raises
@@ -789,7 +780,87 @@ class MakeFirstFsf:
 
     def _write_first_lss(self):
         """Title."""
-        pass
+        # trial_switch = {
+        #     "[[bids_desc_trial]]": "desc-stimRomance_trial-1",
+        #     "[[desc_trial_event_name]]": "stimRomance_event_1",
+        #     "[[desc_trial_event_path]]": "/path/here/*stimRomance_trial-1_events.txt",
+        #     "[[desc_trial_remain_name]]": "stimRomance_remain_1",
+        #     "[[desc_trial_remain_path]]": "/path/here/*stimRomance_trial-1_events.txt",
+        #     f"[[stim_{num}_name]]": "replayRomance",
+        #     f"[[stim_{num}_path]]": "/path/to/*desc-replayRomance_events.txt",
+        # }
+
+        for stim_name, stim_path in self._sep_cond.items():
+
+            # For testing
+            if stim_name != "stimRomance":
+                continue
+
+            #
+            switch_sep = {}
+            sep_dict = {
+                i: j for i, j in self._sep_cond.items() if i != stim_name
+            }
+            for _cnt, _name in enumerate(sep_dict):
+                match_cnt = _cnt + 2
+                _path = sep_dict[_name]
+                switch_sep[f"[[stim_{match_cnt}_name]]"] = _name
+                switch_sep[f"[[stim_{match_cnt}_path]]"] = _path
+
+            #
+            lss_dict = self._lss_cond[stim_name]
+            for _num, event_dict in lss_dict.items():
+
+                # For testing
+                if _num != 1:
+                    continue
+
+                #
+                switch_lss = {}
+                switch_lss[
+                    "[[bids_desc_trial]]"
+                ] = f"desc-{stim_name}_trial-{_num}"
+
+                #
+                switch_lss[
+                    "[[desc_trial_event_name]]"
+                ] = f"{stim_name}_event_{_num}"
+                switch_lss["[[desc_trial_event_path]]"] = event_dict["event"]
+
+                #
+                switch_lss[
+                    "[[desc_trial_remain_name]]"
+                ] = f"{stim_name}_remain_{_num}"
+                switch_lss["[[desc_trial_remain_path]]"] = event_dict["remain"]
+
+                #
+                self._lss_design(switch_sep, switch_lss)
+
+    def _lss_design(
+        self, switch_sep: dict, switch_lss: dict
+    ) -> Union[str, os.PathLike]:
+        """Title."""
+        field_switch = self._field_switch.copy()
+        field_switch.update(switch_sep)
+        field_switch.update(switch_lss)
+        fsf_edit = (
+            self._tp_short.copy() if self._use_short else self._tp_full.copy()
+        )
+        for old, new in field_switch.items():
+            fsf_edit = fsf_edit.replace(old, new)
+
+        # Write out
+        out_dir = os.path.join(self._subj_work, "design_files")
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        out_path = os.path.join(
+            out_dir,
+            f"{self._run}_level-first_name-{self._model_name}_"
+            + f"{switch_lss['[[bids_desc_trial]]']}_design.fsf",
+        )
+        with open(out_path, "w") as tf:
+            tf.write(fsf_edit)
+        return out_path
 
 
 # %%
