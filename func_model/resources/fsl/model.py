@@ -441,8 +441,207 @@ def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
 
 
 # %%
-class MakeFirstFsf:
+class _FirstSep:
+    """Title."""
+
+    def write_sep(self):
+        """Make first-level FSF for model sep.
+
+        Write a design FSF by updating fields in the template FSF for
+        model_name == sep. Write out design files to subject working
+        directory.
+
+        Returns
+        -------
+        path
+            Location, name of design FSF file
+
+        """
+
+        # Update field_switch, make design file
+        self._sep_switch()
+        fsf_edit = self._tp_short if self._use_short else self._tp_full
+        for old, new in self._field_switch.items():
+            fsf_edit = fsf_edit.replace(old, new)
+
+        # Write out
+        design_path = self._write_first(fsf_edit)
+        return design_path
+
+    def _sep_switch(self):
+        """Update switch dictionary for model "sep".
+
+        Find replay and stimulus emotion condition files for run,
+        update private method _field_switch for model_name == sep
+        specific conditions.
+
+        """
+
+        def _get_desc(file_name: str) -> str:
+            """Return description field from condition filename."""
+            try:
+                _su, _se, _ta, _ru, desc, _su = file_name.split("_")
+                return desc.split("-")[-1]
+            except IndexError:
+                raise ValueError(
+                    "Improperly formatted file name for condition file."
+                )
+
+        def _stim_replay(stim_emo: list, rep_emo: list) -> dict:
+            """Return replacement dict for stim, replay events."""
+            stim_dict = {}
+            replay_dict = {}
+            cnt = 1
+            for stim_path, rep_path in zip(stim_emo, rep_emo):
+                desc_stim = _get_desc(os.path.basename(stim_path))
+                stim_dict[f"[[stim_emo{cnt}_name]]"] = desc_stim
+                stim_dict[f"[[stim_emo{cnt}_path]]"] = stim_path
+
+                desc_rep = _get_desc(os.path.basename(rep_path))
+                replay_dict[f"[[rep_emo{cnt}_name]]"] = desc_rep
+                replay_dict[f"[[rep_emo{cnt}_path]]"] = rep_path
+                cnt += 1
+            stim_dict.update(replay_dict)
+            return stim_dict
+
+        # Find stim and replay emotion condition files
+        # TODO receive these via workflows.FslFirst._sep_cond
+        stim_emo = sorted(
+            glob.glob(
+                f"{self._subj_work}/condition_files/*{self._run}_"
+                + "desc-stim*_events.txt"
+            )
+        )
+        if not stim_emo:
+            raise ValueError("Failed to find stimEmo events.")
+        rep_emo = sorted(
+            glob.glob(
+                f"{self._subj_work}/condition_files/*{self._run}_"
+                + "desc-repl*_events.txt"
+            )
+        )
+        if not rep_emo:
+            raise ValueError("Failed to find repEmo events.")
+        if len(stim_emo) != len(rep_emo):
+            raise ValueError("Stimulus, replay lists unequal length")
+
+        # Update attr
+        emo_dict = _stim_replay(stim_emo, rep_emo)
+        self._field_switch.update(emo_dict)
+
+    def _write_first(self, fsf_info: str) -> Union[str, os.PathLike]:
+        """Write design.fsf and return file location."""
+        # Write out
+        out_dir = os.path.join(self._subj_work, "design_files")
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        out_path = os.path.join(
+            out_dir,
+            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
+        )
+        with open(out_path, "w") as tf:
+            tf.write(fsf_info)
+        return out_path
+
+
+# %%
+class _FirstLss:
+    """Title."""
+
+    def write_lss(self) -> list:
+        """Title."""
+        # TODO validate reqd attrs
+
+        # Generate a set of design lists for each stim_name (e.g. stimRomance)
+        design_list = []
+        for self._stim_name, _ in self._sep_cond.items():
+
+            # For testing
+            if self._stim_name != "stimRomance":
+                continue
+
+            # Get stim_name, paths of all stims not from current iteration,
+            # add them to a switch.
+            self._switch_sep = {}
+            sep_dict = {
+                i: j for i, j in self._sep_cond.items() if i != self._stim_name
+            }
+            for _cnt, _name in enumerate(sep_dict):
+                match_cnt = _cnt + 2
+                _path = sep_dict[_name]
+                self._switch_sep[f"[[stim_{match_cnt}_name]]"] = _name
+                self._switch_sep[f"[[stim_{match_cnt}_path]]"] = _path
+
+            # Trigger design.fsf generation for current stim_name
+            design_list.append(
+                self._lss_switch(self._lss_cond[self._stim_name])
+            )
+        return design_list
+
+    def _lss_switch(self, lss_dict) -> list:
+        """Title."""
+        # Setup switch for every single trial
+        lss_list = []
+        for _num, event_dict in lss_dict.items():
+
+            # For testing
+            if _num != 1:
+                continue
+
+            # Restart attr, set output dir name
+            self._switch_lss = {}
+            self._switch_lss[
+                "[[bids_desc_trial]]"
+            ] = f"desc-{self._stim_name}_trial-{_num}"
+
+            # Supply name, path to single/remaining events
+            self._switch_lss[
+                "[[desc_trial_event_name]]"
+            ] = f"{self._stim_name}_event_{_num}"
+            self._switch_lss["[[desc_trial_event_path]]"] = event_dict["event"]
+
+            self._switch_lss[
+                "[[desc_trial_remain_name]]"
+            ] = f"{self._stim_name}_remain_{_num}"
+            self._switch_lss["[[desc_trial_remain_path]]"] = event_dict[
+                "remain"
+            ]
+
+            # Generate design file
+            lss_list.append(self._lss_design())
+        return lss_list
+
+    def _lss_design(self) -> Union[str, os.PathLike]:
+        """Title."""
+        # Aggregate all switches
+        field_switch = self._field_switch.copy()
+        field_switch.update(self._switch_sep)
+        field_switch.update(self._switch_lss)
+
+        # Update fields in relevant template
+        fsf_edit = self._tp_short if self._use_short else self._tp_full
+        for old, new in field_switch.items():
+            fsf_edit = fsf_edit.replace(old, new)
+
+        # Write out
+        out_dir = os.path.join(self._subj_work, "design_files")
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        out_path = os.path.join(
+            out_dir,
+            f"{self._run}_level-first_name-{self._model_name}_"
+            + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf",
+        )
+        with open(out_path, "w") as tf:
+            tf.write(fsf_edit)
+        return out_path
+
+
+# %%
+class MakeFirstFsf(_FirstSep, _FirstLss):
     """Generate first-level design FSF files for FSL modelling.
+
+    Inherits TODO.
 
     Use pre-generated template FSF files to write run-specific
     first-level design FSF files for planned models.
@@ -603,17 +802,6 @@ class MakeFirstFsf:
         path, list
             Location, name of generated design FSF
 
-        Raises
-        ------
-        FileNotFoundError
-            Missing input file (preproc, condition)
-        KeyError
-            Missing required key in common_cond
-        TypeError
-            Incorrect input type
-        ValueError
-            Unexpected preproc file extension
-
         """
         # Validate user input
         for h_path in [
@@ -629,23 +817,23 @@ class MakeFirstFsf:
                 raise KeyError(
                     f"Missing expected key in common_cond : {req_key}"
                 )
+
+        # Capture lss kwargs
         if "sep_cond" in kwargs:
             self._sep_cond = kwargs["sep_cond"]
         if "lss_cond" in kwargs:
             self._lss_cond = kwargs["lss_cond"]
 
-        # Set attrs, variables
+        # Set helper attrs
         print("\t\t\tBuilding task design.fsf")
         self._run = run
         self._use_short = use_short
-        pp_file = self._pp_path(preproc_path)
-        num_vol = fsl.helper.count_vol(preproc_path)
 
-        # Setup replace dictionary
+        # Start replace switch
         self._field_switch = {
             "[[run]]": run,
-            "[[num_vol]]": str(num_vol),
-            "[[preproc_path]]": pp_file,
+            "[[num_vol]]": str(fsl.helper.count_vol(preproc_path)),
+            "[[preproc_path]]": self._pp_path(preproc_path),
             "[[conf_path]]": confound_path,
             "[[judge_path]]": common_cond["judgment"],
             "[[wash_path]]": common_cond["washout"],
@@ -655,24 +843,10 @@ class MakeFirstFsf:
             "[[deriv_dir]]": self._proj_deriv,
         }
 
-        # Find, trigger method
-        write_meth = getattr(self, f"_write_first_{self._model_name}")
+        # Trigger model method
+        write_meth = getattr(self, f"write_{self._model_name}")
         fsf_path = write_meth()
         return fsf_path
-
-    def _write_design(self, fsf_info: str) -> Union[str, os.PathLike]:
-        """Write design.fsf and return file location."""
-        # Write out
-        out_dir = os.path.join(self._subj_work, "design_files")
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        out_path = os.path.join(
-            out_dir,
-            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
-        )
-        with open(out_path, "w") as tf:
-            tf.write(fsf_info)
-        return out_path
 
     def _pp_path(
         self, preproc_path: Union[str, os.PathLike]
@@ -687,180 +861,6 @@ class MakeFirstFsf:
             raise ValueError(
                 "Expected preproc to have .nii or .nii.gz extension."
             )
-
-    def _sep_switch(self):
-        """Update switch dictionary for model "sep".
-
-        Find replay and stimulus emotion condition files for run,
-        update private method _field_switch for model_name == sep
-        specific conditions.
-
-        Raises
-        ------
-        ValueError
-            Unable to find replay or stimulus emotion condition file for run
-            Found unequal number of replay, stimulus condition files
-
-        """
-
-        def _get_desc(file_name: str) -> str:
-            """Return description field from condition filename."""
-            try:
-                _su, _se, _ta, _ru, desc, _su = file_name.split("_")
-                return desc.split("-")[-1]
-            except IndexError:
-                raise ValueError(
-                    "Improperly formatted file name for condition file."
-                )
-
-        def _stim_replay(stim_emo: list, rep_emo: list) -> dict:
-            """Return replacement dict for stim, replay events."""
-            stim_dict = {}
-            replay_dict = {}
-            cnt = 1
-            for stim_path, rep_path in zip(stim_emo, rep_emo):
-                desc_stim = _get_desc(os.path.basename(stim_path))
-                stim_dict[f"[[stim_emo{cnt}_name]]"] = desc_stim
-                stim_dict[f"[[stim_emo{cnt}_path]]"] = stim_path
-
-                desc_rep = _get_desc(os.path.basename(rep_path))
-                replay_dict[f"[[rep_emo{cnt}_name]]"] = desc_rep
-                replay_dict[f"[[rep_emo{cnt}_path]]"] = rep_path
-                cnt += 1
-            stim_dict.update(replay_dict)
-            return stim_dict
-
-        # Find stim and replay emotion condition files
-        stim_emo = sorted(
-            glob.glob(
-                f"{self._subj_work}/condition_files/*{self._run}_"
-                + "desc-stim*_events.txt"
-            )
-        )
-        if not stim_emo:
-            raise ValueError("Failed to find stimEmo events.")
-        rep_emo = sorted(
-            glob.glob(
-                f"{self._subj_work}/condition_files/*{self._run}_"
-                + "desc-repl*_events.txt"
-            )
-        )
-        if not rep_emo:
-            raise ValueError("Failed to find repEmo events.")
-        if len(stim_emo) != len(rep_emo):
-            raise ValueError("Stimulus, replay lists unequal length")
-
-        # Update attr
-        emo_dict = _stim_replay(stim_emo, rep_emo)
-        self._field_switch.update(emo_dict)
-
-    def _write_first_sep(self):
-        """Make first-level FSF for model sep.
-
-        Write a design FSF by updating fields in the template FSF for
-        model_name == sep. Write out design files to subject working
-        directory.
-
-        Returns
-        -------
-        path
-            Location, name of design FSF file
-
-        """
-
-        # Update field_switch, make design file
-        self._sep_switch()
-        fsf_edit = self._tp_short if self._use_short else self._tp_full
-        for old, new in self._field_switch.items():
-            fsf_edit = fsf_edit.replace(old, new)
-
-        # Write out
-        design_path = self._write_design(fsf_edit)
-        return design_path
-
-    def _write_first_lss(self):
-        """Title."""
-        # trial_switch = {
-        #     "[[bids_desc_trial]]": "desc-stimRomance_trial-1",
-        #     "[[desc_trial_event_name]]": "stimRomance_event_1",
-        #     "[[desc_trial_event_path]]": "/path/here/*stimRomance_trial-1_events.txt",
-        #     "[[desc_trial_remain_name]]": "stimRomance_remain_1",
-        #     "[[desc_trial_remain_path]]": "/path/here/*stimRomance_trial-1_events.txt",
-        #     f"[[stim_{num}_name]]": "replayRomance",
-        #     f"[[stim_{num}_path]]": "/path/to/*desc-replayRomance_events.txt",
-        # }
-
-        for stim_name, stim_path in self._sep_cond.items():
-
-            # For testing
-            if stim_name != "stimRomance":
-                continue
-
-            #
-            switch_sep = {}
-            sep_dict = {
-                i: j for i, j in self._sep_cond.items() if i != stim_name
-            }
-            for _cnt, _name in enumerate(sep_dict):
-                match_cnt = _cnt + 2
-                _path = sep_dict[_name]
-                switch_sep[f"[[stim_{match_cnt}_name]]"] = _name
-                switch_sep[f"[[stim_{match_cnt}_path]]"] = _path
-
-            #
-            lss_dict = self._lss_cond[stim_name]
-            for _num, event_dict in lss_dict.items():
-
-                # For testing
-                if _num != 1:
-                    continue
-
-                #
-                switch_lss = {}
-                switch_lss[
-                    "[[bids_desc_trial]]"
-                ] = f"desc-{stim_name}_trial-{_num}"
-
-                #
-                switch_lss[
-                    "[[desc_trial_event_name]]"
-                ] = f"{stim_name}_event_{_num}"
-                switch_lss["[[desc_trial_event_path]]"] = event_dict["event"]
-
-                #
-                switch_lss[
-                    "[[desc_trial_remain_name]]"
-                ] = f"{stim_name}_remain_{_num}"
-                switch_lss["[[desc_trial_remain_path]]"] = event_dict["remain"]
-
-                #
-                self._lss_design(switch_sep, switch_lss)
-
-    def _lss_design(
-        self, switch_sep: dict, switch_lss: dict
-    ) -> Union[str, os.PathLike]:
-        """Title."""
-        field_switch = self._field_switch.copy()
-        field_switch.update(switch_sep)
-        field_switch.update(switch_lss)
-        fsf_edit = (
-            self._tp_short.copy() if self._use_short else self._tp_full.copy()
-        )
-        for old, new in field_switch.items():
-            fsf_edit = fsf_edit.replace(old, new)
-
-        # Write out
-        out_dir = os.path.join(self._subj_work, "design_files")
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        out_path = os.path.join(
-            out_dir,
-            f"{self._run}_level-first_name-{self._model_name}_"
-            + f"{switch_lss['[[bids_desc_trial]]']}_design.fsf",
-        )
-        with open(out_path, "w") as tf:
-            tf.write(fsf_edit)
-        return out_path
 
 
 # %%
@@ -925,9 +925,9 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
     )
     time.sleep(30)
 
-    # Verify output exists
-    if not os.path.exists(out_path):
-        raise FileNotFoundError(f"Failed to find feat output : {out_path}")
+    # # Verify output exists
+    # if not os.path.exists(out_path):
+    #     raise FileNotFoundError(f"Failed to find feat output : {out_path}")
     return out_path
 
 

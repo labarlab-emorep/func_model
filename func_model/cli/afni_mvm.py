@@ -23,7 +23,7 @@ afni_mvm -n rm --emo-name fear disgust
 import sys
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import workflows
+from func_model.workflows import wf_afni
 from func_model.resources import afni
 
 
@@ -99,7 +99,7 @@ def main():
     # Submit workflow for each emotion
     emo_iter = emo_list if emo_list else emo_dict.keys()
     for emo_name in emo_iter:
-        workflows.afni_mvm(proj_dir, model_name, emo_name)
+        wf_afni.afni_mvm(proj_dir, model_name, emo_name)
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ import sys
 import glob
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import workflows
+from func_model.workflows import wf_fsl
 from func_model.resources import fsl
 
 
@@ -165,7 +165,7 @@ def main():
         subj_list = subj_avail
 
     # Submit workflow
-    workflows.fsl_extract(
+    wf_fsl.fsl_extract(
         proj_dir, subj_list, model_name, model_level, con_name, overwrite
     )
 

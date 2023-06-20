@@ -4,6 +4,7 @@ import os
 import glob
 import subprocess
 import shutil
+import pathlib
 from typing import Union
 import pandas as pd
 import nibabel as nib
@@ -64,15 +65,17 @@ def load_tsv(tsv_path: Union[str, os.PathLike]) -> pd.DataFrame:
     return pd.read_csv(tsv_path, sep="\t")
 
 
-def clean_up(subj_work, subj_final):
+def clean_up(subj_work, subj_final, model_name):
     """Remove unneeded files and save rest to group location.
 
     Parameters
     ----------
-    subj_work : path
+    subj_work : str, os.PathLike
         Output work location for intermediates
-    subj_final : path
+    subj_final : str, os.PathLike
         Final output location, for storage and transfer
+    model_name : str
+        Name of model (e.g. 'sep')
 
     Raises
     ------
@@ -87,6 +90,13 @@ def clean_up(subj_work, subj_final):
     if rm_list:
         for rm_path in rm_list:
             os.remove(rm_path)
+
+    if model_name == "lss":
+        subj_iter = pathlib.Path(subj_work)
+        all_files = list(subj_iter.iterdir())
+        print("\n\nall files:\n\n")
+        print(all_files)
+    return
 
     # Copy remaining files to group location, clean work location
     h_sp = subprocess.Popen(

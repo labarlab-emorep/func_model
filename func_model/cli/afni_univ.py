@@ -21,7 +21,7 @@ afni_univ -n paired --task-name movies
 import sys
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import workflows
+from func_model.workflows import wf_afni
 from func_model.resources import afni
 
 
@@ -102,7 +102,7 @@ def main():
     # Run model for each task, emotion
     for task in task_list:
         for emo_name in emo_dict.keys():
-            workflows.afni_ttest(task, model_name, emo_name, proj_dir)
+            wf_afni.afni_ttest(task, model_name, emo_name, proj_dir)
 
 
 if __name__ == "__main__":
