@@ -556,9 +556,9 @@ class _FirstLss:
         design_list = []
         for self._stim_name, _ in self._sep_cond.items():
 
-            # For testing
-            if self._stim_name != "stimRomance":
-                continue
+            # # For testing
+            # if self._stim_name != "stimRomance":
+            #     continue
 
             # Get stim_name, paths of all stims not from current iteration,
             # add them to a switch.
@@ -584,9 +584,9 @@ class _FirstLss:
         lss_list = []
         for _num, event_dict in lss_dict.items():
 
-            # For testing
-            if _num != 1:
-                continue
+            # # For testing
+            # if _num != 1:
+            #     continue
 
             # Restart attr, set output dir name
             self._switch_lss = {}
@@ -904,17 +904,20 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
     # Setup, avoid repeating work
     fsf_file = os.path.basename(fsf_path)
     run = fsf_file.split("_")[0]
+    feat_dir = fsf_file.split("_design")[0] + ".feat"
     out_dir = os.path.dirname(os.path.dirname(fsf_path))
-    out_path = os.path.join(
-        out_dir,
-        f"{run}_level-{model_level}_name-{model_name}.feat",
-        "report.html",
-    )
+    out_path = os.path.join(out_dir, feat_dir, "report.html")
     if os.path.exists(out_path):
         return out_path
 
     # Schedule feat job
-    job_name = f"{subj[-4:]}_s{sess[-1]}_r{run[-1]}_feat"
+    _job = f"{subj[-4:]}_s{sess[-1]}_r{run[-1]}"
+    if model_name == "lss":
+        _run, _level, _name, desc, trial, _suff = fsf_file.split("_")
+        job_name = f"{_job}_{desc}_{trial}_feat"
+    else:
+        job_name = f"{_job}_feat"
+
     _, _ = submit.submit_sbatch(
         f"feat {fsf_path}",
         job_name,
@@ -923,11 +926,12 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
         num_cpus=4,
         mem_gig=8,
     )
-    time.sleep(30)
 
-    # # Verify output exists
-    # if not os.path.exists(out_path):
-    #     raise FileNotFoundError(f"Failed to find feat output : {out_path}")
+    # Give time for wrap up, verify output exists
+    if not os.path.exists(out_path):
+        time.sleep(120)
+    if not os.path.exists(out_path):
+        raise FileNotFoundError(f"Failed to find feat output : {out_path}")
     return out_path
 
 

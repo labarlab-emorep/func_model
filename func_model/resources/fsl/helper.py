@@ -1,10 +1,22 @@
-"""Helper methods for FSl-based pipelines."""
+"""Helper methods for FSl-based pipelines.
+
+valid_name : check for valid model name
+valid_level : check for valid model level
+valid_task : check for valid task name
+valid_contrast : check for valid contrast
+valid_preproc : check for valid preproc type
+load_reference : return reference file content
+count_vol : get number of volumes
+get_tr : get TR length
+load_tsv : read tsv as pd.DataFrame
+clean_up : delete unneeded files and copy to group
+
+"""
 
 import os
 import glob
 import subprocess
 import shutil
-import pathlib
 from typing import Union
 import pandas as pd
 import nibabel as nib
@@ -65,6 +77,33 @@ def load_tsv(tsv_path: Union[str, os.PathLike]) -> pd.DataFrame:
     return pd.read_csv(tsv_path, sep="\t")
 
 
+def _rm_files(rm_list: list):
+    """os.remove files from list of paths."""
+    if not rm_list:
+        return
+    for rm_path in rm_list:
+        os.remove(rm_path)
+
+
+def _clean_lss(subj_work):
+    """Remove unneeded files from LSS model."""
+    # Clean parent model dir
+    run_str = f"{subj_work}/run*_name-lss*"
+    for rm_par in ["absbrain", "confound", "example"]:
+        rm_list = glob.glob(f"{run_str}/{rm_par}*")
+        _rm_files(rm_list)
+
+    for rm_dir in ["logs", "custom_timing_files"]:
+        rm_path = glob.glob(f"{run_str}/{rm_dir}")
+        for _path in rm_path:
+            shutil.rmtree(_path)
+
+    # Clean stat dir
+    for rm_stat in ["pe", "threshac", "res", "varcope", "sigma"]:
+        rm_list = glob.glob(f"{run_str}/stats/{rm_stat}*.nii.gz")
+        _rm_files(rm_list)
+
+
 def clean_up(subj_work, subj_final, model_name):
     """Remove unneeded files and save rest to group location.
 
@@ -84,19 +123,12 @@ def clean_up(subj_work, subj_final, model_name):
 
     """
     # Remove unneeded files
+    if model_name == "lss":
+        _clean_lss(subj_work)
     rm_list = glob.glob(
         f"{subj_work}/**/filtered_func_data.nii.gz", recursive=True
     )
-    if rm_list:
-        for rm_path in rm_list:
-            os.remove(rm_path)
-
-    if model_name == "lss":
-        subj_iter = pathlib.Path(subj_work)
-        all_files = list(subj_iter.iterdir())
-        print("\n\nall files:\n\n")
-        print(all_files)
-    return
+    _rm_files(rm_list)
 
     # Copy remaining files to group location, clean work location
     h_sp = subprocess.Popen(

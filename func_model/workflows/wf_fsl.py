@@ -40,7 +40,7 @@ class _SupportFslFirst:
     def _push_data(self):
         """Make remote destination and send data there."""
         dst = os.path.join(
-            self._keoki_proj, "derivatives", "model_fsl", self._subj
+            self._keoki_proj, "derivatives", self._final_dir, self._subj
         )
         make_dst = f"""\
             ssh \
@@ -309,52 +309,6 @@ class FslFirst(_SupportFslFirst):
                     for design_path in design_block:
                         design_list.append(design_path)
 
-            # # Generate run-specific condition and confound files,
-            # # account for missing confound, events files.
-            # self._get_run(os.path.basename(preproc_path))
-
-            # # For Testing
-            # if self._run != "run-01":
-            #     continue
-
-            # self._make_cond()
-            # self._make_conf()
-            # if not self._cond_comm and not self._conf_path:
-            #     continue
-
-            # # Write design file
-            # use_short = (
-            #     True
-            #     if self._run == "run-04" or self._run == "run-08"
-            #     else False
-            # )
-            # if self._model_name != "lss":
-            #     design_path = make_fsf.write_task_fsf(
-            #         self._run,
-            #         preproc_path,
-            #         self._conf_path,
-            #         self._cond_comm,
-            #         use_short,
-            #     )
-            #     design_list.append(design_path)
-            # else:
-            #     mult_design = make_fsf.write_task_fsf(
-            #         self._run,
-            #         preproc_path,
-            #         self._conf_path,
-            #         self._cond_comm,
-            #         use_short,
-            #         sep_cond=self._sep_cond,
-            #         lss_cond=self._lss_cond,
-            #     )
-            #     for design_block in mult_design:
-            #         for design_path in design_block:
-            #             design_list.append(design_path)
-
-            #     # for Testing
-            #     print(design_list)
-            #     # return
-
         # Execute design files
         self._run_feat(design_list)
 
@@ -370,8 +324,11 @@ class FslFirst(_SupportFslFirst):
             self._sess,
             "func",
         )
+        self._final_dir = (
+            "model_fsl-lss" if self._model_name == "lss" else "model_fsl"
+        )
         self._subj_final = os.path.join(
-            self._proj_deriv, "model_fsl", self._subj, self._sess
+            self._proj_deriv, self._final_dir, self._subj, self._sess
         )
         self._subj_raw = os.path.join(
             self._proj_rawdata, self._subj, self._sess, "func"
