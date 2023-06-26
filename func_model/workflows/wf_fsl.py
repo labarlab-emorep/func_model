@@ -312,7 +312,7 @@ class FslFirst(_SupportFslFirst):
         # Execute design files
         self._run_feat(design_list)
 
-        return
+        # return
         self._push_data()
 
     def _setup(self):
@@ -374,7 +374,7 @@ class FslFirst(_SupportFslFirst):
         self._get_run(os.path.basename(preproc_path))
 
         # For Testing
-        if self._run != "run-01":
+        if self._run != "run-04":
             return False
 
         self._make_cond()

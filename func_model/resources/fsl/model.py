@@ -557,7 +557,7 @@ class _FirstLss:
         for self._stim_name, _ in self._sep_cond.items():
 
             # # For testing
-            # if self._stim_name != "stimRomance":
+            # if self._stim_name != "stimAnxiety":
             #     continue
 
             # Get stim_name, paths of all stims not from current iteration,
@@ -825,7 +825,7 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
             self._lss_cond = kwargs["lss_cond"]
 
         # Set helper attrs
-        print("\t\t\tBuilding task design.fsf")
+        print("\tBuilding task design.fsf")
         self._run = run
         self._use_short = use_short
 

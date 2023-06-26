@@ -30,13 +30,13 @@ set fmri(featwatcher_yn) 0
 set fmri(sscleanup_yn) 0
 
 # Output directory
-set fmri(outputdir) "[[subj_work]]/[[run]]_level-first_name-lss_[[bids_desc_trial]]"
+set fmri(outputdir) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/foo_run-04_level-first_name-lss"
 
 # TR(s)
 set fmri(tr) 2.000000
 
 # Total volumes
-set fmri(npts) [[num_vol]]
+set fmri(npts) 200
 
 # Delete volumes
 set fmri(ndelete) 0
@@ -245,7 +245,7 @@ set fmri(regstandard_yn) 1
 set fmri(alternateReference_yn) 0
 
 # Standard image
-set fmri(regstandard) "/opt/apps/rhel8/fsl-6.0.6.4/data/standard/MNI152_T1_2mm_brain"
+set fmri(regstandard) "/usr/share/fsl/6.0.6.4/data/standard/MNI152_T1_2mm_brain"
 
 # Search space for registration to standard space
 # 0   : No search
@@ -273,16 +273,16 @@ set fmri(totalVoxels) 180525800
 set fmri(ncopeinputs) 0
 
 # 4D AVW data or FEAT directory (1)
-set feat_files(1) "[[preproc_path]]"
+set feat_files(1) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/pre_processing/fsl_denoise/sub-ER0016/ses-day2/func/sub-ER0016_ses-day2_task-scenarios_run-04_space-MNI152NLin6Asym_res-2_desc-scaled_bold"
 
 # Add confound EVs text file
 set fmri(confoundevs) 1
 
 # Confound EVs text file for analysis 1
-set confoundev_files(1) "[[conf_path]]"
+set confoundev_files(1) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/confounds_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-confounds_timeseries.txt"
 
 # EV 1 title
-set fmri(evtitle1) "[[desc_trial_remain_name]]"
+set fmri(evtitle1) "1_stimAnxiety_mult"
 
 # Basic waveform shape (EV 1)
 # 0 : Square
@@ -314,7 +314,7 @@ set fmri(tempfilt_yn1) 1
 set fmri(deriv_yn1) 1
 
 # Custom EV file (EV 1)
-set fmri(custom1) "[[desc_trial_remain_path]]"
+set fmri(custom1) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/foo_cond_files/anxiety_multiple.txt"
 
 # Orthogonalise EV 1 wrt EV 0
 set fmri(ortho1.0) 0
@@ -353,7 +353,7 @@ set fmri(ortho1.10) 0
 set fmri(ortho1.11) 0
 
 # EV 2 title
-set fmri(evtitle2) "[[stim_2_name]]"
+set fmri(evtitle2) "stimCraving"
 
 # Basic waveform shape (EV 2)
 # 0 : Square
@@ -385,7 +385,7 @@ set fmri(tempfilt_yn2) 1
 set fmri(deriv_yn2) 1
 
 # Custom EV file (EV 2)
-set fmri(custom2) "[[stim_2_path]]"
+set fmri(custom2) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-stimCraving_events.txt"
 
 # Orthogonalise EV 2 wrt EV 0
 set fmri(ortho2.0) 0
@@ -424,7 +424,7 @@ set fmri(ortho2.10) 0
 set fmri(ortho2.11) 0
 
 # EV 3 title
-set fmri(evtitle3) "[[stim_3_name]]"
+set fmri(evtitle3) "stimExcitement"
 
 # Basic waveform shape (EV 3)
 # 0 : Square
@@ -456,7 +456,7 @@ set fmri(tempfilt_yn3) 1
 set fmri(deriv_yn3) 1
 
 # Custom EV file (EV 3)
-set fmri(custom3) "[[stim_3_path]]"
+set fmri(custom3) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-stimExcitement_events.txt"
 
 # Orthogonalise EV 3 wrt EV 0
 set fmri(ortho3.0) 0
@@ -495,7 +495,7 @@ set fmri(ortho3.10) 0
 set fmri(ortho3.11) 0
 
 # EV 4 title
-set fmri(evtitle4) "[[stim_4_name]]"
+set fmri(evtitle4) "replayAnxiety"
 
 # Basic waveform shape (EV 4)
 # 0 : Square
@@ -527,7 +527,7 @@ set fmri(tempfilt_yn4) 1
 set fmri(deriv_yn4) 1
 
 # Custom EV file (EV 4)
-set fmri(custom4) "[[stim_4_path]]"
+set fmri(custom4) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-replayAnxiety_events.txt"
 
 # Orthogonalise EV 4 wrt EV 0
 set fmri(ortho4.0) 0
@@ -566,7 +566,7 @@ set fmri(ortho4.10) 0
 set fmri(ortho4.11) 0
 
 # EV 5 title
-set fmri(evtitle5) "[[stim_5_name]]"
+set fmri(evtitle5) "replayCraving"
 
 # Basic waveform shape (EV 5)
 # 0 : Square
@@ -598,7 +598,7 @@ set fmri(tempfilt_yn5) 1
 set fmri(deriv_yn5) 1
 
 # Custom EV file (EV 5)
-set fmri(custom5) "[[stim_5_path]]"
+set fmri(custom5) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-replayCraving_events.txt"
 
 # Orthogonalise EV 5 wrt EV 0
 set fmri(ortho5.0) 0
@@ -637,7 +637,7 @@ set fmri(ortho5.10) 0
 set fmri(ortho5.11) 0
 
 # EV 6 title
-set fmri(evtitle6) "[[stim_6_name]]"
+set fmri(evtitle6) "replayExcitement"
 
 # Basic waveform shape (EV 6)
 # 0 : Square
@@ -669,7 +669,7 @@ set fmri(tempfilt_yn6) 1
 set fmri(deriv_yn6) 1
 
 # Custom EV file (EV 6)
-set fmri(custom6) "[[stim_6_path]]"
+set fmri(custom6) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-replayExcitement_events.txt"
 
 # Orthogonalise EV 6 wrt EV 0
 set fmri(ortho6.0) 0
@@ -740,7 +740,7 @@ set fmri(tempfilt_yn7) 1
 set fmri(deriv_yn7) 1
 
 # Custom EV file (EV 7)
-set fmri(custom7) "[[judge_path]]"
+set fmri(custom7) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-judgment_events.txt"
 
 # Orthogonalise EV 7 wrt EV 0
 set fmri(ortho7.0) 0
@@ -811,7 +811,7 @@ set fmri(tempfilt_yn8) 1
 set fmri(deriv_yn8) 1
 
 # Custom EV file (EV 8)
-set fmri(custom8) "[[wash_path]]"
+set fmri(custom8) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-washout_events.txt"
 
 # Orthogonalise EV 8 wrt EV 0
 set fmri(ortho8.0) 0
@@ -882,7 +882,7 @@ set fmri(tempfilt_yn9) 1
 set fmri(deriv_yn9) 1
 
 # Custom EV file (EV 9)
-set fmri(custom9) "[[emosel_path]]"
+set fmri(custom9) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-emoSelect_events.txt"
 
 # Orthogonalise EV 9 wrt EV 0
 set fmri(ortho9.0) 0
@@ -953,7 +953,7 @@ set fmri(tempfilt_yn10) 1
 set fmri(deriv_yn10) 1
 
 # Custom EV file (EV 10)
-set fmri(custom10) "[[emoint_path]]"
+set fmri(custom10) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/condition_files/sub-ER0016_ses-day2_task-scenarios_run-04_desc-emoIntensity_events.txt"
 
 # Orthogonalise EV 10 wrt EV 0
 set fmri(ortho10.0) 0
@@ -992,7 +992,7 @@ set fmri(ortho10.10) 0
 set fmri(ortho10.11) 0
 
 # EV 11 title
-set fmri(evtitle11) "[[desc_trial_event_name]]"
+set fmri(evtitle11) "1_stimAnxiety_single"
 
 # Basic waveform shape (EV 11)
 # 0 : Square
@@ -1024,7 +1024,7 @@ set fmri(tempfilt_yn11) 1
 set fmri(deriv_yn11) 1
 
 # Custom EV file (EV 11)
-set fmri(custom11) "[[desc_trial_event_path]]"
+set fmri(custom11) "/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/model_fsl-lss/test_sub-ER0016/ses-day2/func/foo_cond_files/anxiety_single.txt"
 
 # Orthogonalise EV 11 wrt EV 0
 set fmri(ortho11.0) 0
@@ -1072,7 +1072,7 @@ set fmri(con_mode) orig
 set fmri(conpic_real.1) 1
 
 # Title for contrast_real 1
-set fmri(conname_real.1) "[[desc_trial_event_name]]"
+set fmri(conname_real.1) "1_stimAnxiety_single"
 
 # Real contrast_real vector 1 element 1
 set fmri(con_real1.1) 0.0
@@ -1144,7 +1144,7 @@ set fmri(con_real1.22) 0
 set fmri(conpic_real.2) 1
 
 # Title for contrast_real 2
-set fmri(conname_real.2) "[[desc_trial_event_name]]GTWash"
+set fmri(conname_real.2) "1_stimAnxietyGTwashout"
 
 # Real contrast_real vector 2 element 1
 set fmri(con_real2.1) 0
@@ -1216,7 +1216,7 @@ set fmri(con_real2.22) 0
 set fmri(conpic_orig.1) 1
 
 # Title for contrast_orig 1
-set fmri(conname_orig.1) "[[desc_trial_event_name]]"
+set fmri(conname_orig.1) "1_stimAnxiety_single"
 
 # Real contrast_orig vector 1 element 1
 set fmri(con_orig1.1) 0.0
@@ -1255,7 +1255,7 @@ set fmri(con_orig1.11) 1.0
 set fmri(conpic_orig.2) 1
 
 # Title for contrast_orig 2
-set fmri(conname_orig.2) "[[desc_trial_event_name]]GTWash"
+set fmri(conname_orig.2) "1_stimAnxietyGTwashout"
 
 # Real contrast_orig vector 2 element 1
 set fmri(con_orig2.1) 0

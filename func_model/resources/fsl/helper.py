@@ -77,33 +77,6 @@ def load_tsv(tsv_path: Union[str, os.PathLike]) -> pd.DataFrame:
     return pd.read_csv(tsv_path, sep="\t")
 
 
-def _rm_files(rm_list: list):
-    """os.remove files from list of paths."""
-    if not rm_list:
-        return
-    for rm_path in rm_list:
-        os.remove(rm_path)
-
-
-def _clean_lss(subj_work):
-    """Remove unneeded files from LSS model."""
-    # Clean parent model dir
-    run_str = f"{subj_work}/run*_name-lss*"
-    for rm_par in ["absbrain", "confound", "example"]:
-        rm_list = glob.glob(f"{run_str}/{rm_par}*")
-        _rm_files(rm_list)
-
-    for rm_dir in ["logs", "custom_timing_files"]:
-        rm_path = glob.glob(f"{run_str}/{rm_dir}")
-        for _path in rm_path:
-            shutil.rmtree(_path)
-
-    # Clean stat dir
-    for rm_stat in ["pe", "threshac", "res", "varcope", "sigma"]:
-        rm_list = glob.glob(f"{run_str}/stats/{rm_stat}*.nii.gz")
-        _rm_files(rm_list)
-
-
 def clean_up(subj_work, subj_final, model_name):
     """Remove unneeded files and save rest to group location.
 
@@ -122,9 +95,34 @@ def clean_up(subj_work, subj_final, model_name):
         Session directory not found in subj_final
 
     """
+
+    def _rm_files(rm_list: list):
+        """os.remove files from list of paths."""
+        if not rm_list:
+            return
+        for rm_path in rm_list:
+            os.remove(rm_path)
+
+    def _clean_lss():
+        """Remove unneeded files from LSS model."""
+        # Clean parent model dir
+        run_str = f"{subj_work}/run*_name-lss*"
+        for rm_par in ["absbrain", "confound", "example"]:
+            rm_list = glob.glob(f"{run_str}/{rm_par}*")
+            _rm_files(rm_list)
+        for rm_dir in ["logs", "custom_timing_files"]:
+            rm_path = glob.glob(f"{run_str}/{rm_dir}")
+            for _path in rm_path:
+                shutil.rmtree(_path)
+
+        # Clean stat dir
+        for rm_stat in ["pe", "threshac", "res", "varcope", "sigma"]:
+            rm_list = glob.glob(f"{run_str}/stats/{rm_stat}*.nii.gz")
+            _rm_files(rm_list)
+
     # Remove unneeded files
     if model_name == "lss":
-        _clean_lss(subj_work)
+        _clean_lss()
     rm_list = glob.glob(
         f"{subj_work}/**/filtered_func_data.nii.gz", recursive=True
     )
