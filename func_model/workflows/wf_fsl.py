@@ -308,9 +308,9 @@ class FslFirst(_SupportFslFirst):
                 else False
             )
 
-            # For Testing
-            if self._run != "run-04":
-                continue
+            # # For Testing
+            # if self._run != "run-04":
+            #     continue
 
             # Make required condition, confound files
             self._make_cond()

@@ -457,7 +457,7 @@ def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
 
     """
     # Setup output location
-    out_dir = os.path.join(subj_work, "simul_condition_movement")
+    out_dir = os.path.join(subj_work, "condition_confounds_simultaneous")
     out_path = os.path.join(
         out_dir, f"{subj}_{sess}_{task}_{run}_desc-simul_events.txt"
     )
