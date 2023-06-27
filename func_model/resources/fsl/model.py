@@ -1,7 +1,8 @@
 """Modeling methods for FSL-based pipelines.
 
-ConditionFiles  : make condition files for task-based EPI pipelines.
-confounds       : make confounds files from fMRIPrep output.
+ConditionFiles  : make condition files for task-based EPI pipelines
+confounds       : make confounds files from fMRIPrep output
+simul_cond_motion : identify co-ocurring events and motion for LSS
 MakeFirstFsf    : write first-level design.fsf files
 run_feat        : execute design.fsf via FEAT
 
@@ -11,6 +12,7 @@ import os
 import time
 import glob
 import json
+import math
 import pandas as pd
 import numpy as np
 from typing import Union, Tuple
@@ -438,6 +440,97 @@ def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
     out_path = os.path.join(out_dir, out_name)
     df_out.to_csv(out_path, index=False, sep="\t", na_rep=na_value)
     return (df_out, out_path)
+
+
+# %%
+def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
+    """Title.
+
+    Parameters
+    ----------
+    subj
+    sess
+    run
+    task
+    subj_work
+    subj_fsl
+
+    """
+    # Setup output location
+    out_dir = os.path.join(subj_work, "simul_condition_movement")
+    out_path = os.path.join(
+        out_dir, f"{subj}_{sess}_{task}_{run}_desc-simul_events.txt"
+    )
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # Find preproc file for TR value
+    try:
+        run_pp = glob.glob(f"{subj_fsl}/*{task}_{run}*_bold.nii.gz")[0]
+    except IndexError:
+        print(f"No preproc file for {run} found at : {subj_fsl}")
+        raise
+    len_tr = fsl.helper.get_tr(run_pp)
+
+    # Find confound file
+    conf_dir = os.path.join(subj_work, "confounds_files")
+    try:
+        conf_path = sorted(glob.glob(f"{conf_dir}/*{run}*_timeseries.txt"))[0]
+    except IndexError:
+        print(f"No confound file for {run} found at : {conf_dir}")
+        raise
+
+    # Load confound as dataframe, get columns of interest and determine
+    # volume/scan time in seconds
+    df_conf = pd.read_csv(conf_path, sep="\t")
+    mot_list = [x for x in df_conf.columns if "motion_outlier" in x]
+    if not mot_list:
+        return
+    df_mot = df_conf[mot_list].copy()
+    df_mot["sum"] = df_mot[mot_list].sum(axis=1)
+    df_mot["scan_time"] = df_mot.index * len_tr
+    del df_conf
+
+    # Find LSS condition files
+    cond_dir = os.path.join(subj_work, "condition_files")
+    cond_list = sorted(glob.glob(f"{cond_dir}/*{run}*trial*event.txt"))
+    try:
+        cond_list[0]
+    except IndexError:
+        print(f"No condition file for {run} found at : {cond_dir}")
+        raise
+
+    # Load condition file, determine event on/off times
+    df_out = pd.DataFrame(columns=["stim", "trial", "count"])
+    for cond_path in cond_list:
+        df_cond = pd.read_csv(
+            cond_path, sep="\t", names=["onset", "dur", "pm"], header=None
+        )
+        df_cond["offset"] = df_cond["onset"] + df_cond["dur"]
+        cond_on = math.floor(df_cond.loc[0]["onset"])
+        cond_off = math.ceil(df_cond.loc[0]["offset"])
+
+        # Check if motion occurred during event
+        idx_mot = df_mot.index[
+            (df_mot["scan_time"] >= cond_on) & (df_mot["scan_time"] < cond_off)
+        ]
+        num_mot = df_mot.iloc[idx_mot]["sum"].sum(axis=0)
+        if not num_mot:
+            continue
+
+        # Update df for co-occurance
+        _subj, _sess, _task, _run, desc, trial = os.path.basename(
+            cond_path
+        ).split("_")
+        df_out.loc[len(df_out)] = {
+            "stim": desc.split("-")[-1],
+            "trial": trial.split("-")[-1][0],
+            "count": int(num_mot),
+        }
+
+    # Write out if co-occurance exists
+    if df_out.shape[0]:
+        df_out.to_csv(out_path, index=False, sep="\t")
 
 
 # %%

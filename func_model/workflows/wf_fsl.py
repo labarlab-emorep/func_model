@@ -136,7 +136,7 @@ class _SupportFslFirst:
             raise ValueError(f"Unexpected task name : {self._task}")
 
     def _get_run(self, file_name: str) -> str:
-        "Determine run field from preprocessed EPI filename."
+        "Set _run attr from preprocessed EPI filename."
         try:
             (
                 _sub,
@@ -289,7 +289,7 @@ class FslFirst(_SupportFslFirst):
         #
         print("\tRunning first-level task model")
         self._setup()
-        self._make_fsf = fsl.model.MakeFirstFsf(
+        make_fsf = fsl.model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
         self._make_cf = fsl.model.ConditionFiles(
@@ -299,20 +299,73 @@ class FslFirst(_SupportFslFirst):
         # Generate design files for each run
         design_list = []
         for preproc_path in self._sess_preproc:
-            design_out = self._make_design(preproc_path)
-            if not design_out:
+
+            # Set run attr, determine template type
+            self._get_run(os.path.basename(preproc_path))
+            use_short = (
+                True
+                if self._run == "run-04" or self._run == "run-08"
+                else False
+            )
+
+            # For Testing
+            if self._run != "run-04":
                 continue
-            if self._model_name != "lss":
-                design_list.append(design_out)
-            else:
-                for design_block in design_out:
+
+            # Make required condition, confound files
+            self._make_cond()
+            self._make_conf()
+            if not self._cond_comm and not self._conf_path:
+                continue
+
+            # Make task or lss design files
+            if self._model_name == "lss":
+                fsl.model.simul_cond_motion(
+                    self._subj,
+                    self._sess,
+                    self._run,
+                    self._task,
+                    self._subj_work,
+                    self._subj_fsl,
+                )
+
+                # # For Testing
+                # return
+
+                mult_design = make_fsf.write_task_fsf(
+                    self._run,
+                    preproc_path,
+                    self._conf_path,
+                    self._cond_comm,
+                    use_short,
+                    sep_cond=self._sep_cond,
+                    lss_cond=self._lss_cond,
+                )
+
+                # Account for myriad lss designs
+                for design_block in mult_design:
                     for design_path in design_block:
                         design_list.append(design_path)
+            else:
+                design_path = make_fsf.write_task_fsf(
+                    self._run,
+                    preproc_path,
+                    self._conf_path,
+                    self._cond_comm,
+                    use_short,
+                )
+
+                # Account for failed gen
+                if not design_path:
+                    continue
+                design_list.append(design_path)
 
         # Execute design files
         self._run_feat(design_list)
 
+        # # For Testing
         # return
+
         self._push_data()
 
     def _setup(self):
@@ -364,48 +417,6 @@ class FslFirst(_SupportFslFirst):
         # Download and find required data
         self._pull_data()
         self._get_preproc()
-
-    def _make_design(
-        self, preproc_path: Union[str, os.PathLike]
-    ) -> Union[str, os.PathLike, list, None]:
-        """Title."""
-        # Generate run-specific condition and confound files,
-        # account for missing confound, events files.
-        self._get_run(os.path.basename(preproc_path))
-
-        # For Testing
-        if self._run != "run-04":
-            return False
-
-        self._make_cond()
-        self._make_conf()
-        if not self._cond_comm and not self._conf_path:
-            return None
-
-        # Write design file
-        use_short = (
-            True if self._run == "run-04" or self._run == "run-08" else False
-        )
-        if self._model_name != "lss":
-            design_path = self._make_fsf.write_task_fsf(
-                self._run,
-                preproc_path,
-                self._conf_path,
-                self._cond_comm,
-                use_short,
-            )
-            return design_path
-        else:
-            mult_design = self._make_fsf.write_task_fsf(
-                self._run,
-                preproc_path,
-                self._conf_path,
-                self._cond_comm,
-                use_short,
-                sep_cond=self._sep_cond,
-                lss_cond=self._lss_cond,
-            )
-            return mult_design
 
     def _make_cond(self):
         """Generate condition files from BIDS events files for single run."""
