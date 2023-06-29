@@ -972,7 +972,118 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
 
 
 # %%
-def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
+class MakeSecondFsf:
+    """Title.
+
+    Parameters
+    ----------
+    subj_work
+    proj_deriv
+    model_name
+
+    Methods
+    -------
+    write_task_fsf()
+
+    Example
+    -------
+
+    """
+
+    def __init__(self, subj_work, subj_deriv, model_name):
+        """Initialize."""
+        if not fsl.helper.valid_name(model_name):
+            raise ValueError(f"Unexpected value for model_name : {model_name}")
+
+        print("\t\tInitializing MakeSecondFSF")
+        self._subj_work = subj_work
+        self._subj_deriv = subj_deriv
+        self._model_name = model_name
+        self._design_tpl = fsl.helper.load_reference(
+            f"design_template_level-second_name-{self._model_name}.fsf"
+        )
+
+    def write_task_fsf(self):
+        """Title."""
+        field_switch = {
+            "[[subj_work]]": self._subj_work,
+        }
+        cope_dict = self._get_copes()
+        cnt_cope = 1
+        for cnt_ev, ev_name in enumerate(cope_dict):
+            field_switch[f"[[ev_{cnt_ev + 1}_name]]"] = ev_name
+            for _, cope_path in cope_dict[ev_name].items():
+                field_switch[f"[[ev_{cnt_cope}_cope]]"] = cope_path
+                cnt_cope += 1
+        return field_switch
+
+    def _get_copes(self) -> dict:
+        """Title."""
+        # get alphabetized copes in stimAmuse, replayAmuse order
+        emo_list = [
+            "Amusement",
+            "Anger",
+            "Anxiety",
+            "Awe",
+            "Calmness",
+            "Craving",
+            "Disgust",
+            "Excitement",
+            "Fear",
+            "Horror",
+            "Joy",
+            "Neutral",
+            "Romance",
+            "Sadness",
+            "Surprise",
+        ]
+        trial_list = ["stim", "replay"]
+
+        #
+        run_list = sorted(
+            glob.glob(f"{self._subj_deriv}/run-*_name-{self._model_name}.feat")
+        )
+        run_dict = {}
+        for run_path in run_list:
+            run = os.path.basename(run_path).split("_")[0]
+            run_dict[run] = self._align_con_cope(f"{run_path}/design.con")
+
+        #
+        cope_dict = {}
+        for emo in emo_list:
+            for trial in trial_list:
+                cope_dict[f"{trial}{emo}GTw"] = {}
+                cnt = 1
+                for _, con_dict in run_dict.items():
+                    for name, cope_path in con_dict.items():
+                        if name == f"{trial}{emo}GTw":
+                            cope_dict[f"{trial}{emo}GTw"][cnt] = cope_path
+                            cnt += 1
+        return cope_dict
+
+    def _align_con_cope(self, con_path: Union[str, os.PathLike]) -> dict:
+        """Return contrast-cope mapping {'stimAweGTw': '/*/cope.nii.gz'}."""
+        # Get contrast lines
+        con_lines = []
+        with open(con_path) as cf:
+            for ln in cf:
+                if ln.startswith("/ContrastName"):
+                    con_lines.append(ln[1:])
+
+        # Unpack contrast lines
+        cope_dir = os.path.join(os.path.dirname(con_path), "stats")
+        con_dict = {}
+        for ln in con_lines:
+            con, name = ln.split()
+            name_clean = name.split("GT")[0] + "GTw"
+            con_dict[name_clean] = os.path.join(
+                cope_dir, f"cope{con[-1]}.nii.gz"
+            )
+        return con_dict
+
+
+# %%
+def run_feat(fsf_path, subj, sess, model_name, log_dir):
     """FSL feat execute design file as a scheduled child job.
 
     Parameters
@@ -985,8 +1096,6 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
         BIDS session identifier
     model_name : str
         FSL model name
-    model_level : str
-        FSL model level
     log_dir : path
         Output location for log files
 
@@ -1003,11 +1112,8 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
         Inappropriate model name or level
 
     """
-    # Validate model_name/level
     if not fsl.helper.valid_name(model_name):
         raise ValueError(f"Unexpected value for model_name : {model_name}")
-    if not fsl.helper.valid_level(model_level):
-        raise ValueError(f"Unexpected value for model_level: {model_level}")
 
     # Setup, avoid repeating work
     fsf_file = os.path.basename(fsf_path)

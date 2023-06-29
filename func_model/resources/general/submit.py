@@ -300,7 +300,6 @@ def schedule_fsl(
             "{subj}",
             "{sess}",
             "{model_name}",
-            "{model_level}",
             "{preproc_type}",
             "{proj_rawdata}",
             "{proj_deriv}",
