@@ -247,7 +247,11 @@ class ConditionFiles:
         return out_dict
 
     def session_lss_events(self):
-        """Title.
+        """Generate condition files for LSS models.
+
+        Based on 'separate' model, first generate a set of sep condition
+        files. Then, iterate through each block of stimuli and create
+        trial and 'remaining' events, for each trial of each condition.
 
         Returns
         -------
@@ -256,30 +260,37 @@ class ConditionFiles:
             [1] = dict, lss condition files
 
         """
+        # Generate typical conditions, then event-remain pairs for
+        # each condition.
         cond_dict = self.session_separate_events()
         lss_dict = {}
         for cond_name, cond_path in cond_dict.items():
 
-            #
+            # Get condition info, setup output
             lss_dict[cond_name] = {}
             cond_path = cond_dict[cond_name]
             out_dir = os.path.dirname(cond_path)
             out_pref = os.path.basename(cond_path).split("_events")[0]
             df_cond = pd.read_csv(cond_path, sep="\t", header=None)
 
-            #
+            # Make event-remain pair for each trial
             for _idx in range(df_cond.shape[0]):
                 trial_num = _idx + 1
+
+                # Single trial
                 df_trial = df_cond[df_cond.index == _idx]
                 out_trial = os.path.join(
                     out_dir, f"{out_pref}_trial-{trial_num}event.txt"
                 )
                 df_trial.to_csv(out_trial, index=False, header=False, sep="\t")
 
+                # Remaining trials
                 df_rest = df_cond[df_cond.index != _idx]
                 out_rest = os.path.join(
                     out_dir, f"{out_pref}_trial-{trial_num}remain.txt"
                 )
+
+                # Write file and update dict
                 df_rest.to_csv(out_rest, index=False, header=False, sep="\t")
                 lss_dict[cond_name][trial_num] = {
                     "event": out_trial,
@@ -535,7 +546,17 @@ def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
 
 # %%
 class _FirstSep:
-    """Title."""
+    """Support writing first-level sep model design.fsf.
+
+    Intended for inheritance by MakeFirstFsf, references attrs
+    set by child.
+
+    Methods
+    -------
+    write_sep()
+        Coordinating writing of design.fsf, returns path to file
+
+    """
 
     def write_sep(self):
         """Make first-level FSF for model sep.
@@ -550,7 +571,6 @@ class _FirstSep:
             Location, name of design FSF file
 
         """
-
         # Update field_switch, make design file
         self._sep_switch()
         fsf_edit = self._tp_short if self._use_short else self._tp_full
@@ -565,8 +585,7 @@ class _FirstSep:
         """Update switch dictionary for model "sep".
 
         Find replay and stimulus emotion condition files for run,
-        update private method _field_switch for model_name == sep
-        specific conditions.
+        update private attr _field_switch for sep specific conditions.
 
         """
 
@@ -624,7 +643,6 @@ class _FirstSep:
 
     def _write_first(self, fsf_info: str) -> Union[str, os.PathLike]:
         """Write design.fsf and return file location."""
-        # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
@@ -639,22 +657,26 @@ class _FirstSep:
 
 # %%
 class _FirstLss:
-    """Title."""
+    """Support writing first-level LSS model designs.
+
+    Intended for inheritance by MakeFirstFsf, references attrs
+    set by child.
+
+    Methods
+    -------
+    write_lss()
+        Coordinating writing of design.fsf, returns list of lists
+
+    """
 
     def write_lss(self) -> list:
-        """Title."""
-        # TODO validate reqd attrs
-
-        # Generate a set of design lists for each stim_name (e.g. stimRomance)
+        """Coordinate writing of all design files for each condition."""
+        # Generate a set of design lists for each condition (e.g. stimRomance)
         design_list = []
         for self._stim_name, _ in self._sep_cond.items():
 
-            # # For testing
-            # if self._stim_name != "stimAnxiety":
-            #     continue
-
-            # Get stim_name, paths of all stims not from current iteration,
-            # add them to a switch.
+            # Make a switch for all names, paths of conditions that
+            # are not the current iteration.
             self._switch_sep = {}
             sep_dict = {
                 i: j for i, j in self._sep_cond.items() if i != self._stim_name
@@ -665,21 +687,16 @@ class _FirstLss:
                 self._switch_sep[f"[[stim_{match_cnt}_name]]"] = _name
                 self._switch_sep[f"[[stim_{match_cnt}_path]]"] = _path
 
-            # Trigger design.fsf generation for current stim_name
+            # Trigger generation of all design.fsf for current condition
             design_list.append(
                 self._lss_switch(self._lss_cond[self._stim_name])
             )
         return design_list
 
     def _lss_switch(self, lss_dict) -> list:
-        """Title."""
-        # Setup switch for every single trial
+        """Make an lss switch for each event, trigger design generation."""
         lss_list = []
         for _num, event_dict in lss_dict.items():
-
-            # # For testing
-            # if _num != 1:
-            #     continue
 
             # Restart attr, set output dir name
             self._switch_lss = {}
@@ -705,7 +722,7 @@ class _FirstLss:
         return lss_list
 
     def _lss_design(self) -> Union[str, os.PathLike]:
-        """Title."""
+        """Write, return path to LSS design file."""
         # Aggregate all switches
         field_switch = self._field_switch.copy()
         field_switch.update(self._switch_sep)
@@ -734,19 +751,17 @@ class _FirstLss:
 class MakeFirstFsf(_FirstSep, _FirstLss):
     """Generate first-level design FSF files for FSL modelling.
 
-    Inherits TODO.
+    Inherits _FirstSep, _FirstLss.
 
     Use pre-generated template FSF files to write run-specific
-    first-level design FSF files for planned models.
-
-    Design files are written to:
-        <subj_work>/design_files/<run>_level-first_name-<model_name>.fsf
+    first-level design FSF files for planned models. Design files
+    are written to <subj_work>/design_files.
 
     Parameters
     ----------
-    subj_work : path
+    subj_work : str, os.PathLike
         Output work location for intermediates
-    proj_deriv : path
+    proj_deriv : str, os.PathLike
         Location of project deriviatives directory
     model_name : str
         FSL model name, specifies template selection from
@@ -809,14 +824,14 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
         ----------
         run : str
             BIDS run identifier
-        preproc_path : path
-            Location and name of preprocessed EPI file
-        confound_path : path
-            Location, name of confounds file
+        preproc_path : str, os.PathLike
+            Location of preprocessed EPI file
+        confound_path : str, os.PathLike
+            Location of confounds file
 
         Returns
         -------
-        path
+        str, os.PathLike
             Location, name of generated design FSF
 
         """
@@ -888,7 +903,7 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
         use_short : bool
             Whether to use short or full template design
         **kwargs: dict, optional
-            Extra arguments for _write_first_lss: sep_cond and lss_cond
+            Keyword args for LSS models: sep_cond and lss_cond
 
         Returns
         -------
@@ -911,7 +926,7 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
                     f"Missing expected key in common_cond : {req_key}"
                 )
 
-        # Capture lss kwargs
+        # Capture LSS kwargs
         if "sep_cond" in kwargs:
             self._sep_cond = kwargs["sep_cond"]
         if "lss_cond" in kwargs:
@@ -958,7 +973,7 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
 
 # %%
 def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
-    """Execute FSL's feat.
+    """FSL feat execute design file as a scheduled child job.
 
     Parameters
     ----------

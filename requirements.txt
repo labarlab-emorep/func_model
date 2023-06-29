@@ -1,4 +1,4 @@
-nibabel==4.0.1
-numpy==1.23.1
-pandas==1.4.3
-setuptools==45.2.0
+nibabel==5.1.0
+numpy==1.25.0
+pandas==2.0.3
+setuptools==65.6.3

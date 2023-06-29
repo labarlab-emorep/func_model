@@ -162,6 +162,9 @@ class FslFirst(_SupportFslFirst):
     condition files for task-based models, then model the data
     via FSL's feat.
 
+    This workflow will sync with Keoki (via labarserv2), pulling
+    required files and uploading workflow output.
+
     Parameters
     ----------
     subj : str
@@ -286,7 +289,7 @@ class FslFirst(_SupportFslFirst):
         use FSL's FEAT to run a first-level model.
 
         """
-        #
+        # Setup and initialize needed classes
         print("\tRunning first-level task model")
         self._setup()
         make_fsf = fsl.model.MakeFirstFsf(
@@ -308,10 +311,6 @@ class FslFirst(_SupportFslFirst):
                 else False
             )
 
-            # # For Testing
-            # if self._run != "run-04":
-            #     continue
-
             # Make required condition, confound files
             self._make_cond()
             self._make_conf()
@@ -328,10 +327,6 @@ class FslFirst(_SupportFslFirst):
                     self._subj_work,
                     self._subj_fsl,
                 )
-
-                # # For Testing
-                # return
-
                 mult_design = make_fsf.write_task_fsf(
                     self._run,
                     preproc_path,
@@ -362,14 +357,10 @@ class FslFirst(_SupportFslFirst):
 
         # Execute design files
         self._run_feat(design_list)
-
-        # # For Testing
-        # return
-
         self._push_data()
 
     def _setup(self):
-        """Set needed path attrs, download and organize data."""
+        """Set needed attrs, download and organize data."""
         self._subj_work = os.path.join(
             self._work_deriv,
             f"model_fsl-{self._model_name}",
