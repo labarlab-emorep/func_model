@@ -31,6 +31,7 @@ import os
 import sys
 import glob
 import textwrap
+from copy import deepcopy
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_fsl
 from func_model.resources import fsl
@@ -150,10 +151,11 @@ def main():
     proj_deriv = os.path.join(
         proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
     )
-    subj_avail = sorted(glob.glob(f"{proj_deriv}/sub-*"))
+    subj_avail = [
+        os.path.basename(x) for x in sorted(glob.glob(f"{proj_deriv}/sub-*"))
+    ]
     if not subj_avail:
         raise ValueError(f"No FSL output found at : {proj_deriv}")
-    subj_avail = [os.path.basename(x) for x in subj_avail]
     if subj_list:
         for subj in subj_list:
             if subj not in subj_avail:
@@ -162,7 +164,7 @@ def main():
                     + f"derivatives/model_fsl : {subj}"
                 )
     if subj_all:
-        subj_list = subj_avail
+        subj_list = deepcopy(subj_avail)
 
     # Submit workflow
     wf_fsl.fsl_extract(

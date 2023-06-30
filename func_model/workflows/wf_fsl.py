@@ -570,7 +570,7 @@ def fsl_extract(
             con_name,
             design_list,
             subj_func_dir,
-            overwrite,
+            overwrite=overwrite,
         )
 
     # Make beta dataframe for each subject, session
@@ -596,6 +596,7 @@ def fsl_extract(
             proc.start()
         for proc in mult_proc:
             proc.join()
+        print("\t\tDone", flush=True)
 
     # Combine all participant dataframes
     if comb_all:
