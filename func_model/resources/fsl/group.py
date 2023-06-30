@@ -1,4 +1,10 @@
-"""Methods for group-level analyses."""
+"""Methods for group-level analyses.
+
+ExtractTaskBetas : mine nii to generate dataframes of beta estimates
+comb_matrices : concatenate participant beta-estimate dfs
+ImportanceMask : generate mask in template space from classifier output
+
+"""
 import os
 import glob
 import re
@@ -20,6 +26,11 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Inherits general.matrix.NiftiArray.
 
+    Parameters
+    ----------
+    proj_dir : path
+        Location of project directory
+
     Methods
     -------
     make_func_matrix(**args)
@@ -34,24 +45,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     """
 
-    def __init__(self, proj_dir, float_prec=4):
-        """Initialize.
-
-        Parameters
-        ----------
-        proj_dir : path
-            Location of project directory
-        float_prec : int, optional
-            Desired float point precision of dataframes
-
-        Raises
-        ------
-        TypeError
-            Unexpected type for float_prec
-
-        """
+    def __init__(self, proj_dir):
+        """Initialize."""
         print("Initializing ExtractTaskBetas")
-        super().__init__(float_prec)
+        super().__init__()
         self._proj_dir = proj_dir
 
     def _read_contrast(self):
@@ -406,7 +403,7 @@ class ImportanceMask(matrix.NiftiArray):
     def __init__(self):
         """Initialize."""
         print("Initializing ImportanceMask")
-        super().__init__(4)
+        super().__init__()
 
     def mine_template(self, tpl_path):
         """Mine a NIfTI template for information.
