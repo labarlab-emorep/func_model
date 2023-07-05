@@ -452,7 +452,7 @@ set feat_files(60) "[[ev_60_cope]]"
 set fmri(confoundevs) 0
 
 # EV 1 title
-set fmri(evtitle1) "stimAmusement"
+set fmri(evtitle1) "[[ev_1_name]]"
 
 # Basic waveform shape (EV 1)
 # 0 : Square
@@ -760,7 +760,7 @@ set fmri(evg59.1) 0
 set fmri(evg60.1) 0
 
 # EV 2 title
-set fmri(evtitle2) "replayAmusement"
+set fmri(evtitle2) "[[ev_2_name]]"
 
 # Basic waveform shape (EV 2)
 # 0 : Square
@@ -1068,7 +1068,7 @@ set fmri(evg59.2) 0
 set fmri(evg60.2) 0
 
 # EV 3 title
-set fmri(evtitle3) "stimAnger"
+set fmri(evtitle3) "[[ev_3_name]]"
 
 # Basic waveform shape (EV 3)
 # 0 : Square
@@ -1376,7 +1376,7 @@ set fmri(evg59.3) 0
 set fmri(evg60.3) 0
 
 # EV 4 title
-set fmri(evtitle4) "replayAnger"
+set fmri(evtitle4) "[[ev_4_name]]"
 
 # Basic waveform shape (EV 4)
 # 0 : Square
@@ -1684,7 +1684,7 @@ set fmri(evg59.4) 0
 set fmri(evg60.4) 0
 
 # EV 5 title
-set fmri(evtitle5) "stimAnxiety"
+set fmri(evtitle5) "[[ev_5_name]]"
 
 # Basic waveform shape (EV 5)
 # 0 : Square
@@ -1992,7 +1992,7 @@ set fmri(evg59.5) 0
 set fmri(evg60.5) 0
 
 # EV 6 title
-set fmri(evtitle6) "replayAnxiety"
+set fmri(evtitle6) "[[ev_6_name]]"
 
 # Basic waveform shape (EV 6)
 # 0 : Square
@@ -2300,7 +2300,7 @@ set fmri(evg59.6) 0
 set fmri(evg60.6) 0
 
 # EV 7 title
-set fmri(evtitle7) "stimAwe"
+set fmri(evtitle7) "[[ev_7_name]]"
 
 # Basic waveform shape (EV 7)
 # 0 : Square
@@ -2608,7 +2608,7 @@ set fmri(evg59.7) 0
 set fmri(evg60.7) 0
 
 # EV 8 title
-set fmri(evtitle8) "replayAwe"
+set fmri(evtitle8) "[[ev_8_name]]"
 
 # Basic waveform shape (EV 8)
 # 0 : Square
@@ -2916,7 +2916,7 @@ set fmri(evg59.8) 0
 set fmri(evg60.8) 0
 
 # EV 9 title
-set fmri(evtitle9) "stimCalmness"
+set fmri(evtitle9) "[[ev_9_name]]"
 
 # Basic waveform shape (EV 9)
 # 0 : Square
@@ -3224,7 +3224,7 @@ set fmri(evg59.9) 0
 set fmri(evg60.9) 0
 
 # EV 10 title
-set fmri(evtitle10) "replayCalmness"
+set fmri(evtitle10) "[[ev_10_name]]"
 
 # Basic waveform shape (EV 10)
 # 0 : Square
@@ -3532,7 +3532,7 @@ set fmri(evg59.10) 0
 set fmri(evg60.10) 0
 
 # EV 11 title
-set fmri(evtitle11) "stimCraving"
+set fmri(evtitle11) "[[ev_11_name]]"
 
 # Basic waveform shape (EV 11)
 # 0 : Square
@@ -3840,7 +3840,7 @@ set fmri(evg59.11) 0
 set fmri(evg60.11) 0
 
 # EV 12 title
-set fmri(evtitle12) "replayCraving"
+set fmri(evtitle12) "[[ev_12_name]]"
 
 # Basic waveform shape (EV 12)
 # 0 : Square
@@ -4148,7 +4148,7 @@ set fmri(evg59.12) 0
 set fmri(evg60.12) 0
 
 # EV 13 title
-set fmri(evtitle13) "stimDisgust"
+set fmri(evtitle13) "[[ev_13_name]]"
 
 # Basic waveform shape (EV 13)
 # 0 : Square
@@ -4456,7 +4456,7 @@ set fmri(evg59.13) 0
 set fmri(evg60.13) 0
 
 # EV 14 title
-set fmri(evtitle14) "replayDisgust"
+set fmri(evtitle14) "[[ev_14_name]]"
 
 # Basic waveform shape (EV 14)
 # 0 : Square
@@ -4764,7 +4764,7 @@ set fmri(evg59.14) 0
 set fmri(evg60.14) 0
 
 # EV 15 title
-set fmri(evtitle15) "stimExcitement"
+set fmri(evtitle15) "[[ev_15_name]]"
 
 # Basic waveform shape (EV 15)
 # 0 : Square
@@ -5072,7 +5072,7 @@ set fmri(evg59.15) 0
 set fmri(evg60.15) 0
 
 # EV 16 title
-set fmri(evtitle16) "replayExcitement"
+set fmri(evtitle16) "[[ev_16_name]]"
 
 # Basic waveform shape (EV 16)
 # 0 : Square
@@ -5380,7 +5380,7 @@ set fmri(evg59.16) 0
 set fmri(evg60.16) 0
 
 # EV 17 title
-set fmri(evtitle17) "stimFear"
+set fmri(evtitle17) "[[ev_17_name]]"
 
 # Basic waveform shape (EV 17)
 # 0 : Square
@@ -5688,7 +5688,7 @@ set fmri(evg59.17) 0
 set fmri(evg60.17) 0
 
 # EV 18 title
-set fmri(evtitle18) "replayFear"
+set fmri(evtitle18) "[[ev_18_name]]"
 
 # Basic waveform shape (EV 18)
 # 0 : Square
@@ -5996,7 +5996,7 @@ set fmri(evg59.18) 0
 set fmri(evg60.18) 0
 
 # EV 19 title
-set fmri(evtitle19) "stimHorror"
+set fmri(evtitle19) "[[ev_19_name]]"
 
 # Basic waveform shape (EV 19)
 # 0 : Square
@@ -6304,7 +6304,7 @@ set fmri(evg59.19) 0
 set fmri(evg60.19) 0
 
 # EV 20 title
-set fmri(evtitle20) "replayHorror"
+set fmri(evtitle20) "[[ev_20_name]]"
 
 # Basic waveform shape (EV 20)
 # 0 : Square
@@ -6612,7 +6612,7 @@ set fmri(evg59.20) 0
 set fmri(evg60.20) 0
 
 # EV 21 title
-set fmri(evtitle21) "stimJoy"
+set fmri(evtitle21) "[[ev_21_name]]"
 
 # Basic waveform shape (EV 21)
 # 0 : Square
@@ -6920,7 +6920,7 @@ set fmri(evg59.21) 0
 set fmri(evg60.21) 0
 
 # EV 22 title
-set fmri(evtitle22) "replayJoy"
+set fmri(evtitle22) "[[ev_22_name]]"
 
 # Basic waveform shape (EV 22)
 # 0 : Square
@@ -7228,7 +7228,7 @@ set fmri(evg59.22) 0
 set fmri(evg60.22) 0
 
 # EV 23 title
-set fmri(evtitle23) "stimNeutral"
+set fmri(evtitle23) "[[ev_23_name]]"
 
 # Basic waveform shape (EV 23)
 # 0 : Square
@@ -7536,7 +7536,7 @@ set fmri(evg59.23) 0
 set fmri(evg60.23) 0
 
 # EV 24 title
-set fmri(evtitle24) "replayNeutral"
+set fmri(evtitle24) "[[ev_24_name]]"
 
 # Basic waveform shape (EV 24)
 # 0 : Square
@@ -7844,7 +7844,7 @@ set fmri(evg59.24) 0
 set fmri(evg60.24) 0
 
 # EV 25 title
-set fmri(evtitle25) "stimRomance"
+set fmri(evtitle25) "[[ev_25_name]]"
 
 # Basic waveform shape (EV 25)
 # 0 : Square
@@ -8152,7 +8152,7 @@ set fmri(evg59.25) 0
 set fmri(evg60.25) 0
 
 # EV 26 title
-set fmri(evtitle26) "replayRomance"
+set fmri(evtitle26) "[[ev_26_name]]"
 
 # Basic waveform shape (EV 26)
 # 0 : Square
@@ -8460,7 +8460,7 @@ set fmri(evg59.26) 0
 set fmri(evg60.26) 0
 
 # EV 27 title
-set fmri(evtitle27) "stimSadness"
+set fmri(evtitle27) "[[ev_27_name]]"
 
 # Basic waveform shape (EV 27)
 # 0 : Square
@@ -8768,7 +8768,7 @@ set fmri(evg59.27) 0
 set fmri(evg60.27) 0
 
 # EV 28 title
-set fmri(evtitle28) "replaySadness"
+set fmri(evtitle28) "[[ev_28_name]]"
 
 # Basic waveform shape (EV 28)
 # 0 : Square
@@ -9076,7 +9076,7 @@ set fmri(evg59.28) 0
 set fmri(evg60.28) 0
 
 # EV 29 title
-set fmri(evtitle29) "stimSurprise"
+set fmri(evtitle29) "[[ev_29_name]]"
 
 # Basic waveform shape (EV 29)
 # 0 : Square
@@ -9384,7 +9384,7 @@ set fmri(evg59.29) 0
 set fmri(evg60.29) 0
 
 # EV 30 title
-set fmri(evtitle30) "replaySurprise"
+set fmri(evtitle30) "[[ev_30_name]]"
 
 # Basic waveform shape (EV 30)
 # 0 : Square
@@ -9884,7 +9884,7 @@ set fmri(con_mode) real
 set fmri(conpic_real.1) 1
 
 # Title for contrast_real 1
-set fmri(conname_real.1) "stimAmusement"
+set fmri(conname_real.1) "[[ev_1_name]]"
 
 # Real contrast_real vector 1 element 1
 set fmri(con_real1.1) 1
@@ -9980,7 +9980,7 @@ set fmri(con_real1.30) 0
 set fmri(conpic_real.2) 1
 
 # Title for contrast_real 2
-set fmri(conname_real.2) "replayAmusement"
+set fmri(conname_real.2) "[[ev_2_name]]"
 
 # Real contrast_real vector 2 element 1
 set fmri(con_real2.1) 0
@@ -10076,7 +10076,7 @@ set fmri(con_real2.30) 0
 set fmri(conpic_real.3) 1
 
 # Title for contrast_real 3
-set fmri(conname_real.3) "stimAnger"
+set fmri(conname_real.3) "[[ev_3_name]]"
 
 # Real contrast_real vector 3 element 1
 set fmri(con_real3.1) 0
@@ -10172,7 +10172,7 @@ set fmri(con_real3.30) 0
 set fmri(conpic_real.4) 1
 
 # Title for contrast_real 4
-set fmri(conname_real.4) "replayAnger"
+set fmri(conname_real.4) "[[ev_4_name]]"
 
 # Real contrast_real vector 4 element 1
 set fmri(con_real4.1) 0
@@ -10268,7 +10268,7 @@ set fmri(con_real4.30) 0
 set fmri(conpic_real.5) 1
 
 # Title for contrast_real 5
-set fmri(conname_real.5) "stimAnxiety"
+set fmri(conname_real.5) "[[ev_5_name]]"
 
 # Real contrast_real vector 5 element 1
 set fmri(con_real5.1) 0
@@ -10364,7 +10364,7 @@ set fmri(con_real5.30) 0
 set fmri(conpic_real.6) 1
 
 # Title for contrast_real 6
-set fmri(conname_real.6) "replayAnxiety"
+set fmri(conname_real.6) "[[ev_6_name]]"
 
 # Real contrast_real vector 6 element 1
 set fmri(con_real6.1) 0
@@ -10460,7 +10460,7 @@ set fmri(con_real6.30) 0
 set fmri(conpic_real.7) 1
 
 # Title for contrast_real 7
-set fmri(conname_real.7) "stimAwe"
+set fmri(conname_real.7) "[[ev_7_name]]"
 
 # Real contrast_real vector 7 element 1
 set fmri(con_real7.1) 0
@@ -10556,7 +10556,7 @@ set fmri(con_real7.30) 0
 set fmri(conpic_real.8) 1
 
 # Title for contrast_real 8
-set fmri(conname_real.8) "replayAwe"
+set fmri(conname_real.8) "[[ev_8_name]]"
 
 # Real contrast_real vector 8 element 1
 set fmri(con_real8.1) 0
@@ -10652,7 +10652,7 @@ set fmri(con_real8.30) 0
 set fmri(conpic_real.9) 1
 
 # Title for contrast_real 9
-set fmri(conname_real.9) "stimCalmness"
+set fmri(conname_real.9) "[[ev_9_name]]"
 
 # Real contrast_real vector 9 element 1
 set fmri(con_real9.1) 0
@@ -10748,7 +10748,7 @@ set fmri(con_real9.30) 0
 set fmri(conpic_real.10) 1
 
 # Title for contrast_real 10
-set fmri(conname_real.10) "replayCalmness"
+set fmri(conname_real.10) "[[ev_10_name]]"
 
 # Real contrast_real vector 10 element 1
 set fmri(con_real10.1) 0
@@ -10844,7 +10844,7 @@ set fmri(con_real10.30) 0
 set fmri(conpic_real.11) 1
 
 # Title for contrast_real 11
-set fmri(conname_real.11) "stimCraving"
+set fmri(conname_real.11) "[[ev_11_name]]"
 
 # Real contrast_real vector 11 element 1
 set fmri(con_real11.1) 0
@@ -10940,7 +10940,7 @@ set fmri(con_real11.30) 0
 set fmri(conpic_real.12) 1
 
 # Title for contrast_real 12
-set fmri(conname_real.12) "replayCraving"
+set fmri(conname_real.12) "[[ev_12_name]]"
 
 # Real contrast_real vector 12 element 1
 set fmri(con_real12.1) 0
@@ -11036,7 +11036,7 @@ set fmri(con_real12.30) 0
 set fmri(conpic_real.13) 1
 
 # Title for contrast_real 13
-set fmri(conname_real.13) "stimDisgust"
+set fmri(conname_real.13) "[[ev_13_name]]"
 
 # Real contrast_real vector 13 element 1
 set fmri(con_real13.1) 0
@@ -11132,7 +11132,7 @@ set fmri(con_real13.30) 0
 set fmri(conpic_real.14) 1
 
 # Title for contrast_real 14
-set fmri(conname_real.14) "replayDisgust"
+set fmri(conname_real.14) "[[ev_14_name]]"
 
 # Real contrast_real vector 14 element 1
 set fmri(con_real14.1) 0
@@ -11228,7 +11228,7 @@ set fmri(con_real14.30) 0
 set fmri(conpic_real.15) 1
 
 # Title for contrast_real 15
-set fmri(conname_real.15) "stimExcitement"
+set fmri(conname_real.15) "[[ev_15_name]]"
 
 # Real contrast_real vector 15 element 1
 set fmri(con_real15.1) 0
@@ -11324,7 +11324,7 @@ set fmri(con_real15.30) 0
 set fmri(conpic_real.16) 1
 
 # Title for contrast_real 16
-set fmri(conname_real.16) "replayExcitement"
+set fmri(conname_real.16) "[[ev_16_name]]"
 
 # Real contrast_real vector 16 element 1
 set fmri(con_real16.1) 0
@@ -11420,7 +11420,7 @@ set fmri(con_real16.30) 0
 set fmri(conpic_real.17) 1
 
 # Title for contrast_real 17
-set fmri(conname_real.17) "stimFear"
+set fmri(conname_real.17) "[[ev_17_name]]"
 
 # Real contrast_real vector 17 element 1
 set fmri(con_real17.1) 0
@@ -11516,7 +11516,7 @@ set fmri(con_real17.30) 0
 set fmri(conpic_real.18) 1
 
 # Title for contrast_real 18
-set fmri(conname_real.18) "replayFear"
+set fmri(conname_real.18) "[[ev_18_name]]"
 
 # Real contrast_real vector 18 element 1
 set fmri(con_real18.1) 0
@@ -11612,7 +11612,7 @@ set fmri(con_real18.30) 0
 set fmri(conpic_real.19) 1
 
 # Title for contrast_real 19
-set fmri(conname_real.19) "stimHorror"
+set fmri(conname_real.19) "[[ev_19_name]]"
 
 # Real contrast_real vector 19 element 1
 set fmri(con_real19.1) 0
@@ -11708,7 +11708,7 @@ set fmri(con_real19.30) 0
 set fmri(conpic_real.20) 1
 
 # Title for contrast_real 20
-set fmri(conname_real.20) "replayHorror"
+set fmri(conname_real.20) "[[ev_20_name]]"
 
 # Real contrast_real vector 20 element 1
 set fmri(con_real20.1) 0
@@ -11804,7 +11804,7 @@ set fmri(con_real20.30) 0
 set fmri(conpic_real.21) 1
 
 # Title for contrast_real 21
-set fmri(conname_real.21) "stimJoy"
+set fmri(conname_real.21) "[[ev_21_name]]"
 
 # Real contrast_real vector 21 element 1
 set fmri(con_real21.1) 0
@@ -11900,7 +11900,7 @@ set fmri(con_real21.30) 0
 set fmri(conpic_real.22) 1
 
 # Title for contrast_real 22
-set fmri(conname_real.22) "replayJoy"
+set fmri(conname_real.22) "[[ev_22_name]]"
 
 # Real contrast_real vector 22 element 1
 set fmri(con_real22.1) 0
@@ -11996,7 +11996,7 @@ set fmri(con_real22.30) 0
 set fmri(conpic_real.23) 1
 
 # Title for contrast_real 23
-set fmri(conname_real.23) "stimNeutral"
+set fmri(conname_real.23) "[[ev_23_name]]"
 
 # Real contrast_real vector 23 element 1
 set fmri(con_real23.1) 0
@@ -12092,7 +12092,7 @@ set fmri(con_real23.30) 0
 set fmri(conpic_real.24) 1
 
 # Title for contrast_real 24
-set fmri(conname_real.24) "replayNeutral"
+set fmri(conname_real.24) "[[ev_24_name]]"
 
 # Real contrast_real vector 24 element 1
 set fmri(con_real24.1) 0
@@ -12188,7 +12188,7 @@ set fmri(con_real24.30) 0
 set fmri(conpic_real.25) 1
 
 # Title for contrast_real 25
-set fmri(conname_real.25) "stimRomance"
+set fmri(conname_real.25) "[[ev_25_name]]"
 
 # Real contrast_real vector 25 element 1
 set fmri(con_real25.1) 0
@@ -12284,7 +12284,7 @@ set fmri(con_real25.30) 0
 set fmri(conpic_real.26) 1
 
 # Title for contrast_real 26
-set fmri(conname_real.26) "replayRomance"
+set fmri(conname_real.26) "[[ev_26_name]]"
 
 # Real contrast_real vector 26 element 1
 set fmri(con_real26.1) 0
@@ -12380,7 +12380,7 @@ set fmri(con_real26.30) 0
 set fmri(conpic_real.27) 1
 
 # Title for contrast_real 27
-set fmri(conname_real.27) "stimSadness"
+set fmri(conname_real.27) "[[ev_27_name]]"
 
 # Real contrast_real vector 27 element 1
 set fmri(con_real27.1) 0
@@ -12476,7 +12476,7 @@ set fmri(con_real27.30) 0
 set fmri(conpic_real.28) 1
 
 # Title for contrast_real 28
-set fmri(conname_real.28) "replaySadness"
+set fmri(conname_real.28) "[[ev_28_name]]"
 
 # Real contrast_real vector 28 element 1
 set fmri(con_real28.1) 0
@@ -12572,7 +12572,7 @@ set fmri(con_real28.30) 0
 set fmri(conpic_real.29) 1
 
 # Title for contrast_real 29
-set fmri(conname_real.29) "stimSurprise"
+set fmri(conname_real.29) "[[ev_29_name]]"
 
 # Real contrast_real vector 29 element 1
 set fmri(con_real29.1) 0
@@ -12668,7 +12668,7 @@ set fmri(con_real29.30) 0
 set fmri(conpic_real.30) 1
 
 # Title for contrast_real 30
-set fmri(conname_real.30) "replaySurprise"
+set fmri(conname_real.30) "[[ev_30_name]]"
 
 # Real contrast_real vector 30 element 1
 set fmri(con_real30.1) 0

@@ -545,6 +545,19 @@ def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
 
 
 # %%
+def _write_design(
+    out_dir: Union[str, os.PathLike], out_name: str, design_info: str
+) -> Union[str, os.PathLike]:
+    """Write design.fsf and return file location."""
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    out_path = os.path.join(out_dir, out_name)
+    with open(out_path, "w") as tf:
+        tf.write(design_info)
+    return out_path
+
+
+# %%
 class _FirstSep:
     """Support writing first-level sep model design.fsf.
 
@@ -578,8 +591,13 @@ class _FirstSep:
             fsf_edit = fsf_edit.replace(old, new)
 
         # Write out
-        design_path = self._write_first(fsf_edit)
-        return design_path
+        # design_path = self._write_first(fsf_edit)
+        out_dir = os.path.join(self._subj_work, "design_files")
+        out_name = (
+            f"{self._run}_level-first_name-" + f"{self._model_name}_design.fsf"
+        )
+        out_path = _write_design(out_dir, out_name, fsf_edit)
+        return out_path
 
     def _sep_switch(self):
         """Update switch dictionary for model "sep".
@@ -641,18 +659,18 @@ class _FirstSep:
         emo_dict = _stim_replay(stim_emo, rep_emo)
         self._field_switch.update(emo_dict)
 
-    def _write_first(self, fsf_info: str) -> Union[str, os.PathLike]:
-        """Write design.fsf and return file location."""
-        out_dir = os.path.join(self._subj_work, "design_files")
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        out_path = os.path.join(
-            out_dir,
-            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
-        )
-        with open(out_path, "w") as tf:
-            tf.write(fsf_info)
-        return out_path
+    # def _write_first(self, fsf_info: str) -> Union[str, os.PathLike]:
+    #     """Write design.fsf and return file location."""
+    #     out_dir = os.path.join(self._subj_work, "design_files")
+    #     if not os.path.exists(out_dir):
+    #         os.makedirs(out_dir)
+    #     out_path = os.path.join(
+    #         out_dir,
+    #         f"{self._run}_level-first_name-{self._model_name}_design.fsf",
+    #     )
+    #     with open(out_path, "w") as tf:
+    #         tf.write(fsf_info)
+    #     return out_path
 
 
 # %%
@@ -735,15 +753,11 @@ class _FirstLss:
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        out_path = os.path.join(
-            out_dir,
+        out_name = (
             f"{self._run}_level-first_name-{self._model_name}_"
-            + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf",
+            + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
         )
-        with open(out_path, "w") as tf:
-            tf.write(fsf_edit)
+        out_path = _write_design(out_dir, out_name, fsf_edit)
         return out_path
 
 
@@ -999,9 +1013,6 @@ class MakeSecondFsf:
         self._subj_work = subj_work
         self._subj_deriv = subj_deriv
         self._model_name = model_name
-        self._design_tpl = fsl.helper.load_reference(
-            f"design_template_level-second_name-{self._model_name}.fsf"
-        )
 
     def write_task_fsf(self):
         """Title."""
@@ -1015,7 +1026,19 @@ class MakeSecondFsf:
             for _, cope_path in cope_dict[ev_name].items():
                 field_switch[f"[[ev_{cnt_cope}_cope]]"] = cope_path
                 cnt_cope += 1
-        return field_switch
+
+        #
+        # return field_switch
+        design_tpl = fsl.helper.load_reference(
+            f"design_template_level-second_name-{self._model_name}.fsf"
+        )
+        for old, new in field_switch.items():
+            design_tpl = design_tpl.replace(old, new)
+
+        out_dir = os.path.join(self._subj_work, "design_files")
+        out_name = f"level-second_name-{self._model_name}_design.fsf"
+        out_path = _write_design(out_dir, out_name, design_tpl)
+        return out_path
 
     def _get_copes(self) -> dict:
         """Title."""
@@ -1043,26 +1066,24 @@ class MakeSecondFsf:
         run_list = sorted(
             glob.glob(f"{self._subj_deriv}/run-*_name-{self._model_name}.feat")
         )
-        run_dict = {}
+        self._run_dict = {}
         for run_path in run_list:
             run = os.path.basename(run_path).split("_")[0]
-            run_dict[run] = self._align_con_cope(f"{run_path}/design.con")
+            self._run_dict[run] = self._align_con_cope(
+                f"{run_path}/design.con"
+            )
 
         #
         cope_dict = {}
         for emo in emo_list:
             for trial in trial_list:
-                cope_dict[f"{trial}{emo}GTw"] = {}
-                cnt = 1
-                for _, con_dict in run_dict.items():
-                    for name, cope_path in con_dict.items():
-                        if name == f"{trial}{emo}GTw":
-                            cope_dict[f"{trial}{emo}GTw"][cnt] = cope_path
-                            cnt += 1
+                cope_dict[f"{trial}{emo}GTw"] = self._find_cope_run(
+                    f"{trial}{emo}GTw"
+                )
         return cope_dict
 
     def _align_con_cope(self, con_path: Union[str, os.PathLike]) -> dict:
-        """Return contrast-cope mapping {'stimAweGTw': '/*/cope.nii.gz'}."""
+        """Return contrast-cope mapping {'stimAweGTw': '/*/cope?.nii.gz'}."""
         # Get contrast lines
         con_lines = []
         with open(con_path) as cf:
@@ -1080,6 +1101,23 @@ class MakeSecondFsf:
                 cope_dir, f"cope{con[-1]}.nii.gz"
             )
         return con_dict
+
+    def _find_cope_run(self, match_str: str) -> dict:
+        """Find first and second instance of cope behavior.
+
+        Find first and second instance of match_str in self._run_dict,
+        return cope path in format
+        {1: "/*/cope?.nii.gz", 2: "/*/cope?.nii.gz"}.
+
+        """
+        out_dict = {}
+        cnt = 1
+        for _, con_dict in self._run_dict.items():
+            for name, cope_path in con_dict.items():
+                if name == match_str:
+                    out_dict[cnt] = cope_path
+                    cnt += 1
+        return out_dict
 
 
 # %%
