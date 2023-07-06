@@ -1015,7 +1015,14 @@ class MakeSecondFsf:
         self._model_name = model_name
 
     def write_task_fsf(self):
-        """Title."""
+        """Title.
+
+        Returns
+        -------
+        str, os.PathLike
+            Path to generated design.fsf
+
+        """
         field_switch = {
             "[[subj_work]]": self._subj_work,
         }
@@ -1121,7 +1128,7 @@ class MakeSecondFsf:
 
 
 # %%
-def run_feat(fsf_path, subj, sess, model_name, log_dir):
+def run_feat(fsf_path, subj, sess, model_name, log_dir, model_level="first"):
     """FSL feat execute design file as a scheduled child job.
 
     Parameters
@@ -1136,6 +1143,8 @@ def run_feat(fsf_path, subj, sess, model_name, log_dir):
         FSL model name
     log_dir : path
         Output location for log files
+    model_level : str, optional
+        FSL model level
 
     Returns
     -------
@@ -1152,24 +1161,35 @@ def run_feat(fsf_path, subj, sess, model_name, log_dir):
     """
     if not fsl.helper.valid_name(model_name):
         raise ValueError(f"Unexpected value for model_name : {model_name}")
+    if not fsl.helper.valid_level(model_level):
+        raise ValueError(f"Unexpected value for model_level : {model_level}")
 
     # Setup, avoid repeating work
     fsf_file = os.path.basename(fsf_path)
-    run = fsf_file.split("_")[0]
-    feat_dir = fsf_file.split("_design")[0] + ".feat"
+    if model_level == "first":
+        run = fsf_file.split("_")[0]
+        feat_dir = fsf_file.split("_design")[0] + ".feat"
+    elif model_level == "second":
+        run = None
+        feat_dir = fsf_file.split("_design")[0] + ".gfeat"
     out_dir = os.path.dirname(os.path.dirname(fsf_path))
     out_path = os.path.join(out_dir, feat_dir, "report.html")
     if os.path.exists(out_path):
         return out_path
 
-    # Schedule feat job
-    _job = f"{subj[-4:]}_s{sess[-1]}_r{run[-1]}"
+    # Determine job name
+    _job = (
+        f"{subj[-4:]}_s{sess[-1]}_r{run[-1]}"
+        if run
+        else f"{subj[-4:]}_s{sess[-1]}"
+    )
     if model_name == "lss":
         _run, _level, _name, desc, trial, _suff = fsf_file.split("_")
         job_name = f"{_job}_{desc}_{trial}_feat"
     else:
         job_name = f"{_job}_feat"
 
+    # Submit work
     _, _ = submit.submit_sbatch(
         f"feat {fsf_path}",
         job_name,

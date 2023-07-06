@@ -8,6 +8,7 @@ fsl_classify_mask   : generate template mask from classifier output
 # %%
 import os
 import glob
+import shutil
 from typing import Union, Tuple
 import subprocess
 import pandas as pd
@@ -485,9 +486,24 @@ class _SupportFslSecond(_SupportFsl):
 
     """
 
-    def _get_model(self):
+    def _get_first_model(self):
         """Download output of FslFirst."""
-        pass
+        source_model = os.path.join(
+            self._keoki_proj,
+            "derivatives/model_fsl",
+            self._subj,
+            self._sess,
+            "func",
+            f"run*_level-first_name-{self._model_name}.feat",
+        )
+        std_out, std_err = self._submit_rsync(source_model, self._subj_deriv)
+        run_feat = glob.glob(f"{self._subj_deriv}/run*.feat")
+        if not run_feat:
+            raise FileNotFoundError(
+                f"Missing required files at : {self._subj_deriv}"
+                + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
+            )
+        return run_feat
 
 
 # %%
@@ -495,6 +511,17 @@ class FslSecond(_SupportFslSecond):
     """Title.
 
     Inherits _SupportFslSecond.
+
+    Parameters
+    ----------
+    subj
+    sess
+    model_name
+    proj_deriv
+    work_deriv
+    log_dir
+    user_name
+    rsa_key
 
     """
 
@@ -530,11 +557,80 @@ class FslSecond(_SupportFslSecond):
 
     def model_task(self):
         """Title."""
-        pass
 
-    def _bypass_reg(self):
+        #
+        self._setup()
+
+        #
+        make_sec = fsl.model.MakeSecondFsf(
+            self._subj_work, self._subj_deriv, self._model_name
+        )
+        design_path = make_sec.write_task_fsf()
+        _ = fsl.model.run_feat(
+            design_path,
+            self._subj,
+            self._sess,
+            self._model_name,
+            self._log_dir,
+            model_level=self._model_level,
+        )
+
+        # For testing
+        return
+
+        #
+        fsl.helper.clean_up(
+            self._subj_work, self._subj_deriv, self._model_name
+        )
+        self._push_data()
+
+    def _setup(self):
         """Title."""
-        pass
+        self._subj_work = os.path.join(
+            self._work_deriv,
+            f"model_fsl-{self._model_name}",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._final_dir = "model_fsl"
+        self._subj_deriv = os.path.join(
+            self._proj_deriv, "model_fsl", self._subj, self._sess, "func"
+        )
+        self._subj_final = os.path.dirname(self._subj_deriv)
+        for _dir in [self._subj_work, self._subj_deriv]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+        #
+        run_feat = self._get_first_model()
+        self._bypass_reg(run_feat)
+
+    def _bypass_reg(self, feat_list: list):
+        """Title."""
+        fsl_dir = os.environ["FSLDIR"]
+        ident_path = os.path.join(fsl_dir, "etc", "flirtsch", "ident.mat")
+        if not os.path.exists(ident_path):
+            raise FileNotFoundError(
+                f"Missing required FSL file : {ident_path}"
+            )
+
+        #
+        for feat_path in feat_list:
+            reg_path = os.path.join(feat_path, "reg")
+            if not os.path.exists(reg_path):
+                os.makedirs(reg_path)
+
+            #
+            ident_out = os.path.join(reg_path, "example_func2standard.mat")
+            if not os.path.exists(ident_out):
+                shutil.copy2(ident_path, ident_out)
+
+            #
+            mean_path = os.path.join(feat_path, "mean_func.nii.gz")
+            mean_out = os.path.join(reg_path, "standard.nii.gz")
+            if not os.path.exists(mean_out):
+                shutil.copy2(mean_path, mean_out)
 
 
 # %%
