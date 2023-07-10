@@ -1,8 +1,9 @@
 """Pipelines supporting AFNI and FSL.
 
-FslFirst        : GLM task, rest data via FSL
-fsl_extract     : extract task beta-coefficiens from FSL GLM
-fsl_classify_mask   : generate template mask from classifier output
+FslFirst : GLM task, rest data via FSL
+FslSecond : second-level GLM of task data via FSl
+fsl_extract : extract task beta-coefficiens from FSL GLM
+fsl_classify_mask : generate template mask from classifier output
 
 """
 # %%
@@ -258,8 +259,6 @@ class FslFirst(_SupportFslFirst):
         User name for DCC, labarserv2
     rsa_key : str, os.PathLike
         Location of RSA key for labarserv2
-    keoki_path : str, os.PathLike, optional
-        Location of project directory on Keoki
 
     Methods
     -------
@@ -272,7 +271,7 @@ class FslFirst(_SupportFslFirst):
 
     Example
     -------
-    wf_fsl = workflows.FslFirst(*args)
+    wf_fsl = wf_fsl.FslFirst(*args)
     wf_fsl.model_rest()
     wf_fsl.model_task()
 
@@ -479,49 +478,47 @@ class FslFirst(_SupportFslFirst):
 
 
 # %%
-class _SupportFslSecond(_SupportFsl):
-    """Title.
+class FslSecond(_SupportFsl):
+    """Conduct second-level models of EPI data.
 
-    Inherits _SupportFsl.
+    Inherits _SupportFsl
 
-    """
+    Coordinate the generation and then feat execution of
+    task-based second-level models.
 
-    def _get_first_model(self):
-        """Download output of FslFirst."""
-        source_model = os.path.join(
-            self._keoki_proj,
-            "derivatives/model_fsl",
-            self._subj,
-            self._sess,
-            "func",
-            f"run*_level-first_name-{self._model_name}.feat",
-        )
-        std_out, std_err = self._submit_rsync(source_model, self._subj_deriv)
-        run_feat = glob.glob(f"{self._subj_deriv}/run*.feat")
-        if not run_feat:
-            raise FileNotFoundError(
-                f"Missing required files at : {self._subj_deriv}"
-                + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
-            )
-        return run_feat
-
-
-# %%
-class FslSecond(_SupportFslSecond):
-    """Title.
-
-    Inherits _SupportFslSecond.
+    This workflow will sync with Keoki (via labarserv2), pulling
+    required files and uploading workflow output.
 
     Parameters
     ----------
-    subj
-    sess
-    model_name
-    proj_deriv
-    work_deriv
-    log_dir
-    user_name
-    rsa_key
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    model_name : str
+        Name of FSL model, for keeping condition files and
+        output organized
+    proj_deriv : path
+        Location of project BIDs derivatives, for finding
+        preprocessed output
+    work_deriv : path
+        Output location for intermediates
+    log_dir : path
+        Output location for log files and scripts
+    user_name : str
+        User name for DCC, labarserv2
+    rsa_key : str, os.PathLike
+        Location of RSA key for labarserv2
+
+    Methods
+    -------
+    model_task()
+        Generate and execute second-level model for task EPI
+
+    Example
+    -------
+    wf_fsl = wf_fsl.FslSecond(*args)
+    wf_fsl.model_task()
 
     """
 
@@ -540,7 +537,6 @@ class FslSecond(_SupportFslSecond):
         if not fsl.helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
 
-        #
         print("Initializing FslSecond")
         super().__init__()
         self._subj = subj
@@ -554,18 +550,23 @@ class FslSecond(_SupportFslSecond):
             f"{self._user_name}@{self._keoki_ip}:{self._keoki_path}"
         )
         self._rsa_key = rsa_key
+        self._model_level = "second"
 
     def model_task(self):
-        """Title."""
+        """Run an FSL second-level model for task EPI data.
 
-        #
+        Generate and then execute a second-level FSL model. Also
+        coordinate data down/upload and cleaning.
+
+        """
+        # Make second-level design
         self._setup()
-
-        #
         make_sec = fsl.model.MakeSecondFsf(
             self._subj_work, self._subj_deriv, self._model_name
         )
         design_path = make_sec.write_task_fsf()
+
+        # Execute design file
         _ = fsl.model.run_feat(
             design_path,
             self._subj,
@@ -575,17 +576,22 @@ class FslSecond(_SupportFslSecond):
             model_level=self._model_level,
         )
 
-        # For testing
-        return
-
-        #
+        # Clean up
         fsl.helper.clean_up(
-            self._subj_work, self._subj_deriv, self._model_name
+            self._subj_work,
+            self._subj_final,
+            self._model_name,
         )
         self._push_data()
 
     def _setup(self):
-        """Title."""
+        """Coordinate setup for design generation.
+
+        Set required attrs, build directory trees,
+        download required data, and bypass registration.
+
+        """
+        # Set reqd attrs and make directory trees
         self._subj_work = os.path.join(
             self._work_deriv,
             f"model_fsl-{self._model_name}",
@@ -602,12 +608,32 @@ class FslSecond(_SupportFslSecond):
             if not os.path.exists(_dir):
                 os.makedirs(_dir)
 
-        #
-        run_feat = self._get_first_model()
-        self._bypass_reg(run_feat)
+        # Download data and avoid registration problem
+        feat_list = self._get_first_model()
+        self._bypass_reg(feat_list)
+
+    def _get_first_model(self):
+        """Download required output of FslFirst."""
+        source_model = os.path.join(
+            self._keoki_proj,
+            "derivatives/model_fsl",
+            self._subj,
+            self._sess,
+            "func",
+            f"run*_level-first_name-{self._model_name}.feat",
+        )
+        std_out, std_err = self._submit_rsync(source_model, self._subj_deriv)
+        run_feat = glob.glob(f"{self._subj_deriv}/run*.feat")
+        if not run_feat:
+            raise FileNotFoundError(
+                f"Missing required files at : {self._subj_deriv}"
+                + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
+            )
+        return run_feat
 
     def _bypass_reg(self, feat_list: list):
-        """Title."""
+        """Avoid registration issue by supplyin reqd files."""
+        # Find identity file
         fsl_dir = os.environ["FSLDIR"]
         ident_path = os.path.join(fsl_dir, "etc", "flirtsch", "ident.mat")
         if not os.path.exists(ident_path):
@@ -615,18 +641,18 @@ class FslSecond(_SupportFslSecond):
                 f"Missing required FSL file : {ident_path}"
             )
 
-        #
+        # Setup reg directory
         for feat_path in feat_list:
             reg_path = os.path.join(feat_path, "reg")
             if not os.path.exists(reg_path):
                 os.makedirs(reg_path)
 
-            #
+            # Get ident matrix
             ident_out = os.path.join(reg_path, "example_func2standard.mat")
             if not os.path.exists(ident_out):
                 shutil.copy2(ident_path, ident_out)
 
-            #
+            # Get ref epi
             mean_path = os.path.join(feat_path, "mean_func.nii.gz")
             mean_out = os.path.join(reg_path, "standard.nii.gz")
             if not os.path.exists(mean_out):

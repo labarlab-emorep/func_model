@@ -4,6 +4,7 @@ ConditionFiles  : make condition files for task-based EPI pipelines
 confounds       : make confounds files from fMRIPrep output
 simul_cond_motion : identify co-ocurring events and motion for LSS
 MakeFirstFsf    : write first-level design.fsf files
+MakeSecondFsf   : write second-level design.fsf files
 run_feat        : execute design.fsf via FEAT
 
 """
@@ -659,19 +660,6 @@ class _FirstSep:
         emo_dict = _stim_replay(stim_emo, rep_emo)
         self._field_switch.update(emo_dict)
 
-    # def _write_first(self, fsf_info: str) -> Union[str, os.PathLike]:
-    #     """Write design.fsf and return file location."""
-    #     out_dir = os.path.join(self._subj_work, "design_files")
-    #     if not os.path.exists(out_dir):
-    #         os.makedirs(out_dir)
-    #     out_path = os.path.join(
-    #         out_dir,
-    #         f"{self._run}_level-first_name-{self._model_name}_design.fsf",
-    #     )
-    #     with open(out_path, "w") as tf:
-    #         tf.write(fsf_info)
-    #     return out_path
-
 
 # %%
 class _FirstLss:
@@ -987,26 +975,42 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
 
 # %%
 class MakeSecondFsf:
-    """Title.
+    """Generate second-level design FSF files for FSL modelling.
+
+    Use pre-generated template FSF files to write session-specific
+    second-level design FSF files for planned models. Design files
+    are written to <subj_work>/design_files.
+
+    Only model_name == "sep" is currently supported. This second-level
+    model collapses across run, yielding one estimate for each emotion
+    category x stimulus | replay.
 
     Parameters
     ----------
-    subj_work
-    proj_deriv
-    model_name
+    subj_work : str, os.PathLike
+        Output work location for intermediates
+    proj_deriv : str, os.PathLike
+        Location of project deriviatives directory
+    model_name : str
+        FSL model name, specifies template selection from
+        func_model.reference_files.
 
     Methods
     -------
     write_task_fsf()
+        Generate design.fsf files for task-based EPI data, according to
+        model_name (triggers model_name-specific methods).
 
     Example
     -------
+    make_fsf = model.MakeSecondFsf(*args)
+    task_design = make_fsf.write_task_fsf()
 
     """
 
     def __init__(self, subj_work, subj_deriv, model_name):
         """Initialize."""
-        if not fsl.helper.valid_name(model_name):
+        if model_name != "sep":
             raise ValueError(f"Unexpected value for model_name : {model_name}")
 
         print("\t\tInitializing MakeSecondFSF")
@@ -1015,7 +1019,10 @@ class MakeSecondFsf:
         self._model_name = model_name
 
     def write_task_fsf(self):
-        """Title.
+        """Write second-level FSF design for task EPI.
+
+        Generate a second-level design.fsf by replacing planned
+        fields in a design template.
 
         Returns
         -------
@@ -1023,9 +1030,13 @@ class MakeSecondFsf:
             Path to generated design.fsf
 
         """
+        # Start switch
         field_switch = {
             "[[subj_work]]": self._subj_work,
         }
+
+        # Find all copes, update field_switch for emotion name
+        # and cope path.
         cope_dict = self._get_copes()
         cnt_cope = 1
         for cnt_ev, ev_name in enumerate(cope_dict):
@@ -1034,21 +1045,27 @@ class MakeSecondFsf:
                 field_switch[f"[[ev_{cnt_cope}_cope]]"] = cope_path
                 cnt_cope += 1
 
-        #
-        # return field_switch
+        # Load template and update planned values
         design_tpl = fsl.helper.load_reference(
             f"design_template_level-second_name-{self._model_name}.fsf"
         )
         for old, new in field_switch.items():
             design_tpl = design_tpl.replace(old, new)
 
+        # Write design file, return location
         out_dir = os.path.join(self._subj_work, "design_files")
         out_name = f"level-second_name-{self._model_name}_design.fsf"
         out_path = _write_design(out_dir, out_name, design_tpl)
         return out_path
 
     def _get_copes(self) -> dict:
-        """Title."""
+        """Match copes to EVs of interest.
+
+        Account for random block orders in runs, return a dict
+        alphabetized by stim|replay x emotion in format
+        {'stimAweGTw': {1: '/*/cope?.nii.gz', 2: '/*/cope?.nii.gz'}}.
+
+        """
         # get alphabetized copes in stimAmuse, replayAmuse order
         emo_list = [
             "Amusement",
@@ -1069,7 +1086,7 @@ class MakeSecondFsf:
         ]
         trial_list = ["stim", "replay"]
 
-        #
+        # Mine design.con to match EVs with copes
         run_list = sorted(
             glob.glob(f"{self._subj_deriv}/run-*_name-{self._model_name}.feat")
         )
@@ -1080,7 +1097,8 @@ class MakeSecondFsf:
                 f"{run_path}/design.con"
             )
 
-        #
+        # Find paths to first and second instance of
+        # EV of interest (e.g. stimAmusementGTw).
         cope_dict = {}
         for emo in emo_list:
             for trial in trial_list:

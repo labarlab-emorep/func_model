@@ -18,7 +18,7 @@ Model names:
 
 Level names:
     - first = first-level GLM
-    - second = TODO, second-level GLM
+    - second = second-level GLM, model-name=sep only
 
 Examples
 --------

@@ -278,7 +278,7 @@ def schedule_fsl(
         raise ValueError(f"Unexpected model level : {model_level}")
 
     def _sbatch_head() -> str:
-        """Title."""
+        """Return script header."""
         subj_short = subj[6:]
         sess_short = sess[-1]
         return f"""\
@@ -292,9 +292,8 @@ def schedule_fsl(
             from func_model.workflows import wf_fsl
         """
 
-    #
     def _first_call() -> str:
-        """Title."""
+        """Return first-level wf call."""
         wf_meth = "model_rest" if model_name == "rest" else "model_task"
         return f"""{_sbatch_head()}
             wf_obj = wf_fsl.FslFirst(
@@ -312,9 +311,8 @@ def schedule_fsl(
             wf_obj.{wf_meth}()
         """
 
-    #
     def _second_call() -> str:
-        """Title."""
+        """Return second-level wf call."""
         return f"""{_sbatch_head()}
             wf_obj = wf_fsl.FslSecond(
                 "{subj}",
