@@ -22,7 +22,7 @@ import os
 import sys
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model import workflows
+from func_model.workflows import wf_fsl
 from func_model.resources import fsl
 
 
@@ -143,7 +143,7 @@ def main():
         raise FileNotFoundError(f"Expected to find template : {tpl_path}")
 
     # Submit workflow
-    workflows.fsl_classify_mask(
+    wf_fsl.fsl_classify_mask(
         proj_dir, model_name, model_level, con_name, task_name, tpl_path
     )
 

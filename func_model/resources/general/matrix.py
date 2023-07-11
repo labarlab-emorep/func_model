@@ -1,4 +1,9 @@
-"""Resources dealing with NIfTI matrices."""
+"""Resources dealing with NIfTI matrices.
+
+NiftiArray : manage converting nii voxel values to arrays
+C3dMethods : useful methods using c3d for nii manipulation
+
+"""
 import os
 import numpy as np
 import pandas as pd
@@ -11,6 +16,11 @@ class NiftiArray:
 
     Helper methods for converting 3D NIfTI files to 1D arrays
     and dataframes.
+
+    Parameters
+    ----------
+    float_prec : int, optional
+        Float precision of dataframe
 
     Methods
     -------
@@ -35,7 +45,7 @@ class NiftiArray:
 
     """
 
-    def __init__(self, float_prec: int):
+    def __init__(self, float_prec: int = 4):
         """Initialize."""
         if not isinstance(float_prec, int):
             raise TypeError("Expected float_prec type int")
@@ -119,13 +129,18 @@ class NiftiArray:
 class C3dMethods:
     """Various c3d-based methods to help processing NIfTI files.
 
+    Parameters
+    ----------
+    out_dir : path
+        Output location
+
     Methods
     -------
-    thresh
+    thresh(*args)
         Threshold voxels values between a range
-    comb
+    comb(*args)
         Combine a stack of images by summation
-    mult
+    mult(*args)
         Multiply to images
 
     Examples
@@ -138,19 +153,7 @@ class C3dMethods:
     """
 
     def __init__(self, out_dir):
-        """Initialize.
-
-        Parameters
-        ----------
-        out_dir : path
-            Output location
-
-        Raises
-        -------
-        EnvironmentError
-            Missing c3d in PATH
-
-        """
+        """Initialize."""
         self.out_dir = out_dir
         if "c3d" not in os.environ["PATH"]:
             raise EnvironmentError("c3d not found in OS PATH")
