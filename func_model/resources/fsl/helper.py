@@ -31,7 +31,7 @@ def valid_name(model_name: str) -> bool:
 
 def valid_level(model_level: str) -> bool:
     """Check if model level is valid."""
-    return model_level in ["first"]
+    return model_level in ["first", "second"]
 
 
 def valid_task(task: str) -> bool:

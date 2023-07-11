@@ -277,41 +277,61 @@ def schedule_fsl(
     if not fsl.helper.valid_level(model_level):
         raise ValueError(f"Unexpected model level : {model_level}")
 
-    # Determine workflow methods
-    wf_class = f"Fsl{model_level.capitalize()}"
-    wf_meth = "model_rest" if model_name == "rest" else "model_task"
+    def _sbatch_head() -> str:
+        """Return script header."""
+        subj_short = subj[6:]
+        sess_short = sess[-1]
+        return f"""\
+            #!/bin/env {sys.executable}
+            #SBATCH --job-name=p{subj_short}s{sess_short}
+            #SBATCH --output={log_dir}/par{subj_short}s{sess_short}.txt
+            #SBATCH --time=30:00:00
+            #SBATCH --mem=8G
+            import os
+            import sys
+            from func_model.workflows import wf_fsl
+        """
 
-    # Write parent python script
-    subj_short = subj[6:]
-    sess_short = sess[-1]
-    sbatch_cmd = f"""\
-        #!/bin/env {sys.executable}
+    def _first_call() -> str:
+        """Return first-level wf call."""
+        wf_meth = "model_rest" if model_name == "rest" else "model_task"
+        return f"""{_sbatch_head()}
+            wf_obj = wf_fsl.FslFirst(
+                "{subj}",
+                "{sess}",
+                "{model_name}",
+                "{preproc_type}",
+                "{proj_rawdata}",
+                "{proj_deriv}",
+                "{work_deriv}",
+                "{log_dir}",
+                "{user_name}",
+                "{rsa_key}",
+            )
+            wf_obj.{wf_meth}()
+        """
 
-        #SBATCH --job-name=p{subj_short}s{sess_short}
-        #SBATCH --output={log_dir}/par{subj_short}s{sess_short}.txt
-        #SBATCH --time=30:00:00
-        #SBATCH --mem=8G
+    def _second_call() -> str:
+        """Return second-level wf call."""
+        return f"""{_sbatch_head()}
+            wf_obj = wf_fsl.FslSecond(
+                "{subj}",
+                "{sess}",
+                "{model_name}",
+                "{proj_deriv}",
+                "{work_deriv}",
+                "{log_dir}",
+                "{user_name}",
+                "{rsa_key}",
+            )
+            wf_obj.model_task()
+        """
 
-        import os
-        import sys
-        from func_model.workflows import wf_fsl
-
-        wf_obj = wf_fsl.{wf_class}(
-            "{subj}",
-            "{sess}",
-            "{model_name}",
-            "{model_level}",
-            "{preproc_type}",
-            "{proj_rawdata}",
-            "{proj_deriv}",
-            "{work_deriv}",
-            "{log_dir}",
-            "{user_name}",
-            "{rsa_key}",
-        )
-        wf_obj.{wf_meth}()
-
-    """
+    # Issues with getattr triggering inner function
+    if model_level == "first":
+        sbatch_cmd = _first_call()
+    else:
+        sbatch_cmd = _second_call()
     sbatch_cmd = textwrap.dedent(sbatch_cmd)
     py_script = (
         f"{log_dir}/run-fsl_model-{model_name}_"

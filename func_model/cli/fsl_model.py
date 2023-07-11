@@ -10,14 +10,15 @@ derivatives:
 Model names:
     - sep = emotion stimulus (scenarios, movies) and replay are
         modeled separately
-    - rest = model resting-state data to remove nuissance regressors
+    - rest = model resting-state data to remove nuissance regressors,
+        first-level only
     - lss = similar to sep, but with each trial separate,
         first-level only
     - both = TODO, emotion stimulus and replay modeled together
 
 Level names:
     - first = first-level GLM
-    - second = TODO, second-level GLM
+    - second = second-level GLM, model-name=sep only
 
 Examples
 --------
@@ -53,7 +54,7 @@ def _get_args():
         default="first",
         help=textwrap.dedent(
             """\
-            [first]
+            [first | second]
             FSL model level, for triggering different workflows
             (default : %(default)s)
             """

@@ -1,13 +1,15 @@
 """Pipelines supporting AFNI and FSL.
 
-FslFirst        : GLM task, rest data via FSL
-fsl_extract     : extract task beta-coefficiens from FSL GLM
-fsl_classify_mask   : generate template mask from classifier output
+FslFirst : GLM task, rest data via FSL
+FslSecond : second-level GLM of task data via FSl
+fsl_extract : extract task beta-coefficiens from FSL GLM
+fsl_classify_mask : generate template mask from classifier output
 
 """
 # %%
 import os
 import glob
+import shutil
 from typing import Union, Tuple
 import subprocess
 import pandas as pd
@@ -17,8 +19,16 @@ from func_model.resources import fsl
 
 
 # %%
-class _SupportFslFirst:
-    """Offload helper methods from FslFirst."""
+class _SupportFsl:
+    """General helper methods for first- and second-level workflows."""
+
+    def __init__(self):
+        """Initialize."""
+        self._keoki_ip = "ccn-labarserv2.vm.duke.edu"
+        self._keoki_path = (
+            "/mnt/keoki/experiments2/EmoRep/"
+            + "Exp2_Compute_Emotion/data_scanner_BIDS"
+        )
 
     def _submit_rsync(self, src: str, dst: str) -> Tuple:
         """Execute rsync between DCC and labarserv2."""
@@ -50,6 +60,65 @@ class _SupportFslFirst:
             """
         _, _ = self._quick_sp(make_dst)
         _, _ = self._submit_rsync(self._subj_final, dst)
+
+
+# %%
+class _SupportFslFirst(_SupportFsl):
+    """Offload helper methods from FslFirst.
+
+    Inherits _SupportFsl.
+
+    """
+
+    def _setup(self):
+        """Set needed attrs, download and organize data."""
+        self._subj_work = os.path.join(
+            self._work_deriv,
+            f"model_fsl-{self._model_name}",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._final_dir = (
+            "model_fsl-lss" if self._model_name == "lss" else "model_fsl"
+        )
+        self._subj_final = os.path.join(
+            self._proj_deriv, self._final_dir, self._subj, self._sess
+        )
+        self._subj_raw = os.path.join(
+            self._proj_rawdata, self._subj, self._sess, "func"
+        )
+        self._subj_fp = os.path.join(
+            self._proj_deriv,
+            "pre_processing",
+            "fmriprep",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._subj_fsl = os.path.join(
+            self._proj_deriv,
+            "pre_processing",
+            "fsl_denoise",
+            self._subj,
+            self._sess,
+            "func",
+        )
+
+        # Make needed directories
+        for _dir in [
+            self._subj_work,
+            self._subj_final,
+            self._subj_raw,
+            self._subj_fp,
+            self._subj_fsl,
+        ]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+        # Download and find required data
+        self._pull_data()
+        self._get_preproc()
 
     def _pull_data(self):
         """Download required files for modeling."""
@@ -174,8 +243,6 @@ class FslFirst(_SupportFslFirst):
     model_name : str
         Name of FSL model, for keeping condition files and
         output organized
-    model_level : str
-        Level of FSL model
     preproc_type : str
         [smoothed | scaled]
         Select preprocessed EPI file to model
@@ -192,8 +259,6 @@ class FslFirst(_SupportFslFirst):
         User name for DCC, labarserv2
     rsa_key : str, os.PathLike
         Location of RSA key for labarserv2
-    keoki_path : str, os.PathLike, optional
-        Location of project directory on Keoki
 
     Methods
     -------
@@ -206,7 +271,7 @@ class FslFirst(_SupportFslFirst):
 
     Example
     -------
-    wf_fsl = workflows.FslFirst(*args)
+    wf_fsl = wf_fsl.FslFirst(*args)
     wf_fsl.model_rest()
     wf_fsl.model_task()
 
@@ -217,7 +282,6 @@ class FslFirst(_SupportFslFirst):
         subj,
         sess,
         model_name,
-        model_level,
         preproc_type,
         proj_rawdata,
         proj_deriv,
@@ -225,29 +289,27 @@ class FslFirst(_SupportFslFirst):
         log_dir,
         user_name,
         rsa_key,
-        keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
         if not fsl.helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
-        if not fsl.helper.valid_level(model_level):
-            raise ValueError(f"Unexpected model level : {model_level}")
         if not fsl.helper.valid_preproc(preproc_type):
             raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
+        super().__init__()
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
-        self._model_level = model_level
         self._preproc_type = preproc_type
         self._proj_rawdata = proj_rawdata
         self._proj_deriv = proj_deriv
         self._work_deriv = work_deriv
         self._log_dir = log_dir
         self._user_name = user_name
-        self._keoki_ip = "ccn-labarserv2.vm.duke.edu"
-        self._keoki_proj = f"{self._user_name}@{self._keoki_ip}:{keoki_path}"
+        self._keoki_proj = (
+            f"{self._user_name}@{self._keoki_ip}:{self._keoki_path}"
+        )
         self._rsa_key = rsa_key
 
     def model_rest(self):
@@ -359,56 +421,6 @@ class FslFirst(_SupportFslFirst):
         self._run_feat(design_list)
         self._push_data()
 
-    def _setup(self):
-        """Set needed attrs, download and organize data."""
-        self._subj_work = os.path.join(
-            self._work_deriv,
-            f"model_fsl-{self._model_name}",
-            self._subj,
-            self._sess,
-            "func",
-        )
-        self._final_dir = (
-            "model_fsl-lss" if self._model_name == "lss" else "model_fsl"
-        )
-        self._subj_final = os.path.join(
-            self._proj_deriv, self._final_dir, self._subj, self._sess
-        )
-        self._subj_raw = os.path.join(
-            self._proj_rawdata, self._subj, self._sess, "func"
-        )
-        self._subj_fp = os.path.join(
-            self._proj_deriv,
-            "pre_processing",
-            "fmriprep",
-            self._subj,
-            self._sess,
-            "func",
-        )
-        self._subj_fsl = os.path.join(
-            self._proj_deriv,
-            "pre_processing",
-            "fsl_denoise",
-            self._subj,
-            self._sess,
-            "func",
-        )
-
-        # Make needed directories
-        for _dir in [
-            self._subj_work,
-            self._subj_final,
-            self._subj_raw,
-            self._subj_fp,
-            self._subj_fsl,
-        ]:
-            if not os.path.exists(_dir):
-                os.makedirs(_dir)
-
-        # Download and find required data
-        self._pull_data()
-        self._get_preproc()
-
     def _make_cond(self):
         """Generate condition files from BIDS events files for single run."""
         # Find events files in rawdata
@@ -455,7 +467,6 @@ class FslFirst(_SupportFslFirst):
                     self._subj,
                     self._sess,
                     self._model_name,
-                    self._model_level,
                     self._log_dir,
                 )
                 for fsf_path in design_list
@@ -464,6 +475,188 @@ class FslFirst(_SupportFslFirst):
         fsl.helper.clean_up(
             self._subj_work, self._subj_final, self._model_name
         )
+
+
+# %%
+class FslSecond(_SupportFsl):
+    """Conduct second-level models of EPI data.
+
+    Inherits _SupportFsl
+
+    Coordinate the generation and then feat execution of
+    task-based second-level models.
+
+    This workflow will sync with Keoki (via labarserv2), pulling
+    required files and uploading workflow output.
+
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    model_name : str
+        Name of FSL model, for keeping condition files and
+        output organized
+    proj_deriv : path
+        Location of project BIDs derivatives, for finding
+        preprocessed output
+    work_deriv : path
+        Output location for intermediates
+    log_dir : path
+        Output location for log files and scripts
+    user_name : str
+        User name for DCC, labarserv2
+    rsa_key : str, os.PathLike
+        Location of RSA key for labarserv2
+
+    Methods
+    -------
+    model_task()
+        Generate and execute second-level model for task EPI
+
+    Example
+    -------
+    wf_fsl = wf_fsl.FslSecond(*args)
+    wf_fsl.model_task()
+
+    """
+
+    def __init__(
+        self,
+        subj,
+        sess,
+        model_name,
+        proj_deriv,
+        work_deriv,
+        log_dir,
+        user_name,
+        rsa_key,
+    ):
+        """Initialize."""
+        if not fsl.helper.valid_name(model_name):
+            raise ValueError(f"Unexpected model name : {model_name}")
+
+        print("Initializing FslSecond")
+        super().__init__()
+        self._subj = subj
+        self._sess = sess
+        self._model_name = model_name
+        self._proj_deriv = proj_deriv
+        self._work_deriv = work_deriv
+        self._log_dir = log_dir
+        self._user_name = user_name
+        self._keoki_proj = (
+            f"{self._user_name}@{self._keoki_ip}:{self._keoki_path}"
+        )
+        self._rsa_key = rsa_key
+        self._model_level = "second"
+
+    def model_task(self):
+        """Run an FSL second-level model for task EPI data.
+
+        Generate and then execute a second-level FSL model. Also
+        coordinate data down/upload and cleaning.
+
+        """
+        # Make second-level design
+        self._setup()
+        make_sec = fsl.model.MakeSecondFsf(
+            self._subj_work, self._subj_deriv, self._model_name
+        )
+        design_path = make_sec.write_task_fsf()
+
+        # Execute design file
+        _ = fsl.model.run_feat(
+            design_path,
+            self._subj,
+            self._sess,
+            self._model_name,
+            self._log_dir,
+            model_level=self._model_level,
+        )
+
+        # Clean up
+        fsl.helper.clean_up(
+            self._subj_work,
+            self._subj_final,
+            self._model_name,
+        )
+        self._push_data()
+
+    def _setup(self):
+        """Coordinate setup for design generation.
+
+        Set required attrs, build directory trees,
+        download required data, and bypass registration.
+
+        """
+        # Set reqd attrs and make directory trees
+        self._subj_work = os.path.join(
+            self._work_deriv,
+            f"model_fsl-{self._model_name}",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._final_dir = "model_fsl"
+        self._subj_deriv = os.path.join(
+            self._proj_deriv, "model_fsl", self._subj, self._sess, "func"
+        )
+        self._subj_final = os.path.dirname(self._subj_deriv)
+        for _dir in [self._subj_work, self._subj_deriv]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+        # Download data and avoid registration problem
+        feat_list = self._get_first_model()
+        self._bypass_reg(feat_list)
+
+    def _get_first_model(self):
+        """Download required output of FslFirst."""
+        source_model = os.path.join(
+            self._keoki_proj,
+            "derivatives/model_fsl",
+            self._subj,
+            self._sess,
+            "func",
+            f"run*_level-first_name-{self._model_name}.feat",
+        )
+        std_out, std_err = self._submit_rsync(source_model, self._subj_deriv)
+        run_feat = glob.glob(f"{self._subj_deriv}/run*.feat")
+        if not run_feat:
+            raise FileNotFoundError(
+                f"Missing required files at : {self._subj_deriv}"
+                + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
+            )
+        return run_feat
+
+    def _bypass_reg(self, feat_list: list):
+        """Avoid registration issue by supplyin reqd files."""
+        # Find identity file
+        fsl_dir = os.environ["FSLDIR"]
+        ident_path = os.path.join(fsl_dir, "etc", "flirtsch", "ident.mat")
+        if not os.path.exists(ident_path):
+            raise FileNotFoundError(
+                f"Missing required FSL file : {ident_path}"
+            )
+
+        # Setup reg directory
+        for feat_path in feat_list:
+            reg_path = os.path.join(feat_path, "reg")
+            if not os.path.exists(reg_path):
+                os.makedirs(reg_path)
+
+            # Get ident matrix
+            ident_out = os.path.join(reg_path, "example_func2standard.mat")
+            if not os.path.exists(ident_out):
+                shutil.copy2(ident_path, ident_out)
+
+            # Get ref epi
+            mean_path = os.path.join(feat_path, "mean_func.nii.gz")
+            mean_out = os.path.join(reg_path, "standard.nii.gz")
+            if not os.path.exists(mean_out):
+                shutil.copy2(mean_path, mean_out)
 
 
 # %%

@@ -4,6 +4,7 @@ ConditionFiles  : make condition files for task-based EPI pipelines
 confounds       : make confounds files from fMRIPrep output
 simul_cond_motion : identify co-ocurring events and motion for LSS
 MakeFirstFsf    : write first-level design.fsf files
+MakeSecondFsf   : write second-level design.fsf files
 run_feat        : execute design.fsf via FEAT
 
 """
@@ -545,6 +546,19 @@ def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
 
 
 # %%
+def _write_design(
+    out_dir: Union[str, os.PathLike], out_name: str, design_info: str
+) -> Union[str, os.PathLike]:
+    """Write design.fsf and return file location."""
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    out_path = os.path.join(out_dir, out_name)
+    with open(out_path, "w") as tf:
+        tf.write(design_info)
+    return out_path
+
+
+# %%
 class _FirstSep:
     """Support writing first-level sep model design.fsf.
 
@@ -578,8 +592,13 @@ class _FirstSep:
             fsf_edit = fsf_edit.replace(old, new)
 
         # Write out
-        design_path = self._write_first(fsf_edit)
-        return design_path
+        # design_path = self._write_first(fsf_edit)
+        out_dir = os.path.join(self._subj_work, "design_files")
+        out_name = (
+            f"{self._run}_level-first_name-" + f"{self._model_name}_design.fsf"
+        )
+        out_path = _write_design(out_dir, out_name, fsf_edit)
+        return out_path
 
     def _sep_switch(self):
         """Update switch dictionary for model "sep".
@@ -640,19 +659,6 @@ class _FirstSep:
         # Update attr
         emo_dict = _stim_replay(stim_emo, rep_emo)
         self._field_switch.update(emo_dict)
-
-    def _write_first(self, fsf_info: str) -> Union[str, os.PathLike]:
-        """Write design.fsf and return file location."""
-        out_dir = os.path.join(self._subj_work, "design_files")
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        out_path = os.path.join(
-            out_dir,
-            f"{self._run}_level-first_name-{self._model_name}_design.fsf",
-        )
-        with open(out_path, "w") as tf:
-            tf.write(fsf_info)
-        return out_path
 
 
 # %%
@@ -735,15 +741,11 @@ class _FirstLss:
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        out_path = os.path.join(
-            out_dir,
+        out_name = (
             f"{self._run}_level-first_name-{self._model_name}_"
-            + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf",
+            + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
         )
-        with open(out_path, "w") as tf:
-            tf.write(fsf_edit)
+        out_path = _write_design(out_dir, out_name, fsf_edit)
         return out_path
 
 
@@ -972,7 +974,179 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
 
 
 # %%
-def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
+class MakeSecondFsf:
+    """Generate second-level design FSF files for FSL modelling.
+
+    Use pre-generated template FSF files to write session-specific
+    second-level design FSF files for planned models. Design files
+    are written to <subj_work>/design_files.
+
+    Only model_name == "sep" is currently supported. This second-level
+    model collapses across run, yielding one estimate for each emotion
+    category x stimulus | replay.
+
+    Parameters
+    ----------
+    subj_work : str, os.PathLike
+        Output work location for intermediates
+    proj_deriv : str, os.PathLike
+        Location of project deriviatives directory
+    model_name : str
+        FSL model name, specifies template selection from
+        func_model.reference_files.
+
+    Methods
+    -------
+    write_task_fsf()
+        Generate design.fsf files for task-based EPI data, according to
+        model_name (triggers model_name-specific methods).
+
+    Example
+    -------
+    make_fsf = model.MakeSecondFsf(*args)
+    task_design = make_fsf.write_task_fsf()
+
+    """
+
+    def __init__(self, subj_work, subj_deriv, model_name):
+        """Initialize."""
+        if model_name != "sep":
+            raise ValueError(f"Unexpected value for model_name : {model_name}")
+
+        print("\t\tInitializing MakeSecondFSF")
+        self._subj_work = subj_work
+        self._subj_deriv = subj_deriv
+        self._model_name = model_name
+
+    def write_task_fsf(self):
+        """Write second-level FSF design for task EPI.
+
+        Generate a second-level design.fsf by replacing planned
+        fields in a design template.
+
+        Returns
+        -------
+        str, os.PathLike
+            Path to generated design.fsf
+
+        """
+        # Start switch
+        field_switch = {
+            "[[subj_work]]": self._subj_work,
+        }
+
+        # Find all copes, update field_switch for emotion name
+        # and cope path.
+        cope_dict = self._get_copes()
+        cnt_cope = 1
+        for cnt_ev, ev_name in enumerate(cope_dict):
+            field_switch[f"[[ev_{cnt_ev + 1}_name]]"] = ev_name
+            for _, cope_path in cope_dict[ev_name].items():
+                field_switch[f"[[ev_{cnt_cope}_cope]]"] = cope_path
+                cnt_cope += 1
+
+        # Load template and update planned values
+        design_tpl = fsl.helper.load_reference(
+            f"design_template_level-second_name-{self._model_name}.fsf"
+        )
+        for old, new in field_switch.items():
+            design_tpl = design_tpl.replace(old, new)
+
+        # Write design file, return location
+        out_dir = os.path.join(self._subj_work, "design_files")
+        out_name = f"level-second_name-{self._model_name}_design.fsf"
+        out_path = _write_design(out_dir, out_name, design_tpl)
+        return out_path
+
+    def _get_copes(self) -> dict:
+        """Match copes to EVs of interest.
+
+        Account for random block orders in runs, return a dict
+        alphabetized by stim|replay x emotion in format
+        {'stimAweGTw': {1: '/*/cope?.nii.gz', 2: '/*/cope?.nii.gz'}}.
+
+        """
+        # get alphabetized copes in stimAmuse, replayAmuse order
+        emo_list = [
+            "Amusement",
+            "Anger",
+            "Anxiety",
+            "Awe",
+            "Calmness",
+            "Craving",
+            "Disgust",
+            "Excitement",
+            "Fear",
+            "Horror",
+            "Joy",
+            "Neutral",
+            "Romance",
+            "Sadness",
+            "Surprise",
+        ]
+        trial_list = ["stim", "replay"]
+
+        # Mine design.con to match EVs with copes
+        run_list = sorted(
+            glob.glob(f"{self._subj_deriv}/run-*_name-{self._model_name}.feat")
+        )
+        self._run_dict = {}
+        for run_path in run_list:
+            run = os.path.basename(run_path).split("_")[0]
+            self._run_dict[run] = self._align_con_cope(
+                f"{run_path}/design.con"
+            )
+
+        # Find paths to first and second instance of
+        # EV of interest (e.g. stimAmusementGTw).
+        cope_dict = {}
+        for emo in emo_list:
+            for trial in trial_list:
+                cope_dict[f"{trial}{emo}GTw"] = self._find_cope_run(
+                    f"{trial}{emo}GTw"
+                )
+        return cope_dict
+
+    def _align_con_cope(self, con_path: Union[str, os.PathLike]) -> dict:
+        """Return contrast-cope mapping {'stimAweGTw': '/*/cope?.nii.gz'}."""
+        # Get contrast lines
+        con_lines = []
+        with open(con_path) as cf:
+            for ln in cf:
+                if ln.startswith("/ContrastName"):
+                    con_lines.append(ln[1:])
+
+        # Unpack contrast lines
+        cope_dir = os.path.join(os.path.dirname(con_path), "stats")
+        con_dict = {}
+        for ln in con_lines:
+            con, name = ln.split()
+            name_clean = name.split("GT")[0] + "GTw"
+            con_dict[name_clean] = os.path.join(
+                cope_dir, f"cope{con[-1]}.nii.gz"
+            )
+        return con_dict
+
+    def _find_cope_run(self, match_str: str) -> dict:
+        """Find first and second instance of cope behavior.
+
+        Find first and second instance of match_str in self._run_dict,
+        return cope path in format
+        {1: "/*/cope?.nii.gz", 2: "/*/cope?.nii.gz"}.
+
+        """
+        out_dict = {}
+        cnt = 1
+        for _, con_dict in self._run_dict.items():
+            for name, cope_path in con_dict.items():
+                if name == match_str:
+                    out_dict[cnt] = cope_path
+                    cnt += 1
+        return out_dict
+
+
+# %%
+def run_feat(fsf_path, subj, sess, model_name, log_dir, model_level="first"):
     """FSL feat execute design file as a scheduled child job.
 
     Parameters
@@ -985,10 +1159,10 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
         BIDS session identifier
     model_name : str
         FSL model name
-    model_level : str
-        FSL model level
     log_dir : path
         Output location for log files
+    model_level : str, optional
+        FSL model level
 
     Returns
     -------
@@ -1003,29 +1177,37 @@ def run_feat(fsf_path, subj, sess, model_name, model_level, log_dir):
         Inappropriate model name or level
 
     """
-    # Validate model_name/level
     if not fsl.helper.valid_name(model_name):
         raise ValueError(f"Unexpected value for model_name : {model_name}")
     if not fsl.helper.valid_level(model_level):
-        raise ValueError(f"Unexpected value for model_level: {model_level}")
+        raise ValueError(f"Unexpected value for model_level : {model_level}")
 
     # Setup, avoid repeating work
     fsf_file = os.path.basename(fsf_path)
-    run = fsf_file.split("_")[0]
-    feat_dir = fsf_file.split("_design")[0] + ".feat"
+    if model_level == "first":
+        run = fsf_file.split("_")[0]
+        feat_dir = fsf_file.split("_design")[0] + ".feat"
+    elif model_level == "second":
+        run = None
+        feat_dir = fsf_file.split("_design")[0] + ".gfeat"
     out_dir = os.path.dirname(os.path.dirname(fsf_path))
     out_path = os.path.join(out_dir, feat_dir, "report.html")
     if os.path.exists(out_path):
         return out_path
 
-    # Schedule feat job
-    _job = f"{subj[-4:]}_s{sess[-1]}_r{run[-1]}"
+    # Determine job name
+    _job = (
+        f"{subj[-4:]}_s{sess[-1]}_r{run[-1]}"
+        if run
+        else f"{subj[-4:]}_s{sess[-1]}"
+    )
     if model_name == "lss":
         _run, _level, _name, desc, trial, _suff = fsf_file.split("_")
         job_name = f"{_job}_{desc}_{trial}_feat"
     else:
         job_name = f"{_job}_feat"
 
+    # Submit work
     _, _ = submit.submit_sbatch(
         f"feat {fsf_path}",
         job_name,
