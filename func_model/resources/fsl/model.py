@@ -869,7 +869,11 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
             fsf_edit = fsf_edit.replace(old, new)
 
         # Write out
-        design_path = self._write_design(fsf_edit)
+        out_dir = os.path.join(self._subj_work, "design_files")
+        out_name = (
+            f"{self._run}_level-first_name-{self._model_name}_design.fsf"
+        )
+        design_path = _write_design(out_dir, out_name, fsf_edit)
         return design_path
 
     def write_task_fsf(
