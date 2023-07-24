@@ -793,7 +793,7 @@ def fsl_extract(
 
     # Combine all participant dataframes
     if comb_all:
-        _ = fsl.group.comb_matrices(
+        _, _ = fsl.group.comb_matrices(
             subj_list, model_name, model_level, con_name, proj_deriv, out_dir
         )
 

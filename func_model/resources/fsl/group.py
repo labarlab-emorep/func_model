@@ -301,12 +301,8 @@ def comb_matrices(
 ):
     """Combine participant beta dataframes into master.
 
-    Copied, lightly edits from func_model.resources.afni.group.comb_matrices,
-    could be refactored into single method for AFNI, FSL.
-
     Find beta-coefficient dataframes for participants in subj_list
-    and combine into a single dataframe. Output dataframe is written to:
-        <out_dir>/fsl_<model_name>_<model_level>_betas.tsv
+    and combine into a single dataframe.
 
     Parameters
     ----------
@@ -329,8 +325,10 @@ def comb_matrices(
 
     Returns
     -------
-    path
-        Location of output dataframe
+    tuple
+        [0] = pd.DataFrame
+        [1] = str, os.PathLike
+            Location of output dataframe
 
     Raises
     ------
@@ -372,7 +370,7 @@ def comb_matrices(
     )
     df_betas_all.to_csv(out_path, index=False, sep="\t")
     print(f"\tWrote : {out_path}")
-    return out_path
+    return (df_betas_all, out_path)
 
 
 # %%
