@@ -49,7 +49,7 @@ class ConditionFiles:
         selection).
     load_events(events_path)
         Read-in BIDS events file as pd.DataFrame
-    session_combined_events()
+    session_together_events()
         For use when model_name == comb. Make condition files for
         session-specific events, combining stimulus and replay.
     session_separate_events()
@@ -62,7 +62,7 @@ class ConditionFiles:
     make_cond = model.ConditionFiles(*args)
     make_cond.load_events("/path/to/*events.tsv")
     comm_dict = make_cond.common_events()
-    comb_dict = make_cond.session_combined_events()
+    tog_dict = make_cond.session_together_events()
 
     """
 
@@ -122,7 +122,7 @@ class ConditionFiles:
         df.to_csv(out_path, index=False, header=False, sep="\t")
         return (df, out_path)
 
-    def session_combined_events(self):
+    def session_together_events(self):
         """Generate combined stimulus+replay condition files for emotions.
 
         Session-specific events (scenarios, videos) are extracted and
@@ -179,9 +179,9 @@ class ConditionFiles:
             ]
             t_emo = emo.title()
             _, emo_path = self._write_cond(
-                emo_onset, emo_duration, f"comb{t_emo}Replay"
+                emo_onset, emo_duration, f"tog{t_emo}Replay"
             )
-            out_dict[f"comb{t_emo}Replay"] = emo_path
+            out_dict[f"tog{t_emo}Replay"] = emo_path
         return out_dict
 
     def session_separate_events(self):

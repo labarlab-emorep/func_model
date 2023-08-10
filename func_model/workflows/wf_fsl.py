@@ -438,6 +438,8 @@ class FslFirst(_SupportFslFirst):
         # Generate model-name specific cond files
         if self._model_name == "sep":
             _ = self._make_cf.session_separate_events()
+        elif self._model_name == "tog":
+            _ = self._make_cf.session_together_events()
         elif self._model_name == "lss":
             self._sep_cond, self._lss_cond = self._make_cf.session_lss_events()
 
