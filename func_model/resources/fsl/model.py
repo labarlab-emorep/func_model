@@ -179,9 +179,9 @@ class ConditionFiles:
             ]
             t_emo = emo.title()
             _, emo_path = self._write_cond(
-                emo_onset, emo_duration, f"tog{t_emo}Replay"
+                emo_onset, emo_duration, f"tog{t_emo}"
             )
-            out_dict[f"tog{t_emo}Replay"] = emo_path
+            out_dict[f"tog{t_emo}"] = emo_path
         return out_dict
 
     def session_separate_events(self):
