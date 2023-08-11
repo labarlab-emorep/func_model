@@ -662,6 +662,94 @@ class _FirstSep:
 
 
 # %%
+class _FirstTog:
+    """Support writing first-level tog model design.fsf.
+
+    Intended for inheritance by MakeFirstFsf, references attrs
+    set by child.
+
+    Methods
+    -------
+    write_tog()
+        Coordinating writing of design.fsf, returns path to file
+
+    """
+
+    def write_tog(self):
+        """Make first-level FSF for model sep.
+
+        Write a design FSF by updating fields in the template FSF for
+        model_name == tog. Write out design files to subject working
+        directory.
+
+        Returns
+        -------
+        path
+            Location, name of design FSF file
+
+        """
+        # Update field_switch, make design file
+        self._tog_switch()
+        fsf_edit = self._tp_short if self._use_short else self._tp_full
+        for old, new in self._field_switch.items():
+            fsf_edit = fsf_edit.replace(old, new)
+
+        # Write out
+        out_dir = os.path.join(self._subj_work, "design_files")
+        out_name = (
+            f"{self._run}_level-first_name-" + f"{self._model_name}_design.fsf"
+        )
+        out_path = _write_design(out_dir, out_name, fsf_edit)
+        return out_path
+
+    def _tog_switch(self):
+        """Update switch dictionary for model "tog".
+
+        Find combined emotion condition files for run, update private attr
+        _field_switch for tog specific conditions.
+
+        """
+
+        def _get_desc(file_name: str) -> str:
+            """Return description field from condition filename."""
+            try:
+                _su, _se, _ta, _ru, desc, _su = file_name.split("_")
+                return desc.split("-")[-1]
+            except IndexError:
+                raise ValueError(
+                    "Improperly formatted file name for condition file."
+                )
+
+        def _tog_events(tog_emo: list) -> dict:
+            """Return replacement dict for stim, replay events."""
+            stim_dict = {}
+            replay_dict = {}
+            cnt = 1
+            for tog_path in tog_emo:
+                desc_stim = _get_desc(os.path.basename(tog_path))
+                stim_dict[f"[[stim_emo{cnt}_name]]"] = desc_stim
+                stim_dict[f"[[stim_emo{cnt}_path]]"] = tog_path
+                cnt += 1
+            stim_dict.update(replay_dict)
+            return stim_dict
+
+        # Find tog emotion condition files
+        # TODO receive these via workflows.FslFirst._sep_cond
+        tog_emo = sorted(
+            glob.glob(
+                f"{self._subj_work}/condition_files/*{self._run}_"
+                + "desc-tog*_events.txt"
+            )
+        )
+        if not tog_emo:
+            raise ValueError("Failed to find togEmo events.")
+
+        # Update attr
+        emo_dict = _tog_events(tog_emo)
+        self._field_switch.update(emo_dict)
+
+
+# %%
 class _FirstLss:
     """Support writing first-level LSS model designs.
 
@@ -750,10 +838,10 @@ class _FirstLss:
 
 
 # %%
-class MakeFirstFsf(_FirstSep, _FirstLss):
+class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
     """Generate first-level design FSF files for FSL modelling.
 
-    Inherits _FirstSep, _FirstLss.
+    Inherits _FirstSep, _FirstTog, _FirstLss.
 
     Use pre-generated template FSF files to write run-specific
     first-level design FSF files for planned models. Design files
