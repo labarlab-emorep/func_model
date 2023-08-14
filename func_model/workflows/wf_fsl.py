@@ -49,16 +49,21 @@ class _SupportFsl:
 
     def _push_data(self):
         """Make remote destination and send data there."""
-        dst = os.path.join(
-            self._keoki_proj, "derivatives", self._final_dir, self._subj
+        keoki_dst = os.path.join(
+            self._keoki_path, "derivatives", self._final_dir, self._subj
         )
         make_dst = f"""\
             ssh \
                 -i {self._rsa_key} \
                 {self._user_name}@{self._keoki_ip} \
-                " command ; bash -c 'mkdir -p {dst}'"
+                " command ; bash -c 'mkdir -p {keoki_dst}'"
             """
         _, _ = self._quick_sp(make_dst)
+
+        # Send data
+        dst = os.path.join(
+            self._keoki_proj, "derivatives", self._final_dir, self._subj
+        )
         _, _ = self._submit_rsync(self._subj_final, dst)
 
 
@@ -226,6 +231,8 @@ class _SupportFslFirst(_SupportFsl):
 # %%
 class FslFirst(_SupportFslFirst):
     """Conduct first-level models of EPI data.
+
+    Inherits _SupportFslFirst.
 
     Coordinate the generation of confound and design files, and
     condition files for task-based models, then model the data
@@ -483,7 +490,7 @@ class FslFirst(_SupportFslFirst):
 class FslSecond(_SupportFsl):
     """Conduct second-level models of EPI data.
 
-    Inherits _SupportFsl
+    Inherits _SupportFsl.
 
     Coordinate the generation and then feat execution of
     task-based second-level models.
