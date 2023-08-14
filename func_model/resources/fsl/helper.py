@@ -26,7 +26,7 @@ from func_model import reference_files
 
 def valid_name(model_name: str) -> bool:
     """Check if model name is valid."""
-    return model_name in ["sep", "rest", "lss"]
+    return model_name in ["sep", "tog", "rest", "lss"]
 
 
 def valid_level(model_level: str) -> bool:

@@ -10,15 +10,15 @@ derivatives:
 Model names:
     - sep = emotion stimulus (scenarios, movies) and replay are
         modeled separately
+    - tog = emotion stimulus and replay modeled together
     - rest = model resting-state data to remove nuissance regressors,
         first-level only
     - lss = similar to sep, but with each trial separate,
         first-level only
-    - both = TODO, emotion stimulus and replay modeled together
 
 Level names:
     - first = first-level GLM
-    - second = second-level GLM, model-name=sep only
+    - second = second-level GLM, for model-name=sep|tog only
 
 Examples
 --------
@@ -55,7 +55,7 @@ def _get_args():
         help=textwrap.dedent(
             """\
             [first | second]
-            FSL model level, for triggering different workflows
+            FSL model level, for triggering different workflows.
             (default : %(default)s)
             """
         ),
@@ -66,7 +66,7 @@ def _get_args():
         default="sep",
         help=textwrap.dedent(
             """\
-            [sep | rest | lss]
+            [sep | tog | rest | lss]
             FSL model name, for triggering different workflows
             (default : %(default)s)
             """
@@ -138,8 +138,10 @@ def main():
     if not fsl.helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
-    if model_name == "lss" and model_level != "first":
-        print("Model lss does not support second-level")
+    if (
+        model_name == "lss" or model_name == "rest"
+    ) and model_level != "first":
+        print("Second level not supported for models lss, rest")
         sys.exit(1)
     if not os.path.exists(rsa_key):
         raise FileNotFoundError(f"Expected path to RSA key, found : {rsa_key}")
