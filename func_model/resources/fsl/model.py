@@ -1073,10 +1073,6 @@ class MakeSecondFsf:
     second-level design FSF files for planned models. Design files
     are written to <subj_work>/design_files.
 
-    Only model_name == "sep" is currently supported. This second-level
-    model collapses across run, yielding one estimate for each emotion
-    category x stimulus | replay.
-
     Parameters
     ----------
     subj_work : str, os.PathLike
@@ -1102,9 +1098,6 @@ class MakeSecondFsf:
 
     def __init__(self, subj_work, subj_deriv, model_name):
         """Initialize."""
-        if model_name != "sep":
-            raise ValueError(f"Unexpected value for model_name : {model_name}")
-
         print("\t\tInitializing MakeSecondFSF")
         self._subj_work = subj_work
         self._subj_deriv = subj_deriv
@@ -1154,7 +1147,7 @@ class MakeSecondFsf:
         """Match copes to EVs of interest.
 
         Account for random block orders in runs, return a dict
-        alphabetized by stim|replay x emotion in format
+        alphabetized by stim|replay|tog x emotion in format
         {'stimAweGTw': {1: '/*/cope?.nii.gz', 2: '/*/cope?.nii.gz'}}.
 
         """
@@ -1176,7 +1169,9 @@ class MakeSecondFsf:
             "Sadness",
             "Surprise",
         ]
-        trial_list = ["stim", "replay"]
+        trial_list = (
+            ["stim", "replay"] if self._model_name == "sep" else ["tog"]
+        )
 
         # Mine design.con to match EVs with copes
         run_list = sorted(

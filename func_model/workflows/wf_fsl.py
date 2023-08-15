@@ -621,8 +621,8 @@ class FslSecond(_SupportFsl):
         feat_list = self._get_first_model()
         self._bypass_reg(feat_list)
 
-    def _get_first_model(self):
-        """Download required output of FslFirst."""
+    def _get_first_model(self) -> list:
+        """Download required output of FslFirst, return feat dir paths."""
         source_model = os.path.join(
             self._keoki_proj,
             "derivatives/model_fsl",
@@ -641,7 +641,7 @@ class FslSecond(_SupportFsl):
         return run_feat
 
     def _bypass_reg(self, feat_list: list):
-        """Avoid registration issue by supplyin reqd files."""
+        """Avoid registration issue by supplying req'd files."""
         # Find identity file
         fsl_dir = os.environ["FSLDIR"]
         ident_path = os.path.join(fsl_dir, "etc", "flirtsch", "ident.mat")
