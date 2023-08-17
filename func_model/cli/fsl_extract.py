@@ -46,12 +46,13 @@ def _get_args():
     parser.add_argument(
         "--contrast-name",
         type=str,
-        default="stim",
+        default="tog",
         help=textwrap.dedent(
             """\
-            [stim | replay]
+            [tog | stim | replay]
             Desired contrast from which coefficients will be extracted,
-            substring of design.fsf EV Title.
+            substring of design.fsf EV Title. For tog, model-name=tog
+            required. For stim|replay, model-name=sep required.
             (default : %(default)s)
             """
         ),
@@ -71,11 +72,11 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="sep",
+        default="tog",
         help=textwrap.dedent(
             """\
-            [sep]
-            FSL model name, for triggering different workflows
+            [tog | sep]
+            FSL model name, for triggering different workflows.
             (default : %(default)s)
             """
         ),
@@ -137,14 +138,20 @@ def main():
     overwrite = args.overwrite
 
     # Check user input
-    if model_name != "sep":
+    if model_name not in ["sep", "tog"]:
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
-    if not fsl.helper.valid_level(model_level):
+    if model_level not in ["first"]:
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
     if not fsl.helper.valid_contrast(con_name):
         print(f"Unsupported contrast name : {con_name}")
+        sys.exit(1)
+    if model_name == "tog" and con_name != "tog":
+        print(f"Unsupported contrast for model {model_name} : {con_name}")
+        sys.exit(1)
+    if model_name == "sep" and (con_name != "stim" and con_name != "replay"):
+        print(f"Unsupported contrast for model {model_name} : {con_name}")
         sys.exit(1)
 
     # Check, make subject list

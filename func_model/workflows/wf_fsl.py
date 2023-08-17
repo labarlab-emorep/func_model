@@ -698,14 +698,16 @@ def fsl_extract(
     subj_list : list
         Subject IDs to include in dataframe
     model_name : str
-        [sep]
+        [sep | tog]
         FSL model identifier
     model_level : str
         [first]
         FSL model level
     con_name : str
-        [stim | replay]
+        [stim | replay | tog]
         Desired contrast from which coefficients will be extracted
+            - stim|replay require model_name=sep
+            - tog requires model_name=tog
     overwrite : bool
         Whether to overwrite existing beta TSV files
     group_mask : str, optional
@@ -723,14 +725,22 @@ def fsl_extract(
 
     """
     # Validate parameters
-    if model_name != "sep":
+    if model_name not in ["sep", "tog"]:
         raise ValueError(f"Unsupported value for model_name : {model_name}")
     if not fsl.helper.valid_level(model_level):
         raise ValueError(f"Unsupported value for model_level : {model_level}")
     if group_mask not in ["template"]:
-        raise ValueError("unexpected group_mask parameter")
+        raise ValueError("Unexpected group_mask parameter")
     if not isinstance(overwrite, bool):
         raise TypeError("Expected type bool for overwrite")
+    if model_name == "tog" and con_name != "tog":
+        raise ValueError(
+            f"Unsupported con_name for model_name={model_name} : {con_name}"
+        )
+    if model_name == "sep" and (con_name != "stim" and con_name != "replay"):
+        raise ValueError(
+            f"Unsupported con_name for model_name={model_name} : {con_name}"
+        )
 
     # Orient to project directory
     out_dir = os.path.join(proj_dir, "analyses/model_fsl_group")
@@ -763,6 +773,8 @@ def fsl_extract(
                 + "/design.con"
             )
         )
+        if not design_list:
+            return
         _ = get_betas.make_func_matrix(
             subj,
             sess,
