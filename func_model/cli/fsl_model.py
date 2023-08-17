@@ -63,7 +63,7 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="sep",
+        default="tog",
         help=textwrap.dedent(
             """\
             [sep | tog | rest | lss]
