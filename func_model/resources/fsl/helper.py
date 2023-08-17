@@ -41,7 +41,7 @@ def valid_task(task: str) -> bool:
 
 def valid_contrast(con: str) -> bool:
     """Check if contrast name is valid."""
-    return con in ["stim", "replay"]
+    return con in ["stim", "replay", "tog"]
 
 
 def valid_preproc(step: str) -> bool:
