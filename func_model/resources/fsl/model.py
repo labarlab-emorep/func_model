@@ -56,6 +56,9 @@ class ConditionFiles:
         For use when model_name == sep. Make condition files for
         session-specific events, generating separate condition
         files for stimulus and replay.
+    session_lss_events()
+        For use when model_name == lss. Make trial-remaining
+        condition file pairs for each trial of a condition.
 
     Example
     -------
@@ -205,7 +208,7 @@ class ConditionFiles:
             Index and position lists are not equal
 
         """
-        # As in session_combined_events, use list position and index to
+        # As in session_together_events, use list position and index to
         # align replay with the appropriate emotion.
         task_short = self._task.split("-")[-1]
         idx_stim = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
@@ -250,20 +253,20 @@ class ConditionFiles:
     def session_lss_events(self):
         """Generate condition files for LSS models.
 
-        Based on 'separate' model, first generate a set of sep condition
+        Based on 'together' model, first generate a set of 'tog' condition
         files. Then, iterate through each block of stimuli and create
         trial and 'remaining' events, for each trial of each condition.
 
         Returns
         -------
         tuple
-            [0] = dict, condition files from session_separate_events
+            [0] = dict, condition files from session_together_events
             [1] = dict, lss condition files
 
         """
         # Generate typical conditions, then event-remain pairs for
         # each condition.
-        cond_dict = self.session_separate_events()
+        cond_dict = self.session_together_events()
         lss_dict = {}
         for cond_name, cond_path in cond_dict.items():
 
@@ -456,16 +459,25 @@ def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
 
 # %%
 def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
-    """Title.
+    """Identify condition trials that co-occur with motion event.
+
+    Write a tab-delimited txt file tracking how many motion events
+    occur during each trial of interest.
 
     Parameters
     ----------
-    subj
-    sess
-    run
-    task
-    subj_work
-    subj_fsl
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    run : str
+        BIDS run identifier
+    task : str
+        BIDS task identifier
+    subj_work : str, os.PathLike
+        Location of subject working directory
+    subj_fsl : str, os.PathLike
+        Location of subject func preproc files
 
     """
     # Setup output location
@@ -540,7 +552,7 @@ def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
             "count": int(num_mot),
         }
 
-    # Write out if co-occurance exists
+    # Write out if co-occurence exists
     if df_out.shape[0]:
         df_out.to_csv(out_path, index=False, sep="\t")
 
@@ -759,7 +771,7 @@ class _FirstLss:
     Methods
     -------
     write_lss()
-        Coordinating writing of design.fsf, returns list of lists
+        Coordinate writing of design.fsf, returns list of lists
 
     """
 
@@ -767,19 +779,19 @@ class _FirstLss:
         """Coordinate writing of all design files for each condition."""
         # Generate a set of design lists for each condition (e.g. stimRomance)
         design_list = []
-        for self._stim_name, _ in self._sep_cond.items():
+        for self._stim_name, _ in self._tog_cond.items():
 
             # Make a switch for all names, paths of conditions that
             # are not the current iteration.
-            self._switch_sep = {}
-            sep_dict = {
-                i: j for i, j in self._sep_cond.items() if i != self._stim_name
+            self._switch_tog = {}
+            tog_dict = {
+                i: j for i, j in self._tog_cond.items() if i != self._stim_name
             }
-            for _cnt, _name in enumerate(sep_dict):
+            for _cnt, _name in enumerate(tog_dict):
                 match_cnt = _cnt + 2
-                _path = sep_dict[_name]
-                self._switch_sep[f"[[stim_{match_cnt}_name]]"] = _name
-                self._switch_sep[f"[[stim_{match_cnt}_path]]"] = _path
+                _path = tog_dict[_name]
+                self._switch_tog[f"[[stim_{match_cnt}_name]]"] = _name
+                self._switch_tog[f"[[stim_{match_cnt}_path]]"] = _path
 
             # Trigger generation of all design.fsf for current condition
             design_list.append(
@@ -819,7 +831,7 @@ class _FirstLss:
         """Write, return path to LSS design file."""
         # Aggregate all switches
         field_switch = self._field_switch.copy()
-        field_switch.update(self._switch_sep)
+        field_switch.update(self._switch_tog)
         field_switch.update(self._switch_lss)
 
         # Update fields in relevant template
@@ -997,7 +1009,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         use_short : bool
             Whether to use short or full template design
         **kwargs: dict, optional
-            Keyword args for LSS models: sep_cond and lss_cond
+            Keyword args for LSS models: tog_cond and lss_cond
 
         Returns
         -------
@@ -1021,8 +1033,8 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
                 )
 
         # Capture LSS kwargs
-        if "sep_cond" in kwargs:
-            self._sep_cond = kwargs["sep_cond"]
+        if "tog_cond" in kwargs:
+            self._tog_cond = kwargs["tog_cond"]
         if "lss_cond" in kwargs:
             self._lss_cond = kwargs["lss_cond"]
 

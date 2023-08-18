@@ -402,7 +402,7 @@ class FslFirst(_SupportFslFirst):
                     self._conf_path,
                     self._cond_comm,
                     use_short,
-                    sep_cond=self._sep_cond,
+                    tog_cond=self._tog_cond,
                     lss_cond=self._lss_cond,
                 )
 
@@ -448,7 +448,7 @@ class FslFirst(_SupportFslFirst):
         elif self._model_name == "tog":
             _ = self._make_cf.session_together_events()
         elif self._model_name == "lss":
-            self._sep_cond, self._lss_cond = self._make_cf.session_lss_events()
+            self._tog_cond, self._lss_cond = self._make_cf.session_lss_events()
 
     def _make_conf(self):
         """Generate confounds files from fMRIPrep output for single run."""
