@@ -36,7 +36,7 @@ set fmri(outputdir) "[[subj_work]]/[[run]]_level-first_name-lss_[[bids_desc_tria
 set fmri(tr) 2.000000
 
 # Total volumes
-set fmri(npts) [[num_vol]]
+set fmri(npts) 200
 
 # Delete volumes
 set fmri(ndelete) 0
@@ -153,8 +153,8 @@ set fmri(mixed_yn) 2
 set fmri(randomisePermutations) 5000
 
 # Number of EVs
-set fmri(evs_orig) 11
-set fmri(evs_real) 22
+set fmri(evs_orig) 8
+set fmri(evs_real) 16
 set fmri(evs_vox) 0
 
 # Number of contrasts
@@ -343,15 +343,6 @@ set fmri(ortho1.7) 0
 # Orthogonalise EV 1 wrt EV 8
 set fmri(ortho1.8) 0
 
-# Orthogonalise EV 1 wrt EV 9
-set fmri(ortho1.9) 0
-
-# Orthogonalise EV 1 wrt EV 10
-set fmri(ortho1.10) 0
-
-# Orthogonalise EV 1 wrt EV 11
-set fmri(ortho1.11) 0
-
 # EV 2 title
 set fmri(evtitle2) "[[stim_2_name]]"
 
@@ -413,15 +404,6 @@ set fmri(ortho2.7) 0
 
 # Orthogonalise EV 2 wrt EV 8
 set fmri(ortho2.8) 0
-
-# Orthogonalise EV 2 wrt EV 9
-set fmri(ortho2.9) 0
-
-# Orthogonalise EV 2 wrt EV 10
-set fmri(ortho2.10) 0
-
-# Orthogonalise EV 2 wrt EV 11
-set fmri(ortho2.11) 0
 
 # EV 3 title
 set fmri(evtitle3) "[[stim_3_name]]"
@@ -485,17 +467,8 @@ set fmri(ortho3.7) 0
 # Orthogonalise EV 3 wrt EV 8
 set fmri(ortho3.8) 0
 
-# Orthogonalise EV 3 wrt EV 9
-set fmri(ortho3.9) 0
-
-# Orthogonalise EV 3 wrt EV 10
-set fmri(ortho3.10) 0
-
-# Orthogonalise EV 3 wrt EV 11
-set fmri(ortho3.11) 0
-
 # EV 4 title
-set fmri(evtitle4) "[[stim_4_name]]"
+set fmri(evtitle4) "Judgment"
 
 # Basic waveform shape (EV 4)
 # 0 : Square
@@ -527,7 +500,7 @@ set fmri(tempfilt_yn4) 1
 set fmri(deriv_yn4) 1
 
 # Custom EV file (EV 4)
-set fmri(custom4) "[[stim_4_path]]"
+set fmri(custom4) "[[judge_path]]"
 
 # Orthogonalise EV 4 wrt EV 0
 set fmri(ortho4.0) 0
@@ -556,17 +529,8 @@ set fmri(ortho4.7) 0
 # Orthogonalise EV 4 wrt EV 8
 set fmri(ortho4.8) 0
 
-# Orthogonalise EV 4 wrt EV 9
-set fmri(ortho4.9) 0
-
-# Orthogonalise EV 4 wrt EV 10
-set fmri(ortho4.10) 0
-
-# Orthogonalise EV 4 wrt EV 11
-set fmri(ortho4.11) 0
-
 # EV 5 title
-set fmri(evtitle5) "[[stim_5_name]]"
+set fmri(evtitle5) "Washout"
 
 # Basic waveform shape (EV 5)
 # 0 : Square
@@ -598,7 +562,7 @@ set fmri(tempfilt_yn5) 1
 set fmri(deriv_yn5) 1
 
 # Custom EV file (EV 5)
-set fmri(custom5) "[[stim_5_path]]"
+set fmri(custom5) "[[wash_path]]"
 
 # Orthogonalise EV 5 wrt EV 0
 set fmri(ortho5.0) 0
@@ -627,17 +591,8 @@ set fmri(ortho5.7) 0
 # Orthogonalise EV 5 wrt EV 8
 set fmri(ortho5.8) 0
 
-# Orthogonalise EV 5 wrt EV 9
-set fmri(ortho5.9) 0
-
-# Orthogonalise EV 5 wrt EV 10
-set fmri(ortho5.10) 0
-
-# Orthogonalise EV 5 wrt EV 11
-set fmri(ortho5.11) 0
-
 # EV 6 title
-set fmri(evtitle6) "[[stim_6_name]]"
+set fmri(evtitle6) "EmoSelect"
 
 # Basic waveform shape (EV 6)
 # 0 : Square
@@ -669,7 +624,7 @@ set fmri(tempfilt_yn6) 1
 set fmri(deriv_yn6) 1
 
 # Custom EV file (EV 6)
-set fmri(custom6) "[[stim_6_path]]"
+set fmri(custom6) "[[emosel_path]]"
 
 # Orthogonalise EV 6 wrt EV 0
 set fmri(ortho6.0) 0
@@ -698,17 +653,8 @@ set fmri(ortho6.7) 0
 # Orthogonalise EV 6 wrt EV 8
 set fmri(ortho6.8) 0
 
-# Orthogonalise EV 6 wrt EV 9
-set fmri(ortho6.9) 0
-
-# Orthogonalise EV 6 wrt EV 10
-set fmri(ortho6.10) 0
-
-# Orthogonalise EV 6 wrt EV 11
-set fmri(ortho6.11) 0
-
 # EV 7 title
-set fmri(evtitle7) "Judgement"
+set fmri(evtitle7) "EmoIntensity"
 
 # Basic waveform shape (EV 7)
 # 0 : Square
@@ -740,7 +686,7 @@ set fmri(tempfilt_yn7) 1
 set fmri(deriv_yn7) 1
 
 # Custom EV file (EV 7)
-set fmri(custom7) "[[judge_path]]"
+set fmri(custom7) "[[emoint_path]]"
 
 # Orthogonalise EV 7 wrt EV 0
 set fmri(ortho7.0) 0
@@ -769,17 +715,8 @@ set fmri(ortho7.7) 0
 # Orthogonalise EV 7 wrt EV 8
 set fmri(ortho7.8) 0
 
-# Orthogonalise EV 7 wrt EV 9
-set fmri(ortho7.9) 0
-
-# Orthogonalise EV 7 wrt EV 10
-set fmri(ortho7.10) 0
-
-# Orthogonalise EV 7 wrt EV 11
-set fmri(ortho7.11) 0
-
 # EV 8 title
-set fmri(evtitle8) "Washout"
+set fmri(evtitle8) "[[desc_trial_event_name]]"
 
 # Basic waveform shape (EV 8)
 # 0 : Square
@@ -811,7 +748,7 @@ set fmri(tempfilt_yn8) 1
 set fmri(deriv_yn8) 1
 
 # Custom EV file (EV 8)
-set fmri(custom8) "[[wash_path]]"
+set fmri(custom8) "[[desc_trial_event_path]]"
 
 # Orthogonalise EV 8 wrt EV 0
 set fmri(ortho8.0) 0
@@ -839,228 +776,6 @@ set fmri(ortho8.7) 0
 
 # Orthogonalise EV 8 wrt EV 8
 set fmri(ortho8.8) 0
-
-# Orthogonalise EV 8 wrt EV 9
-set fmri(ortho8.9) 0
-
-# Orthogonalise EV 8 wrt EV 10
-set fmri(ortho8.10) 0
-
-# Orthogonalise EV 8 wrt EV 11
-set fmri(ortho8.11) 0
-
-# EV 9 title
-set fmri(evtitle9) "EmoSelect"
-
-# Basic waveform shape (EV 9)
-# 0 : Square
-# 1 : Sinusoid
-# 2 : Custom (1 entry per volume)
-# 3 : Custom (3 column format)
-# 4 : Interaction
-# 10 : Empty (all zeros)
-set fmri(shape9) 3
-
-# Convolution (EV 9)
-# 0 : None
-# 1 : Gaussian
-# 2 : Gamma
-# 3 : Double-Gamma HRF
-# 4 : Gamma basis functions
-# 5 : Sine basis functions
-# 6 : FIR basis functions
-# 8 : Alternate Double-Gamma
-set fmri(convolve9) 3
-
-# Convolve phase (EV 9)
-set fmri(convolve_phase9) 0
-
-# Apply temporal filtering (EV 9)
-set fmri(tempfilt_yn9) 1
-
-# Add temporal derivative (EV 9)
-set fmri(deriv_yn9) 1
-
-# Custom EV file (EV 9)
-set fmri(custom9) "[[emosel_path]]"
-
-# Orthogonalise EV 9 wrt EV 0
-set fmri(ortho9.0) 0
-
-# Orthogonalise EV 9 wrt EV 1
-set fmri(ortho9.1) 0
-
-# Orthogonalise EV 9 wrt EV 2
-set fmri(ortho9.2) 0
-
-# Orthogonalise EV 9 wrt EV 3
-set fmri(ortho9.3) 0
-
-# Orthogonalise EV 9 wrt EV 4
-set fmri(ortho9.4) 0
-
-# Orthogonalise EV 9 wrt EV 5
-set fmri(ortho9.5) 0
-
-# Orthogonalise EV 9 wrt EV 6
-set fmri(ortho9.6) 0
-
-# Orthogonalise EV 9 wrt EV 7
-set fmri(ortho9.7) 0
-
-# Orthogonalise EV 9 wrt EV 8
-set fmri(ortho9.8) 0
-
-# Orthogonalise EV 9 wrt EV 9
-set fmri(ortho9.9) 0
-
-# Orthogonalise EV 9 wrt EV 10
-set fmri(ortho9.10) 0
-
-# Orthogonalise EV 9 wrt EV 11
-set fmri(ortho9.11) 0
-
-# EV 10 title
-set fmri(evtitle10) "EmoIntensity"
-
-# Basic waveform shape (EV 10)
-# 0 : Square
-# 1 : Sinusoid
-# 2 : Custom (1 entry per volume)
-# 3 : Custom (3 column format)
-# 4 : Interaction
-# 10 : Empty (all zeros)
-set fmri(shape10) 3
-
-# Convolution (EV 10)
-# 0 : None
-# 1 : Gaussian
-# 2 : Gamma
-# 3 : Double-Gamma HRF
-# 4 : Gamma basis functions
-# 5 : Sine basis functions
-# 6 : FIR basis functions
-# 8 : Alternate Double-Gamma
-set fmri(convolve10) 3
-
-# Convolve phase (EV 10)
-set fmri(convolve_phase10) 0
-
-# Apply temporal filtering (EV 10)
-set fmri(tempfilt_yn10) 1
-
-# Add temporal derivative (EV 10)
-set fmri(deriv_yn10) 1
-
-# Custom EV file (EV 10)
-set fmri(custom10) "[[emoint_path]]"
-
-# Orthogonalise EV 10 wrt EV 0
-set fmri(ortho10.0) 0
-
-# Orthogonalise EV 10 wrt EV 1
-set fmri(ortho10.1) 0
-
-# Orthogonalise EV 10 wrt EV 2
-set fmri(ortho10.2) 0
-
-# Orthogonalise EV 10 wrt EV 3
-set fmri(ortho10.3) 0
-
-# Orthogonalise EV 10 wrt EV 4
-set fmri(ortho10.4) 0
-
-# Orthogonalise EV 10 wrt EV 5
-set fmri(ortho10.5) 0
-
-# Orthogonalise EV 10 wrt EV 6
-set fmri(ortho10.6) 0
-
-# Orthogonalise EV 10 wrt EV 7
-set fmri(ortho10.7) 0
-
-# Orthogonalise EV 10 wrt EV 8
-set fmri(ortho10.8) 0
-
-# Orthogonalise EV 10 wrt EV 9
-set fmri(ortho10.9) 0
-
-# Orthogonalise EV 10 wrt EV 10
-set fmri(ortho10.10) 0
-
-# Orthogonalise EV 10 wrt EV 11
-set fmri(ortho10.11) 0
-
-# EV 11 title
-set fmri(evtitle11) "[[desc_trial_event_name]]"
-
-# Basic waveform shape (EV 11)
-# 0 : Square
-# 1 : Sinusoid
-# 2 : Custom (1 entry per volume)
-# 3 : Custom (3 column format)
-# 4 : Interaction
-# 10 : Empty (all zeros)
-set fmri(shape11) 3
-
-# Convolution (EV 11)
-# 0 : None
-# 1 : Gaussian
-# 2 : Gamma
-# 3 : Double-Gamma HRF
-# 4 : Gamma basis functions
-# 5 : Sine basis functions
-# 6 : FIR basis functions
-# 8 : Alternate Double-Gamma
-set fmri(convolve11) 3
-
-# Convolve phase (EV 11)
-set fmri(convolve_phase11) 0
-
-# Apply temporal filtering (EV 11)
-set fmri(tempfilt_yn11) 1
-
-# Add temporal derivative (EV 11)
-set fmri(deriv_yn11) 1
-
-# Custom EV file (EV 11)
-set fmri(custom11) "[[desc_trial_event_path]]"
-
-# Orthogonalise EV 11 wrt EV 0
-set fmri(ortho11.0) 0
-
-# Orthogonalise EV 11 wrt EV 1
-set fmri(ortho11.1) 0
-
-# Orthogonalise EV 11 wrt EV 2
-set fmri(ortho11.2) 0
-
-# Orthogonalise EV 11 wrt EV 3
-set fmri(ortho11.3) 0
-
-# Orthogonalise EV 11 wrt EV 4
-set fmri(ortho11.4) 0
-
-# Orthogonalise EV 11 wrt EV 5
-set fmri(ortho11.5) 0
-
-# Orthogonalise EV 11 wrt EV 6
-set fmri(ortho11.6) 0
-
-# Orthogonalise EV 11 wrt EV 7
-set fmri(ortho11.7) 0
-
-# Orthogonalise EV 11 wrt EV 8
-set fmri(ortho11.8) 0
-
-# Orthogonalise EV 11 wrt EV 9
-set fmri(ortho11.9) 0
-
-# Orthogonalise EV 11 wrt EV 10
-set fmri(ortho11.10) 0
-
-# Orthogonalise EV 11 wrt EV 11
-set fmri(ortho11.11) 0
 
 # Contrast & F-tests mode
 # real : control real EVs
@@ -1117,28 +832,10 @@ set fmri(con_real1.13) 0
 set fmri(con_real1.14) 0
 
 # Real contrast_real vector 1 element 15
-set fmri(con_real1.15) 0.0
+set fmri(con_real1.15) 1.0
 
 # Real contrast_real vector 1 element 16
 set fmri(con_real1.16) 0
-
-# Real contrast_real vector 1 element 17
-set fmri(con_real1.17) 0
-
-# Real contrast_real vector 1 element 18
-set fmri(con_real1.18) 0
-
-# Real contrast_real vector 1 element 19
-set fmri(con_real1.19) 0
-
-# Real contrast_real vector 1 element 20
-set fmri(con_real1.20) 0
-
-# Real contrast_real vector 1 element 21
-set fmri(con_real1.21) 1.0
-
-# Real contrast_real vector 1 element 22
-set fmri(con_real1.22) 0
 
 # Display images for contrast_real 2
 set fmri(conpic_real.2) 1
@@ -1171,7 +868,7 @@ set fmri(con_real2.7) 0
 set fmri(con_real2.8) 0
 
 # Real contrast_real vector 2 element 9
-set fmri(con_real2.9) 0.0
+set fmri(con_real2.9) -1.0
 
 # Real contrast_real vector 2 element 10
 set fmri(con_real2.10) 0
@@ -1189,28 +886,10 @@ set fmri(con_real2.13) 0
 set fmri(con_real2.14) 0
 
 # Real contrast_real vector 2 element 15
-set fmri(con_real2.15) -1.0
+set fmri(con_real2.15) 1.0
 
 # Real contrast_real vector 2 element 16
 set fmri(con_real2.16) 0
-
-# Real contrast_real vector 2 element 17
-set fmri(con_real2.17) 0
-
-# Real contrast_real vector 2 element 18
-set fmri(con_real2.18) 0
-
-# Real contrast_real vector 2 element 19
-set fmri(con_real2.19) 0
-
-# Real contrast_real vector 2 element 20
-set fmri(con_real2.20) 0
-
-# Real contrast_real vector 2 element 21
-set fmri(con_real2.21) 1.0
-
-# Real contrast_real vector 2 element 22
-set fmri(con_real2.22) 0
 
 # Display images for contrast_orig 1
 set fmri(conpic_orig.1) 1
@@ -1240,16 +919,7 @@ set fmri(con_orig1.6) 0.0
 set fmri(con_orig1.7) 0
 
 # Real contrast_orig vector 1 element 8
-set fmri(con_orig1.8) 0.0
-
-# Real contrast_orig vector 1 element 9
-set fmri(con_orig1.9) 0
-
-# Real contrast_orig vector 1 element 10
-set fmri(con_orig1.10) 0
-
-# Real contrast_orig vector 1 element 11
-set fmri(con_orig1.11) 1.0
+set fmri(con_orig1.8) 1.0
 
 # Display images for contrast_orig 2
 set fmri(conpic_orig.2) 1
@@ -1270,7 +940,7 @@ set fmri(con_orig2.3) 0
 set fmri(con_orig2.4) 0
 
 # Real contrast_orig vector 2 element 5
-set fmri(con_orig2.5) 0.0
+set fmri(con_orig2.5) -1.0
 
 # Real contrast_orig vector 2 element 6
 set fmri(con_orig2.6) 0.0
@@ -1279,16 +949,7 @@ set fmri(con_orig2.6) 0.0
 set fmri(con_orig2.7) 0
 
 # Real contrast_orig vector 2 element 8
-set fmri(con_orig2.8) -1.0
-
-# Real contrast_orig vector 2 element 9
-set fmri(con_orig2.9) 0
-
-# Real contrast_orig vector 2 element 10
-set fmri(con_orig2.10) 0
-
-# Real contrast_orig vector 2 element 11
-set fmri(con_orig2.11) 1.0
+set fmri(con_orig2.8) 1.0
 
 # Contrast masking - use >0 instead of thresholding?
 set fmri(conmask_zerothresh_yn) 0
