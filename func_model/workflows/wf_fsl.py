@@ -22,13 +22,10 @@ from func_model.resources import fsl
 class _SupportFsl:
     """General helper methods for first- and second-level workflows."""
 
-    def __init__(self):
+    def __init__(self, keoki_path: Union[str, os.PathLike]):
         """Initialize."""
         self._keoki_ip = "ccn-labarserv2.vm.duke.edu"
-        self._keoki_path = (
-            "/mnt/keoki/experiments2/EmoRep/"
-            + "Exp2_Compute_Emotion/data_scanner_BIDS"
-        )
+        self._keoki_path = keoki_path
 
     def _submit_rsync(self, src: str, dst: str) -> Tuple:
         """Execute rsync between DCC and labarserv2."""
@@ -266,6 +263,8 @@ class FslFirst(_SupportFslFirst):
         User name for DCC, labarserv2
     rsa_key : str, os.PathLike
         Location of RSA key for labarserv2
+    keoki_path : str, os.PathLike, optional
+        Location of project directory on Keoki
 
     Methods
     -------
@@ -296,6 +295,7 @@ class FslFirst(_SupportFslFirst):
         log_dir,
         user_name,
         rsa_key,
+        keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
         if not fsl.helper.valid_name(model_name):
@@ -304,7 +304,7 @@ class FslFirst(_SupportFslFirst):
             raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
-        super().__init__()
+        super().__init__(keoki_path)
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
@@ -547,7 +547,10 @@ class FslSecond(_SupportFsl):
             raise ValueError(f"Unexpected model name : {model_name}")
 
         print("Initializing FslSecond")
-        super().__init__()
+        super().__init__(
+            "/mnt/keoki/experiments2/EmoRep/"
+            + "Exp2_Compute_Emotion/data_scanner_BIDS"
+        )
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
