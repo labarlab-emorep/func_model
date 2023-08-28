@@ -309,13 +309,10 @@ def comb_matrices(
     subj_list : list
         Participants to include in final dataframe
     model_name : str
-        [sep]
         FSL model identifier
     model_level : str
-        [first]
         FSL model level
     con_name : str
-        [stim | replay]
         Desired contrast from which coefficients will be extracted
     proj_deriv : path
         Location of project derivatives, will search for dataframes
