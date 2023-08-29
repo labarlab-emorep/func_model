@@ -277,9 +277,9 @@ class FslFirst(_SupportFslFirst):
 
     Example
     -------
-    wf_fsl = wf_fsl.FslFirst(*args)
-    wf_fsl.model_rest()
-    wf_fsl.model_task()
+    wf_obj = wf_fsl.FslFirst(*args)
+    wf_obj.model_rest()
+    wf_obj.model_task()
 
     """
 
