@@ -971,7 +971,7 @@ set fmri(con_mode) orig
 set fmri(conpic_real.1) 1
 
 # Title for contrast_real 1
-set fmri(conname_real.1) "[[stim_emo1_name]]GTwashout"
+set fmri(conname_real.1) "[[stim_emo1_name]]GTWash"
 
 # Real contrast_real vector 1 element 1
 set fmri(con_real1.1) 1
@@ -1037,7 +1037,7 @@ set fmri(con_real1.20) 0
 set fmri(conpic_real.2) 1
 
 # Title for contrast_real 2
-set fmri(conname_real.2) "[[stim_emo2_name]]GTwashout"
+set fmri(conname_real.2) "[[stim_emo2_name]]GTWash"
 
 # Real contrast_real vector 2 element 1
 set fmri(con_real2.1) 0
@@ -1103,7 +1103,7 @@ set fmri(con_real2.20) 0
 set fmri(conpic_real.3) 1
 
 # Title for contrast_real 3
-set fmri(conname_real.3) "[[stim_emo3_name]]GTwashout"
+set fmri(conname_real.3) "[[stim_emo3_name]]GTWash"
 
 # Real contrast_real vector 3 element 1
 set fmri(con_real3.1) 0
@@ -1169,7 +1169,7 @@ set fmri(con_real3.20) 0
 set fmri(conpic_real.4) 1
 
 # Title for contrast_real 4
-set fmri(conname_real.4) "[[rep_emo1_name]]GTwashout"
+set fmri(conname_real.4) "[[rep_emo1_name]]GTWash"
 
 # Real contrast_real vector 4 element 1
 set fmri(con_real4.1) 0
@@ -1235,7 +1235,7 @@ set fmri(con_real4.20) 0
 set fmri(conpic_real.5) 1
 
 # Title for contrast_real 5
-set fmri(conname_real.5) "[[rep_emo2_name]]GTwashout"
+set fmri(conname_real.5) "[[rep_emo2_name]]GTWash"
 
 # Real contrast_real vector 5 element 1
 set fmri(con_real5.1) 0
@@ -1301,7 +1301,7 @@ set fmri(con_real5.20) 0
 set fmri(conpic_real.6) 1
 
 # Title for contrast_real 6
-set fmri(conname_real.6) "[[rep_emo3_name]]GTwashout"
+set fmri(conname_real.6) "[[rep_emo3_name]]GTWash"
 
 # Real contrast_real vector 6 element 1
 set fmri(con_real6.1) 0
@@ -1367,7 +1367,7 @@ set fmri(con_real6.20) 0
 set fmri(conpic_orig.1) 1
 
 # Title for contrast_orig 1
-set fmri(conname_orig.1) "[[stim_emo1_name]]GTwashout"
+set fmri(conname_orig.1) "[[stim_emo1_name]]GTWash"
 
 # Real contrast_orig vector 1 element 1
 set fmri(con_orig1.1) 1
@@ -1403,7 +1403,7 @@ set fmri(con_orig1.10) 0
 set fmri(conpic_orig.2) 1
 
 # Title for contrast_orig 2
-set fmri(conname_orig.2) "[[stim_emo2_name]]GTwashout"
+set fmri(conname_orig.2) "[[stim_emo2_name]]GTWash"
 
 # Real contrast_orig vector 2 element 1
 set fmri(con_orig2.1) 0
@@ -1439,7 +1439,7 @@ set fmri(con_orig2.10) 0
 set fmri(conpic_orig.3) 1
 
 # Title for contrast_orig 3
-set fmri(conname_orig.3) "[[stim_emo3_name]]GTwashout"
+set fmri(conname_orig.3) "[[stim_emo3_name]]GTWash"
 
 # Real contrast_orig vector 3 element 1
 set fmri(con_orig3.1) 0
@@ -1475,7 +1475,7 @@ set fmri(con_orig3.10) 0
 set fmri(conpic_orig.4) 1
 
 # Title for contrast_orig 4
-set fmri(conname_orig.4) "[[rep_emo1_name]]GTwashout"
+set fmri(conname_orig.4) "[[rep_emo1_name]]GTWash"
 
 # Real contrast_orig vector 4 element 1
 set fmri(con_orig4.1) 0
@@ -1511,7 +1511,7 @@ set fmri(con_orig4.10) 0
 set fmri(conpic_orig.5) 1
 
 # Title for contrast_orig 5
-set fmri(conname_orig.5) "[[rep_emo2_name]]GTwashout"
+set fmri(conname_orig.5) "[[rep_emo2_name]]GTWash"
 
 # Real contrast_orig vector 5 element 1
 set fmri(con_orig5.1) 0
@@ -1547,7 +1547,7 @@ set fmri(con_orig5.10) 0
 set fmri(conpic_orig.6) 1
 
 # Title for contrast_orig 6
-set fmri(conname_orig.6) "[[rep_emo3_name]]GTwashout"
+set fmri(conname_orig.6) "[[rep_emo3_name]]GTWash"
 
 # Real contrast_orig vector 6 element 1
 set fmri(con_orig6.1) 0

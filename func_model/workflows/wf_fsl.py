@@ -22,13 +22,10 @@ from func_model.resources import fsl
 class _SupportFsl:
     """General helper methods for first- and second-level workflows."""
 
-    def __init__(self):
+    def __init__(self, keoki_path: Union[str, os.PathLike]):
         """Initialize."""
         self._keoki_ip = "ccn-labarserv2.vm.duke.edu"
-        self._keoki_path = (
-            "/mnt/keoki/experiments2/EmoRep/"
-            + "Exp2_Compute_Emotion/data_scanner_BIDS"
-        )
+        self._keoki_path = keoki_path
 
     def _submit_rsync(self, src: str, dst: str) -> Tuple:
         """Execute rsync between DCC and labarserv2."""
@@ -49,16 +46,21 @@ class _SupportFsl:
 
     def _push_data(self):
         """Make remote destination and send data there."""
-        dst = os.path.join(
-            self._keoki_proj, "derivatives", self._final_dir, self._subj
+        keoki_dst = os.path.join(
+            self._keoki_path, "derivatives", self._final_dir, self._subj
         )
         make_dst = f"""\
             ssh \
                 -i {self._rsa_key} \
                 {self._user_name}@{self._keoki_ip} \
-                " command ; bash -c 'mkdir -p {dst}'"
+                " command ; bash -c 'mkdir -p {keoki_dst}'"
             """
         _, _ = self._quick_sp(make_dst)
+
+        # Send data
+        dst = os.path.join(
+            self._keoki_proj, "derivatives", self._final_dir, self._subj
+        )
         _, _ = self._submit_rsync(self._subj_final, dst)
 
 
@@ -227,6 +229,8 @@ class _SupportFslFirst(_SupportFsl):
 class FslFirst(_SupportFslFirst):
     """Conduct first-level models of EPI data.
 
+    Inherits _SupportFslFirst.
+
     Coordinate the generation of confound and design files, and
     condition files for task-based models, then model the data
     via FSL's feat.
@@ -259,6 +263,8 @@ class FslFirst(_SupportFslFirst):
         User name for DCC, labarserv2
     rsa_key : str, os.PathLike
         Location of RSA key for labarserv2
+    keoki_path : str, os.PathLike, optional
+        Location of project directory on Keoki
 
     Methods
     -------
@@ -271,9 +277,9 @@ class FslFirst(_SupportFslFirst):
 
     Example
     -------
-    wf_fsl = wf_fsl.FslFirst(*args)
-    wf_fsl.model_rest()
-    wf_fsl.model_task()
+    wf_obj = wf_fsl.FslFirst(*args)
+    wf_obj.model_rest()
+    wf_obj.model_task()
 
     """
 
@@ -289,6 +295,7 @@ class FslFirst(_SupportFslFirst):
         log_dir,
         user_name,
         rsa_key,
+        keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
         if not fsl.helper.valid_name(model_name):
@@ -297,7 +304,7 @@ class FslFirst(_SupportFslFirst):
             raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
-        super().__init__()
+        super().__init__(keoki_path)
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
@@ -395,7 +402,7 @@ class FslFirst(_SupportFslFirst):
                     self._conf_path,
                     self._cond_comm,
                     use_short,
-                    sep_cond=self._sep_cond,
+                    tog_cond=self._tog_cond,
                     lss_cond=self._lss_cond,
                 )
 
@@ -438,8 +445,10 @@ class FslFirst(_SupportFslFirst):
         # Generate model-name specific cond files
         if self._model_name == "sep":
             _ = self._make_cf.session_separate_events()
+        elif self._model_name == "tog":
+            _ = self._make_cf.session_together_events()
         elif self._model_name == "lss":
-            self._sep_cond, self._lss_cond = self._make_cf.session_lss_events()
+            self._tog_cond, self._lss_cond = self._make_cf.session_lss_events()
 
     def _make_conf(self):
         """Generate confounds files from fMRIPrep output for single run."""
@@ -481,7 +490,7 @@ class FslFirst(_SupportFslFirst):
 class FslSecond(_SupportFsl):
     """Conduct second-level models of EPI data.
 
-    Inherits _SupportFsl
+    Inherits _SupportFsl.
 
     Coordinate the generation and then feat execution of
     task-based second-level models.
@@ -538,7 +547,10 @@ class FslSecond(_SupportFsl):
             raise ValueError(f"Unexpected model name : {model_name}")
 
         print("Initializing FslSecond")
-        super().__init__()
+        super().__init__(
+            "/mnt/keoki/experiments2/EmoRep/"
+            + "Exp2_Compute_Emotion/data_scanner_BIDS"
+        )
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
@@ -612,8 +624,8 @@ class FslSecond(_SupportFsl):
         feat_list = self._get_first_model()
         self._bypass_reg(feat_list)
 
-    def _get_first_model(self):
-        """Download required output of FslFirst."""
+    def _get_first_model(self) -> list:
+        """Download required output of FslFirst, return feat dir paths."""
         source_model = os.path.join(
             self._keoki_proj,
             "derivatives/model_fsl",
@@ -632,7 +644,7 @@ class FslSecond(_SupportFsl):
         return run_feat
 
     def _bypass_reg(self, feat_list: list):
-        """Avoid registration issue by supplyin reqd files."""
+        """Avoid registration issue by supplying req'd files."""
         # Find identity file
         fsl_dir = os.environ["FSLDIR"]
         ident_path = os.path.join(fsl_dir, "etc", "flirtsch", "ident.mat")
@@ -689,14 +701,16 @@ def fsl_extract(
     subj_list : list
         Subject IDs to include in dataframe
     model_name : str
-        [sep]
+        [sep | tog]
         FSL model identifier
     model_level : str
         [first]
         FSL model level
     con_name : str
-        [stim | replay]
+        [stim | replay | tog]
         Desired contrast from which coefficients will be extracted
+            - stim|replay require model_name=sep
+            - tog requires model_name=tog
     overwrite : bool
         Whether to overwrite existing beta TSV files
     group_mask : str, optional
@@ -714,14 +728,22 @@ def fsl_extract(
 
     """
     # Validate parameters
-    if model_name != "sep":
+    if model_name not in ["sep", "tog"]:
         raise ValueError(f"Unsupported value for model_name : {model_name}")
     if not fsl.helper.valid_level(model_level):
         raise ValueError(f"Unsupported value for model_level : {model_level}")
     if group_mask not in ["template"]:
-        raise ValueError("unexpected group_mask parameter")
+        raise ValueError("Unexpected group_mask parameter")
     if not isinstance(overwrite, bool):
         raise TypeError("Expected type bool for overwrite")
+    if model_name == "tog" and con_name != "tog":
+        raise ValueError(
+            f"Unsupported con_name for model_name={model_name} : {con_name}"
+        )
+    if model_name == "sep" and (con_name != "stim" and con_name != "replay"):
+        raise ValueError(
+            f"Unsupported con_name for model_name={model_name} : {con_name}"
+        )
 
     # Orient to project directory
     out_dir = os.path.join(proj_dir, "analyses/model_fsl_group")
@@ -754,6 +776,8 @@ def fsl_extract(
                 + "/design.con"
             )
         )
+        if not design_list:
+            return
         _ = get_betas.make_func_matrix(
             subj,
             sess,

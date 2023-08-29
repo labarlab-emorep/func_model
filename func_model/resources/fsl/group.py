@@ -147,13 +147,13 @@ class ExtractTaskBetas(matrix.NiftiArray):
             [task-movies | task-scenarios]
             BIDS task identifier
         model_name : str
-            [sep]
+            [sep | tog]
             FSL model identifier
         model_level : str
             [first]
             FSL model level
         con_name : str
-            [stim | replay]
+            [stim | replay | tog]
             Desired contrast from which coefficients will be extracted
         design_list : list
             Paths to participant design.con files
@@ -182,7 +182,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         # Validate model variables
         if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
-        if model_name != "sep":
+        if model_name not in ["sep", "tog"]:
             raise ValueError(
                 f"Unsupported value for model_name : {model_name}"
             )
@@ -309,13 +309,10 @@ def comb_matrices(
     subj_list : list
         Participants to include in final dataframe
     model_name : str
-        [sep]
         FSL model identifier
     model_level : str
-        [first]
         FSL model level
     con_name : str
-        [stim | replay]
         Desired contrast from which coefficients will be extracted
     proj_deriv : path
         Location of project derivatives, will search for dataframes

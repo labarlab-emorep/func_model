@@ -49,20 +49,23 @@ class ConditionFiles:
         selection).
     load_events(events_path)
         Read-in BIDS events file as pd.DataFrame
-    session_combined_events()
+    session_together_events()
         For use when model_name == comb. Make condition files for
         session-specific events, combining stimulus and replay.
     session_separate_events()
         For use when model_name == sep. Make condition files for
         session-specific events, generating separate condition
         files for stimulus and replay.
+    session_lss_events()
+        For use when model_name == lss. Make trial-remaining
+        condition file pairs for each trial of a condition.
 
     Example
     -------
     make_cond = model.ConditionFiles(*args)
     make_cond.load_events("/path/to/*events.tsv")
     comm_dict = make_cond.common_events()
-    comb_dict = make_cond.session_combined_events()
+    tog_dict = make_cond.session_together_events()
 
     """
 
@@ -122,7 +125,7 @@ class ConditionFiles:
         df.to_csv(out_path, index=False, header=False, sep="\t")
         return (df, out_path)
 
-    def session_combined_events(self):
+    def session_together_events(self):
         """Generate combined stimulus+replay condition files for emotions.
 
         Session-specific events (scenarios, videos) are extracted and
@@ -179,9 +182,9 @@ class ConditionFiles:
             ]
             t_emo = emo.title()
             _, emo_path = self._write_cond(
-                emo_onset, emo_duration, f"comb{t_emo}Replay"
+                emo_onset, emo_duration, f"tog{t_emo}"
             )
-            out_dict[f"comb{t_emo}Replay"] = emo_path
+            out_dict[f"tog{t_emo}"] = emo_path
         return out_dict
 
     def session_separate_events(self):
@@ -205,7 +208,7 @@ class ConditionFiles:
             Index and position lists are not equal
 
         """
-        # As in session_combined_events, use list position and index to
+        # As in session_together_events, use list position and index to
         # align replay with the appropriate emotion.
         task_short = self._task.split("-")[-1]
         idx_stim = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
@@ -250,20 +253,20 @@ class ConditionFiles:
     def session_lss_events(self):
         """Generate condition files for LSS models.
 
-        Based on 'separate' model, first generate a set of sep condition
+        Based on 'together' model, first generate a set of 'tog' condition
         files. Then, iterate through each block of stimuli and create
         trial and 'remaining' events, for each trial of each condition.
 
         Returns
         -------
         tuple
-            [0] = dict, condition files from session_separate_events
+            [0] = dict, condition files from session_together_events
             [1] = dict, lss condition files
 
         """
         # Generate typical conditions, then event-remain pairs for
         # each condition.
-        cond_dict = self.session_separate_events()
+        cond_dict = self.session_together_events()
         lss_dict = {}
         for cond_name, cond_path in cond_dict.items():
 
@@ -456,16 +459,25 @@ def confounds(conf_path, subj_work, na_value="n/a", fd_thresh=None):
 
 # %%
 def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
-    """Title.
+    """Identify condition trials that co-occur with motion event.
+
+    Write a tab-delimited txt file tracking how many motion events
+    occur during each trial of interest.
 
     Parameters
     ----------
-    subj
-    sess
-    run
-    task
-    subj_work
-    subj_fsl
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    run : str
+        BIDS run identifier
+    task : str
+        BIDS task identifier
+    subj_work : str, os.PathLike
+        Location of subject working directory
+    subj_fsl : str, os.PathLike
+        Location of subject func preproc files
 
     """
     # Setup output location
@@ -540,7 +552,7 @@ def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
             "count": int(num_mot),
         }
 
-    # Write out if co-occurance exists
+    # Write out if co-occurence exists
     if df_out.shape[0]:
         df_out.to_csv(out_path, index=False, sep="\t")
 
@@ -662,6 +674,94 @@ class _FirstSep:
 
 
 # %%
+class _FirstTog:
+    """Support writing first-level tog model design.fsf.
+
+    Intended for inheritance by MakeFirstFsf, references attrs
+    set by child.
+
+    Methods
+    -------
+    write_tog()
+        Coordinating writing of design.fsf, returns path to file
+
+    """
+
+    def write_tog(self):
+        """Make first-level FSF for model sep.
+
+        Write a design FSF by updating fields in the template FSF for
+        model_name == tog. Write out design files to subject working
+        directory.
+
+        Returns
+        -------
+        path
+            Location, name of design FSF file
+
+        """
+        # Update field_switch, make design file
+        self._tog_switch()
+        fsf_edit = self._tp_short if self._use_short else self._tp_full
+        for old, new in self._field_switch.items():
+            fsf_edit = fsf_edit.replace(old, new)
+
+        # Write out
+        out_dir = os.path.join(self._subj_work, "design_files")
+        out_name = (
+            f"{self._run}_level-first_name-" + f"{self._model_name}_design.fsf"
+        )
+        out_path = _write_design(out_dir, out_name, fsf_edit)
+        return out_path
+
+    def _tog_switch(self):
+        """Update switch dictionary for model "tog".
+
+        Find combined emotion condition files for run, update private attr
+        _field_switch for tog specific conditions.
+
+        """
+
+        def _get_desc(file_name: str) -> str:
+            """Return description field from condition filename."""
+            try:
+                _su, _se, _ta, _ru, desc, _su = file_name.split("_")
+                return desc.split("-")[-1]
+            except IndexError:
+                raise ValueError(
+                    "Improperly formatted file name for condition file."
+                )
+
+        def _tog_events(tog_emo: list) -> dict:
+            """Return replacement dict for stim, replay events."""
+            stim_dict = {}
+            replay_dict = {}
+            cnt = 1
+            for tog_path in tog_emo:
+                desc_stim = _get_desc(os.path.basename(tog_path))
+                stim_dict[f"[[stim_emo{cnt}_name]]"] = desc_stim
+                stim_dict[f"[[stim_emo{cnt}_path]]"] = tog_path
+                cnt += 1
+            stim_dict.update(replay_dict)
+            return stim_dict
+
+        # Find tog emotion condition files
+        # TODO receive these via workflows.FslFirst._sep_cond
+        tog_emo = sorted(
+            glob.glob(
+                f"{self._subj_work}/condition_files/*{self._run}_"
+                + "desc-tog*_events.txt"
+            )
+        )
+        if not tog_emo:
+            raise ValueError("Failed to find togEmo events.")
+
+        # Update attr
+        emo_dict = _tog_events(tog_emo)
+        self._field_switch.update(emo_dict)
+
+
+# %%
 class _FirstLss:
     """Support writing first-level LSS model designs.
 
@@ -671,7 +771,7 @@ class _FirstLss:
     Methods
     -------
     write_lss()
-        Coordinating writing of design.fsf, returns list of lists
+        Coordinate writing of design.fsf, returns list of lists
 
     """
 
@@ -679,19 +779,19 @@ class _FirstLss:
         """Coordinate writing of all design files for each condition."""
         # Generate a set of design lists for each condition (e.g. stimRomance)
         design_list = []
-        for self._stim_name, _ in self._sep_cond.items():
+        for self._stim_name, _ in self._tog_cond.items():
 
             # Make a switch for all names, paths of conditions that
             # are not the current iteration.
-            self._switch_sep = {}
-            sep_dict = {
-                i: j for i, j in self._sep_cond.items() if i != self._stim_name
+            self._switch_tog = {}
+            tog_dict = {
+                i: j for i, j in self._tog_cond.items() if i != self._stim_name
             }
-            for _cnt, _name in enumerate(sep_dict):
+            for _cnt, _name in enumerate(tog_dict):
                 match_cnt = _cnt + 2
-                _path = sep_dict[_name]
-                self._switch_sep[f"[[stim_{match_cnt}_name]]"] = _name
-                self._switch_sep[f"[[stim_{match_cnt}_path]]"] = _path
+                _path = tog_dict[_name]
+                self._switch_tog[f"[[stim_{match_cnt}_name]]"] = _name
+                self._switch_tog[f"[[stim_{match_cnt}_path]]"] = _path
 
             # Trigger generation of all design.fsf for current condition
             design_list.append(
@@ -731,7 +831,7 @@ class _FirstLss:
         """Write, return path to LSS design file."""
         # Aggregate all switches
         field_switch = self._field_switch.copy()
-        field_switch.update(self._switch_sep)
+        field_switch.update(self._switch_tog)
         field_switch.update(self._switch_lss)
 
         # Update fields in relevant template
@@ -750,10 +850,10 @@ class _FirstLss:
 
 
 # %%
-class MakeFirstFsf(_FirstSep, _FirstLss):
+class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
     """Generate first-level design FSF files for FSL modelling.
 
-    Inherits _FirstSep, _FirstLss.
+    Inherits _FirstSep, _FirstTog, _FirstLss.
 
     Use pre-generated template FSF files to write run-specific
     first-level design FSF files for planned models. Design files
@@ -909,7 +1009,7 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
         use_short : bool
             Whether to use short or full template design
         **kwargs: dict, optional
-            Keyword args for LSS models: sep_cond and lss_cond
+            Keyword args for LSS models: tog_cond and lss_cond
 
         Returns
         -------
@@ -933,8 +1033,8 @@ class MakeFirstFsf(_FirstSep, _FirstLss):
                 )
 
         # Capture LSS kwargs
-        if "sep_cond" in kwargs:
-            self._sep_cond = kwargs["sep_cond"]
+        if "tog_cond" in kwargs:
+            self._tog_cond = kwargs["tog_cond"]
         if "lss_cond" in kwargs:
             self._lss_cond = kwargs["lss_cond"]
 
@@ -985,10 +1085,6 @@ class MakeSecondFsf:
     second-level design FSF files for planned models. Design files
     are written to <subj_work>/design_files.
 
-    Only model_name == "sep" is currently supported. This second-level
-    model collapses across run, yielding one estimate for each emotion
-    category x stimulus | replay.
-
     Parameters
     ----------
     subj_work : str, os.PathLike
@@ -1014,9 +1110,6 @@ class MakeSecondFsf:
 
     def __init__(self, subj_work, subj_deriv, model_name):
         """Initialize."""
-        if model_name != "sep":
-            raise ValueError(f"Unexpected value for model_name : {model_name}")
-
         print("\t\tInitializing MakeSecondFSF")
         self._subj_work = subj_work
         self._subj_deriv = subj_deriv
@@ -1066,7 +1159,7 @@ class MakeSecondFsf:
         """Match copes to EVs of interest.
 
         Account for random block orders in runs, return a dict
-        alphabetized by stim|replay x emotion in format
+        alphabetized by stim|replay|tog x emotion in format
         {'stimAweGTw': {1: '/*/cope?.nii.gz', 2: '/*/cope?.nii.gz'}}.
 
         """
@@ -1088,7 +1181,9 @@ class MakeSecondFsf:
             "Sadness",
             "Surprise",
         ]
-        trial_list = ["stim", "replay"]
+        trial_list = (
+            ["stim", "replay"] if self._model_name == "sep" else ["tog"]
+        )
 
         # Mine design.con to match EVs with copes
         run_list = sorted(
