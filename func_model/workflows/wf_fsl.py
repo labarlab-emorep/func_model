@@ -62,6 +62,7 @@ class _SupportFsl:
             self._keoki_proj, "derivatives", self._final_dir, self._subj
         )
         _, _ = self._submit_rsync(self._subj_final, dst)
+        self._quick_sp(f"rm -r {self._subj_final}")
 
 
 # %%
