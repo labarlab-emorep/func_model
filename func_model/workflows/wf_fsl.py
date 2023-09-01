@@ -62,7 +62,6 @@ class _SupportFsl:
             self._keoki_proj, "derivatives", self._final_dir, self._subj
         )
         _, _ = self._submit_rsync(self._subj_final, dst)
-        self._quick_sp(f"rm -r {self._subj_final}")
 
 
 # %%
@@ -225,6 +224,101 @@ class _SupportFslFirst(_SupportFsl):
                 "Improperly formatted file name for preprocessed BOLD."
             )
 
+    def _clean_dcc(self):
+        """Remove rawdata, derivatives from group location."""
+        rm_raw = os.path.dirname(self._subj_raw)
+        rm_fp = os.path.dirname(self._subj_fp)
+        rm_fsl = os.path.dirname(self._subj_fsl)
+        for rm_dir in [rm_raw, rm_fp, rm_fsl, self._subj_final]:
+            if os.path.exists(rm_dir):
+                shutil.rmtree(rm_dir)
+
+
+class _SupportFslSecond(_SupportFsl):
+    """Offload helper methods from FslSecond.
+
+    Inherits _SupportFsl.
+
+    """
+
+    def _setup(self):
+        """Coordinate setup for design generation.
+
+        Set required attrs, build directory trees,
+        download required data, and bypass registration.
+
+        """
+        # Set reqd attrs and make directory trees
+        self._subj_work = os.path.join(
+            self._work_deriv,
+            f"model_fsl-{self._model_name}",
+            self._subj,
+            self._sess,
+            "func",
+        )
+        self._final_dir = "model_fsl"
+        self._subj_deriv = os.path.join(
+            self._proj_deriv, "model_fsl", self._subj, self._sess, "func"
+        )
+        self._subj_final = os.path.dirname(self._subj_deriv)
+        for _dir in [self._subj_work, self._subj_deriv]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+        # Download data and avoid registration problem
+        feat_list = self._get_first_model()
+        self._bypass_reg(feat_list)
+
+    def _get_first_model(self) -> list:
+        """Download required output of FslFirst, return feat dir paths."""
+        source_model = os.path.join(
+            self._keoki_proj,
+            "derivatives/model_fsl",
+            self._subj,
+            self._sess,
+            "func",
+            f"run*_level-first_name-{self._model_name}.feat",
+        )
+        std_out, std_err = self._submit_rsync(source_model, self._subj_deriv)
+        run_feat = glob.glob(f"{self._subj_deriv}/run*.feat")
+        if not run_feat:
+            raise FileNotFoundError(
+                f"Missing required files at : {self._subj_deriv}"
+                + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
+            )
+        return run_feat
+
+    def _bypass_reg(self, feat_list: list):
+        """Avoid registration issue by supplying req'd files."""
+        # Find identity file
+        fsl_dir = os.environ["FSLDIR"]
+        ident_path = os.path.join(fsl_dir, "etc", "flirtsch", "ident.mat")
+        if not os.path.exists(ident_path):
+            raise FileNotFoundError(
+                f"Missing required FSL file : {ident_path}"
+            )
+
+        # Setup reg directory
+        for feat_path in feat_list:
+            reg_path = os.path.join(feat_path, "reg")
+            if not os.path.exists(reg_path):
+                os.makedirs(reg_path)
+
+            # Get ident matrix
+            ident_out = os.path.join(reg_path, "example_func2standard.mat")
+            if not os.path.exists(ident_out):
+                shutil.copy2(ident_path, ident_out)
+
+            # Get ref epi
+            mean_path = os.path.join(feat_path, "mean_func.nii.gz")
+            mean_out = os.path.join(reg_path, "standard.nii.gz")
+            if not os.path.exists(mean_out):
+                shutil.copy2(mean_path, mean_out)
+
+    def _clean_dcc(self):
+        """Remove derivatives from group location."""
+        shutil.rmtree(self._subj_final)
+
 
 # %%
 class FslFirst(_SupportFslFirst):
@@ -351,6 +445,7 @@ class FslFirst(_SupportFslFirst):
         )
         self._run_feat([rest_design])
         self._push_data()
+        self._clean_dcc()
 
     def model_task(self):
         """Run an FSL first-level model for task EPI data.
@@ -428,6 +523,7 @@ class FslFirst(_SupportFslFirst):
         # Execute design files
         self._run_feat(design_list)
         self._push_data()
+        self._clean_dcc()
 
     def _make_cond(self):
         """Generate condition files from BIDS events files for single run."""
@@ -488,10 +584,10 @@ class FslFirst(_SupportFslFirst):
 
 
 # %%
-class FslSecond(_SupportFsl):
+class FslSecond(_SupportFslSecond):
     """Conduct second-level models of EPI data.
 
-    Inherits _SupportFsl.
+    Inherits _SupportFslSecond.
 
     Coordinate the generation and then feat execution of
     task-based second-level models.
@@ -596,80 +692,7 @@ class FslSecond(_SupportFsl):
             self._model_name,
         )
         self._push_data()
-
-    def _setup(self):
-        """Coordinate setup for design generation.
-
-        Set required attrs, build directory trees,
-        download required data, and bypass registration.
-
-        """
-        # Set reqd attrs and make directory trees
-        self._subj_work = os.path.join(
-            self._work_deriv,
-            f"model_fsl-{self._model_name}",
-            self._subj,
-            self._sess,
-            "func",
-        )
-        self._final_dir = "model_fsl"
-        self._subj_deriv = os.path.join(
-            self._proj_deriv, "model_fsl", self._subj, self._sess, "func"
-        )
-        self._subj_final = os.path.dirname(self._subj_deriv)
-        for _dir in [self._subj_work, self._subj_deriv]:
-            if not os.path.exists(_dir):
-                os.makedirs(_dir)
-
-        # Download data and avoid registration problem
-        feat_list = self._get_first_model()
-        self._bypass_reg(feat_list)
-
-    def _get_first_model(self) -> list:
-        """Download required output of FslFirst, return feat dir paths."""
-        source_model = os.path.join(
-            self._keoki_proj,
-            "derivatives/model_fsl",
-            self._subj,
-            self._sess,
-            "func",
-            f"run*_level-first_name-{self._model_name}.feat",
-        )
-        std_out, std_err = self._submit_rsync(source_model, self._subj_deriv)
-        run_feat = glob.glob(f"{self._subj_deriv}/run*.feat")
-        if not run_feat:
-            raise FileNotFoundError(
-                f"Missing required files at : {self._subj_deriv}"
-                + f"\nstdout:\n\t{std_out}\nstderr:\n\t{std_err}"
-            )
-        return run_feat
-
-    def _bypass_reg(self, feat_list: list):
-        """Avoid registration issue by supplying req'd files."""
-        # Find identity file
-        fsl_dir = os.environ["FSLDIR"]
-        ident_path = os.path.join(fsl_dir, "etc", "flirtsch", "ident.mat")
-        if not os.path.exists(ident_path):
-            raise FileNotFoundError(
-                f"Missing required FSL file : {ident_path}"
-            )
-
-        # Setup reg directory
-        for feat_path in feat_list:
-            reg_path = os.path.join(feat_path, "reg")
-            if not os.path.exists(reg_path):
-                os.makedirs(reg_path)
-
-            # Get ident matrix
-            ident_out = os.path.join(reg_path, "example_func2standard.mat")
-            if not os.path.exists(ident_out):
-                shutil.copy2(ident_path, ident_out)
-
-            # Get ref epi
-            mean_path = os.path.join(feat_path, "mean_func.nii.gz")
-            mean_out = os.path.join(reg_path, "standard.nii.gz")
-            if not os.path.exists(mean_out):
-                shutil.copy2(mean_path, mean_out)
+        self._clean_dcc()
 
 
 # %%

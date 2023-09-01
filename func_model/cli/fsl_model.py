@@ -35,6 +35,7 @@ fsl_model -s sub-ER0009 \
 import os
 import sys
 import time
+import socket
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
@@ -194,7 +195,8 @@ if __name__ == "__main__":
 
     # Require proj env
     env_found = [x for x in sys.path if "emorep" in x]
-    if not env_found:
+    host_name = socket.gethostname()
+    if not env_found and "dcc" not in host_name:
         print("\nERROR: missing required project environment 'emorep'.")
         print("\tHint: $labar_env emorep\n")
         sys.exit(1)
