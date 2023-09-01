@@ -615,6 +615,8 @@ class FslSecond(_SupportFslSecond):
         User name for DCC, labarserv2
     rsa_key : str, os.PathLike
         Location of RSA key for labarserv2
+    keoki_path : str, os.PathLike, optional
+        Location of project directory on Keoki
 
     Methods
     -------
@@ -638,16 +640,14 @@ class FslSecond(_SupportFslSecond):
         log_dir,
         user_name,
         rsa_key,
+        keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
         if not fsl.helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
 
         print("Initializing FslSecond")
-        super().__init__(
-            "/mnt/keoki/experiments2/EmoRep/"
-            + "Exp2_Compute_Emotion/data_scanner_BIDS"
-        )
+        super().__init__(keoki_path)
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
