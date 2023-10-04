@@ -14,7 +14,7 @@ and writes output to:
 Examples
 --------
 fsl_map -t movies
-fsl_map -t movies --contrast-name replay
+fsl_map -t movies --contrast-name tog --model-name tog
 
 """
 # %%
@@ -36,9 +36,9 @@ def _get_args():
         "--contrast-name",
         type=str,
         default="stim",
+        choices=["stim", "replay", "tog"],
         help=textwrap.dedent(
             """\
-            [stim | replay]
             Desired contrast from which coefficients will be extracted,
             substring of design.fsf EV Title.
             (default : %(default)s)
@@ -49,9 +49,9 @@ def _get_args():
         "--model-level",
         type=str,
         default="first",
+        choices=["first"],
         help=textwrap.dedent(
             """\
-            [first]
             FSL model level, for triggering different workflows
             (default : %(default)s)
             """
@@ -61,9 +61,9 @@ def _get_args():
         "--model-name",
         type=str,
         default="sep",
+        choices=["sep", "tog"],
         help=textwrap.dedent(
             """\
-            [sep]
             FSL model name, for triggering different workflows
             (default : %(default)s)
             """
@@ -86,10 +86,10 @@ def _get_args():
         "-t",
         "--task-name",
         type=str,
+        choices=["movies", "scenarios", "all"],
         required=True,
         help=textwrap.dedent(
             """\
-            [movies | scenarios]
             Name of EmoRep stimulus type, corresponds to BIDS task field
             (default : %(default)s)
             """
@@ -114,17 +114,12 @@ def main():
     task_name = args.task_name
 
     # Check user input
-    if model_name != "sep":
-        print(f"Unsupported model name : {model_name}")
-        sys.exit(1)
     if not fsl.helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
     if not fsl.helper.valid_contrast(con_name):
         print(f"Unsupported contrast name : {con_name}")
         sys.exit(1)
-    if task_name not in ["movies", "scenarios"]:
-        raise ValueError(f"Unexpected value for task : {task_name}")
 
     # Get template path
     try:

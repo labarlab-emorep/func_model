@@ -867,16 +867,16 @@ def fsl_classify_mask(
     proj_dir : path
         Location of project directory
     model_name : str
-        [sep]
+        [sep | tog]
         FSL model identifier
     model_level : str
         [first]
         FSL model level
     con_name : str
-        [stim | replay]
+        [stim | replay | tog]
         Contrast name of extracted coefficients
-    task_name
-        [movies | scenarios]
+    task_name : str
+        [movies | scenarios | all]
         Name of stimulus type
     tpl_path : path
         Location and name of template
@@ -892,13 +892,13 @@ def fsl_classify_mask(
 
     """
     # Check user input
-    if model_name != "sep":
+    if model_name not in ["sep", "tog"]:
         raise ValueError(f"Unsupported model name : {model_name}")
-    if not fsl.helper.valid_level(model_level):
+    if model_level != "first":
         raise ValueError(f"Unsupported model level : {model_level}")
     if not fsl.helper.valid_contrast(con_name):
         raise ValueError(f"Unsupported contrast name : {con_name}")
-    if task_name not in ["movies", "scenarios"]:
+    if task_name not in ["movies", "scenarios", "all"]:
         raise ValueError(f"Unexpected value for task : {task_name}")
     if not os.path.exists(tpl_path):
         raise FileNotFoundError(f"Missing file : {tpl_path}")
@@ -909,8 +909,8 @@ def fsl_classify_mask(
     )
     class_path = os.path.join(
         data_dir,
-        f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
-        + f"task-{task_name}_voxel-importance.tsv",
+        f"level-{model_level}_name-{model_name}_task-{task_name}_"
+        + f"con-{con_name}Washout_voxel-importance.tsv",
     )
     if not os.path.exists(class_path):
         raise FileNotFoundError(
@@ -937,7 +937,7 @@ def fsl_classify_mask(
         df_emo = df_emo.drop("emo_id", axis=1).reset_index(drop=True)
         mask_path = os.path.join(
             out_dir,
-            f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
-            + f"task-{task_name}_emo-{emo_name}_map.nii.gz",
+            f"level-{model_level}_name-{model_name}_task-{task_name}_"
+            + f"con-{con_name}Washout_emo-{emo_name}_map.nii.gz",
         )
         _ = mk_mask.make_mask(df_emo, mask_path)

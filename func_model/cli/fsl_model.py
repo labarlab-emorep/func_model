@@ -53,9 +53,9 @@ def _get_args():
         "--model-level",
         type=str,
         default="first",
+        choices=["first", "second"],
         help=textwrap.dedent(
             """\
-            [first | second]
             FSL model level, for triggering different workflows.
             (default : %(default)s)
             """
@@ -65,9 +65,9 @@ def _get_args():
         "--model-name",
         type=str,
         default="tog",
+        choices=["sep", "tog", "rest", "lss"],
         help=textwrap.dedent(
             """\
-            [sep | tog | rest | lss]
             FSL model name, for triggering different workflows
             (default : %(default)s)
             """
@@ -77,9 +77,9 @@ def _get_args():
         "--preproc-type",
         type=str,
         default="scaled",
+        choices=["scaled", "smoothed"],
         help=textwrap.dedent(
             """\
-            [scaled | smoothed]
             Determine whether to use scaled or smoothed preprocessed EPIs
             (default : %(default)s)
             """
