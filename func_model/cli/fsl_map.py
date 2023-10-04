@@ -3,7 +3,8 @@
 Written for the local labarserv2 environment.
 
 Convert each row of a feature importance dataframe into
-a NIfTI file in template space.
+a NIfTI file in template space. Then generate conjunctive
+analysis maps.
 
 Check for data in:
     <proj-dir>/analyses/classify_fMRI_plsda/classifier_output
