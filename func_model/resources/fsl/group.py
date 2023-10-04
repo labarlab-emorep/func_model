@@ -15,6 +15,7 @@ from multiprocessing import Pool
 import nibabel as nib
 from func_model.resources.fsl import helper
 from func_model.resources.general import matrix
+from func_model.resources.general import submit
 
 
 class ExtractTaskBetas(matrix.NiftiArray):
@@ -498,3 +499,104 @@ class ImportanceMask(matrix.NiftiArray):
         )
         nib.save(emo_img, mask_path)
         return arr_fill
+
+
+class ConjunctAnalysis:
+    """Title.
+
+    Parameters
+    ----------
+    map_list
+    out_dir
+
+    Methods
+    -------
+    omni_map
+    valence_map
+    arousal_map
+
+    Example
+    -------
+
+    """
+
+    def __init__(self, map_list, out_dir):
+        """Initialize."""
+        self._map_list = map_list
+        self._out_dir = out_dir
+        (
+            self._model_level,
+            self._model_name,
+            self._task_name,
+            self._con_name,
+            _emo,
+            _suff,
+        ) = os.path.basename(map_list[0]).split("_")
+
+    def omni_map(self):
+        """Title."""
+        # Omnibus conjunction
+        omni_out = os.path.join(
+            self._out_dir,
+            f"{self._model_level}_{self._model_name}_{self._task_name}_"
+            + f"{self._con_name}_conj-omni_map.nii.gz",
+        )
+        self._c3d_add(self._map_list, omni_out, "conj-omni")
+
+    def _c3d_add(self, add_list, out_path, job_name):
+        """Title."""
+        bash_cmd = f"""\
+            c3d \
+                {" ".join(add_list)} \
+                -accum -add -endaccum \
+                {out_path}
+        """
+        _ = submit.submit_subprocess(bash_cmd, out_path, job_name)
+
+    def valence_map(self):
+        """Title."""
+        map_val = {
+            "Pos": ["amusement", "awe", "excitement", "joy", "romance"],
+            "Neg": [
+                "anger",
+                "anxiety",
+                "disgust",
+                "fear",
+                "horror",
+                "sadness",
+            ],
+            "Neu": ["calmness", "craving", "neutral", "surprise"],
+        }
+        self._conj_aro_val(map_val, "val")
+
+    def _conj_aro_val(self, map_dict, conj_name):
+        for key in map_dict:
+            val_list = [
+                x for x in self._map_list for y in map_dict[key] if y in x
+            ]
+            print(key, val_list)
+            out_path = os.path.join(
+                self._out_dir,
+                f"{self._model_level}_{self._model_name}_{self._task_name}_"
+                + f"{self._con_name}_conj-{conj_name}{key}_map.nii.gz",
+            )
+            self._c3d_add(val_list, out_path, f"conj-{key}")
+
+    def arousal_map(self):
+        """Title."""
+        map_aro = {
+            "High": [
+                "amusement",
+                "anger",
+                "anxiety",
+                "craving",
+                "disgust",
+                "excitement",
+                "fear",
+                "horror",
+                "surprise",
+            ],
+            "Low": ["calmness", "neutral", "sadness"],
+            "Med": ["awe", "romance", "joy"],
+        }
+        self._conj_aro_val(map_aro, "aro")
