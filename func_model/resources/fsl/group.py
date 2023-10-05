@@ -10,6 +10,7 @@ import os
 import glob
 import re
 import json
+from typing import Union
 import pandas as pd
 import numpy as np
 from multiprocessing import Pool
@@ -373,14 +374,62 @@ def comb_matrices(
 
 
 # %%
-class ImportanceMask(matrix.NiftiArray):
+class _ConjunctMethods:
+    """Title."""
+
+    def c3d_add(
+        self,
+        add_list: list,
+        out_path: Union[str, os.PathLike],
+    ):
+        """Sum maps."""
+        bash_cmd = f"""\
+            c3d \
+                {" ".join(add_list)} \
+                -accum -add -endaccum \
+                -o {out_path}
+        """
+        _ = submit.submit_subprocess(bash_cmd, out_path, "c3d-add")
+        self._tpl_head(out_path)
+
+    def _tpl_head(self, out_path):
+        """Fix header of conjunction files."""
+        _ = submit.submit_subprocess(
+            f"3drefit -space MNI {out_path}", out_path, "afni-refit"
+        )
+
+    def cluster(
+        self,
+        in_path: Union[str, os.PathLike],
+        nn: int = 1,
+        size: int = 10,
+        vox_value: int = 2,
+    ):
+        """Title."""
+        out_dir = os.path.dirname(in_path)
+        out_name = "Clust_" + os.path.basename(in_path)
+        out_path = os.path.join(out_dir, out_name)
+        bash_cmd = f"""\
+            3dClusterize \
+                -nosum -1Dformat \
+                -inset {in_path} \
+                -idat 0 -ithr 0 \
+                -NN {nn} -clust_nvox {size} \
+                -bisided -{vox_value} {vox_value} \
+                -pref_map {out_path} \
+                > {out_path.replace(".nii.gz", ".txt")}
+        """
+        _ = submit.submit_subprocess(bash_cmd, out_path, "afni-clust")
+
+
+class ImportanceMask(matrix.NiftiArray, _ConjunctMethods):
     """Convert a dataframe of classifier values into a NIfTI mask.
 
     Reference a template to derive header information and start a
     matrix of the same size. Populate said matrix was row values
     from a supplied dataframe.
 
-    Inherits general.matrix.NiftiArray.
+    Inherits general.matrix.NiftiArray, _ConjunctMethods
 
     Methods
     -------
@@ -443,7 +492,7 @@ class ImportanceMask(matrix.NiftiArray):
             A header and single row containing classifier importance.
             Column names should be formatted as coordinate, e.g.
             "(45, 31, 90)".
-        mask_path : path
+        mask_path : str, os.PathLike
             Location and name of output NIfTI file
 
         Returns
@@ -499,11 +548,14 @@ class ImportanceMask(matrix.NiftiArray):
             arr_fill, affine=None, header=self.img_header
         )
         nib.save(emo_img, mask_path)
+        self.cluster(mask_path, vox_value=1)
         return arr_fill
 
 
-class ConjunctAnalysis:
+class ConjunctAnalysis(_ConjunctMethods):
     """Generate conjunction maps.
+
+    Inherits _ConjunctMethods.
 
     Generate omnibus, arousal, and valence conjunction maps
     from voxel importance maps.
@@ -554,17 +606,8 @@ class ConjunctAnalysis:
             + f"{self._con_name}_conj-omni_map.nii.gz",
         )
         print("Building conjunction map : omni")
-        self._c3d_add(self._map_list, omni_out, "conj-omni")
-
-    def _c3d_add(self, add_list, out_path, job_name):
-        """Sum maps."""
-        bash_cmd = f"""\
-            c3d \
-                {" ".join(add_list)} \
-                -accum -add -endaccum \
-                {out_path}
-        """
-        _ = submit.submit_subprocess(bash_cmd, out_path, job_name)
+        self.c3d_add(self._map_list, omni_out)
+        self.cluster(omni_out)
 
     def valence_map(self):
         """Generate positive, negative, neutrual valence conjunction maps."""
@@ -594,7 +637,8 @@ class ConjunctAnalysis:
                 + f"{self._con_name}_conj-{conj_name}{key}_map.nii.gz",
             )
             print(f"Building conjunction map : {conj_name}{key}")
-            self._c3d_add(val_list, out_path, f"conj-{key}")
+            self.c3d_add(val_list, out_path)
+            self.cluster(out_path)
 
     def arousal_map(self):
         """Generate high, medium, low arousal conjunction maps."""
