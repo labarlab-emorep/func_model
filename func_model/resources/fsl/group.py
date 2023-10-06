@@ -374,15 +374,24 @@ def comb_matrices(
 
 
 # %%
-class _ConjunctMethods:
-    """Title."""
+class _MapMethods:
+    """Voxel importance map methods.
+
+    Methods
+    -------
+    c3d_add()
+        Add voxels maps together
+    cluster()
+        Identify clusters of voxel value, size, and NN
+
+    """
 
     def c3d_add(
         self,
         add_list: list,
         out_path: Union[str, os.PathLike],
     ):
-        """Sum maps."""
+        """Add 3D NIfTIs together."""
         bash_cmd = f"""\
             c3d \
                 {" ".join(add_list)} \
@@ -405,7 +414,7 @@ class _ConjunctMethods:
         size: int = 10,
         vox_value: int = 2,
     ):
-        """Title."""
+        """Identify clusters of NN, size, and voxel value."""
         out_dir = os.path.dirname(in_path)
         out_name = "Clust_" + os.path.basename(in_path)
         out_path = os.path.join(out_dir, out_name)
@@ -414,22 +423,25 @@ class _ConjunctMethods:
                 -nosum -1Dformat \
                 -inset {in_path} \
                 -idat 0 -ithr 0 \
-                -NN {nn} -clust_nvox {size} \
+                -NN {nn} \
+                -clust_nvox {size} \
                 -bisided -{vox_value} {vox_value} \
                 -pref_map {out_path} \
                 > {out_path.replace(".nii.gz", ".txt")}
         """
-        _ = submit.submit_subprocess(bash_cmd, out_path, "afni-clust")
+        _ = submit.submit_subprocess(
+            bash_cmd, out_path, "afni-clust", force_cont=True
+        )
 
 
-class ImportanceMask(matrix.NiftiArray, _ConjunctMethods):
+class ImportanceMask(matrix.NiftiArray, _MapMethods):
     """Convert a dataframe of classifier values into a NIfTI mask.
 
     Reference a template to derive header information and start a
     matrix of the same size. Populate said matrix was row values
     from a supplied dataframe.
 
-    Inherits general.matrix.NiftiArray, _ConjunctMethods
+    Inherits general.matrix.NiftiArray, _MapMethods
 
     Methods
     -------
@@ -552,10 +564,10 @@ class ImportanceMask(matrix.NiftiArray, _ConjunctMethods):
         return arr_fill
 
 
-class ConjunctAnalysis(_ConjunctMethods):
+class ConjunctAnalysis(_MapMethods):
     """Generate conjunction maps.
 
-    Inherits _ConjunctMethods.
+    Inherits _MapMethods.
 
     Generate omnibus, arousal, and valence conjunction maps
     from voxel importance maps.

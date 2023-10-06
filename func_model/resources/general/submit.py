@@ -13,7 +13,7 @@ import textwrap
 from func_model.resources import fsl
 
 
-def submit_subprocess(bash_cmd, chk_path, job_name):
+def submit_subprocess(bash_cmd, chk_path, job_name, force_cont=False):
     """Submit bash command as subprocess.
 
     Check for output file after submission, print stdout
@@ -27,10 +27,12 @@ def submit_subprocess(bash_cmd, chk_path, job_name):
         Location of generated file
     job_name : str
         Identifier for error messages
+    force_cont : bool, optional
+        Skip file check, raising FileNotFoundError
 
     Returns
     -------
-    path
+    str, os.PathLike, None
         Location of generated file
 
     Raises
@@ -42,6 +44,8 @@ def submit_subprocess(bash_cmd, chk_path, job_name):
     h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
     h_out, h_err = h_sp.communicate()
     h_sp.wait()
+    if force_cont:
+        return
     if not os.path.exists(chk_path):
         print(
             f"""\n
