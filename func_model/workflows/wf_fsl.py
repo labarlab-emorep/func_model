@@ -2,6 +2,8 @@
 
 FslFirst : GLM task, rest data via FSL
 FslSecond : second-level GLM of task data via FSl
+FslThirdSubj : generate needed info for third-level analyses which
+                collapses across subject
 fsl_extract : extract task beta-coefficiens from FSL GLM
 fsl_classify_mask : generate template mask from classifier output
 
@@ -693,6 +695,161 @@ class FslSecond(_SupportFslSecond):
         )
         self._push_data()
         self._clean_dcc()
+
+
+# %%
+class FslThirdSubj:
+    """Generate reference files for collapsing across subjects.
+
+    Generate text files holding info for the data input, stats evs, and
+    stats contrasts fields of the FSL FEAT FMRI analysis GUI. These files
+    are used to populate test_build/fsl_group_{task}_template.fsf to
+    conduct a third-level FSL analysis which collapses across subject
+    to generate group-level task-based emotion maps.
+
+    Writes files to:
+        <proj_dir>/analyses/model_fsl_group/level-third_name-<model_name>
+
+    Parameters
+    ----------
+    proj_dir : str, os.PathLike
+        Location of project parent directory
+    model_name : str, optional
+        ["sep"]
+        FSL model name
+    task_name : str, optional
+        ["movies", "scenarios"]
+        Value of BIDS task field
+
+    Attributes
+    ----------
+    task : str
+        ["movies", "scenarios"]
+        Value of task BIDS field
+    input_data : list
+        Paths to cope1.feat files for task, input values for
+        FSL > FEAT-FMRI > Data > Select FEAT directories
+    ev1 : list
+        Input values for FSL > FEAT-FMRI > Stats > Full model setup >
+        EVs > EV1
+    ev1_contrast : list
+        Input values for FSL > FEAT-FMRI > Stats > Full model setup >
+        Contrast & F-tests > EV1
+
+    Methods
+    -------
+    build_input_data()
+        Generate files with input paths/matrices, builds input_data,
+        ev1, ev1_contrast attrs
+    write_out()
+        Write txt files for input_data, ev1, and ev1_contrast
+
+    Example
+    -------
+    fg = wf_fsl.FslThirdSubj(*args, **kwargs)
+    fg.build_input_data()
+    fg.write_out()
+    fg.task = "scenarios"
+    fg.build_input_data()
+    fg.write_out()
+
+    """
+
+    def __init__(self, proj_dir, model_name="sep", task="movies"):
+        """Initialize."""
+        print("Initializing wf_fsl.FslThirdSubj ...")
+        if model_name not in ["sep"]:
+            raise ValueError(f"Unsupported model name : {model_name}")
+
+        # Setup
+        self._group_dir = os.path.join(
+            proj_dir,
+            "analyses/model_fsl_group",
+            f"level-third_name-{model_name}",
+        )
+        if not os.path.exists(self._group_dir):
+            os.makedirs(self._group_dir)
+        self._deriv_dir = os.path.join(
+            proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
+        )
+        self._model_name = model_name
+
+        # Find subjects in derivatives, get paths to all second-level output
+        self._subj_list = [
+            os.path.basename(x) for x in glob.glob(f"{self._deriv_dir}/sub-*")
+        ]
+        self._feat_list = glob.glob(
+            f"{self._deriv_dir}/sub-*/ses-*/func/level-second_"
+            + f"name-{model_name}.gfeat/cope1.feat"
+        )
+        self.task = task
+
+    def build_input_data(self):
+        """Build input_data, ev1, ev1_contrast attrs for task."""
+        if self.task not in ["scenarios", "movies"]:
+            raise ValueError(f"Unsupported task name : {self.task}")
+
+        self.input_data = []
+        for subj in self._subj_list:
+
+            # Find task path
+            deriv_path = f"{self._deriv_dir}/{subj}/ses-*/func"
+            task_list = glob.glob(
+                f"{deriv_path}/condition_files/*{self.task}_*"
+            )
+            if not task_list:
+                continue
+
+            # Add subj/sess if it contains second-level gfeat output
+            subj, sess, _task, _run, _desc, _suff = os.path.basename(
+                task_list[0]
+            ).split("_")
+            subj_sess_feat = [
+                x for x in self._feat_list if f"{subj}/{sess}" in x
+            ]
+            if subj_sess_feat:
+                self.input_data.append(subj_sess_feat[0])
+        self._build_evs()
+
+    def _build_evs(self):
+        """Build ev1, ev1_contrast attrs."""
+        self.ev1 = [1]
+        for _ in self.input_data[1:]:
+            self.ev1.append(1.0)
+        self.ev1_contrast = [1.0, -1.0]
+
+    def write_out(self):
+        """Write input_data, ev1, ev1_contrast to disk."""
+        if not hasattr(self, "input_data"):
+            self.build_input_data()
+
+        out_data = os.path.join(
+            self._group_dir,
+            f"level-third_name-{self._model_name}_comb-subj_"
+            + f"task-{self.task}_data-input.txt",
+        )
+        self._write(self.input_data, out_data)
+
+        out_evs = os.path.join(
+            self._group_dir,
+            f"level-third_name-{self._model_name}_comb-subj_"
+            + f"task-{self.task}_stats-evs.txt",
+        )
+        self._write(self.ev1, out_evs)
+
+        out_con = os.path.join(
+            self._group_dir,
+            f"level-third_name-{self._model_name}_comb-subj_"
+            + f"task-{self.task}_stats-contrasts.txt",
+        )
+        self._write(self.ev1_contrast, out_con)
+
+    def _write(self, data_list, file_path):
+        """Write list to disk."""
+        print(f"Writing : {file_path}")
+        with open(file_path, "w") as tf:
+            for line in data_list:
+                tf.write(f"{line}\n")
 
 
 # %%
