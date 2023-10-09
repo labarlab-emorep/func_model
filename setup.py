@@ -16,6 +16,7 @@ setup(
             "fsl_model=func_model.cli.fsl_model:main",
             "fsl_extract=func_model.cli.fsl_extract:main",
             "fsl_map=func_model.cli.fsl_map:main",
+            "fsl_group=func_model.cli.fsl_group:main",
         ]
     },
     include_package_data=True,
