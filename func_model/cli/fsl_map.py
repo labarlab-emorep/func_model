@@ -1,20 +1,24 @@
-"""Generate NIfTI masks from classifier output.
+r"""Generate NIfTI masks from classifier output.
 
 Written for the local labarserv2 environment.
 
 Convert each row of a feature importance dataframe into
-a NIfTI file in template space.
+a NIfTI file in template space. Then generate conjunctive
+analysis maps.
 
 Check for data in:
-    <proj-dir>/analyses/classify_fMRI_plsda/classifier_output
+    proj_dir/analyses/classify_fMRI_plsda/classifier_output
 
 and writes output to:
-    <proj-dir>/analyses/classify_fMRI_plsda/voxel_importance_maps
+    proj_dir/analyses/classify_fMRI_plsda/voxel_importance_maps
 
 Examples
 --------
 fsl_map -t movies
-fsl_map -t movies --contrast-name tog --model-name tog
+fsl_map -t all
+fsl_map -t movies \
+    --contrast-name tog \
+    --model-name tog
 
 """
 # %%

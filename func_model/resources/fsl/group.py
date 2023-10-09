@@ -3,18 +3,21 @@
 ExtractTaskBetas : mine nii to generate dataframes of beta estimates
 comb_matrices : concatenate participant beta-estimate dfs
 ImportanceMask : generate mask in template space from classifier output
+ConjunctAnalysis : generate conjunction maps from ImportanceMask output
 
 """
 import os
 import glob
 import re
 import json
+from typing import Union
 import pandas as pd
 import numpy as np
 from multiprocessing import Pool
 import nibabel as nib
 from func_model.resources.fsl import helper
 from func_model.resources.general import matrix
+from func_model.resources.general import submit
 
 
 class ExtractTaskBetas(matrix.NiftiArray):
@@ -371,14 +374,74 @@ def comb_matrices(
 
 
 # %%
-class ImportanceMask(matrix.NiftiArray):
+class _MapMethods:
+    """Voxel importance map methods.
+
+    Methods
+    -------
+    c3d_add()
+        Add voxels maps together
+    cluster()
+        Identify clusters of voxel value, size, and NN
+
+    """
+
+    def c3d_add(
+        self,
+        add_list: list,
+        out_path: Union[str, os.PathLike],
+    ):
+        """Add 3D NIfTIs together."""
+        bash_cmd = f"""\
+            c3d \
+                {" ".join(add_list)} \
+                -accum -add -endaccum \
+                -o {out_path}
+        """
+        _ = submit.submit_subprocess(bash_cmd, out_path, "c3d-add")
+        self._tpl_head(out_path)
+
+    def _tpl_head(self, out_path):
+        """Fix header of conjunction files."""
+        _ = submit.submit_subprocess(
+            f"3drefit -space MNI {out_path}", out_path, "afni-refit"
+        )
+
+    def cluster(
+        self,
+        in_path: Union[str, os.PathLike],
+        nn: int = 1,
+        size: int = 10,
+        vox_value: int = 2,
+    ):
+        """Identify clusters of NN, size, and voxel value."""
+        out_dir = os.path.dirname(in_path)
+        out_name = "Clust_" + os.path.basename(in_path)
+        out_path = os.path.join(out_dir, out_name)
+        bash_cmd = f"""\
+            3dClusterize \
+                -nosum -1Dformat \
+                -inset {in_path} \
+                -idat 0 -ithr 0 \
+                -NN {nn} \
+                -clust_nvox {size} \
+                -bisided -{vox_value} {vox_value} \
+                -pref_map {out_path} \
+                > {out_path.replace(".nii.gz", ".txt")}
+        """
+        _ = submit.submit_subprocess(
+            bash_cmd, out_path, "afni-clust", force_cont=True
+        )
+
+
+class ImportanceMask(matrix.NiftiArray, _MapMethods):
     """Convert a dataframe of classifier values into a NIfTI mask.
 
     Reference a template to derive header information and start a
     matrix of the same size. Populate said matrix was row values
     from a supplied dataframe.
 
-    Inherits general.matrix.NiftiArray.
+    Inherits general.matrix.NiftiArray, _MapMethods
 
     Methods
     -------
@@ -441,7 +504,7 @@ class ImportanceMask(matrix.NiftiArray):
             A header and single row containing classifier importance.
             Column names should be formatted as coordinate, e.g.
             "(45, 31, 90)".
-        mask_path : path
+        mask_path : str, os.PathLike
             Location and name of output NIfTI file
 
         Returns
@@ -497,4 +560,113 @@ class ImportanceMask(matrix.NiftiArray):
             arr_fill, affine=None, header=self.img_header
         )
         nib.save(emo_img, mask_path)
+        self.cluster(mask_path, vox_value=1)
         return arr_fill
+
+
+class ConjunctAnalysis(_MapMethods):
+    """Generate conjunction maps.
+
+    Inherits _MapMethods.
+
+    Generate omnibus, arousal, and valence conjunction maps
+    from voxel importance maps.
+
+    Parameters
+    ----------
+    map_list : list
+        Paths to NIfTI voxel importance maps in template space
+    out_dir : str, os.PathLike
+        Output location
+
+    Methods
+    -------
+    omni_map()
+        Generate omnibus conjunction from all map_list files
+    valence_map()
+        Generate positive, negative, neutrual valence conjunction maps
+    arousal_map()
+        Generate high, medium, low arousal conjunction maps
+
+    Example
+    -------
+    conj = fsl.group.ConjunctAnalysis(*args)
+    conj.omni_map()
+    conj.arousal_map()
+    conj.valence_map()
+
+    """
+
+    def __init__(self, map_list, out_dir):
+        """Initialize."""
+        self._map_list = map_list
+        self._out_dir = out_dir
+        (
+            self._model_level,
+            self._model_name,
+            self._task_name,
+            self._con_name,
+            _emo,
+            _suff,
+        ) = os.path.basename(map_list[0]).split("_")
+
+    def omni_map(self):
+        """Generate omnibus conjunction from all map_list files."""
+        omni_out = os.path.join(
+            self._out_dir,
+            f"{self._model_level}_{self._model_name}_{self._task_name}_"
+            + f"{self._con_name}_conj-omni_map.nii.gz",
+        )
+        print("Building conjunction map : omni")
+        self.c3d_add(self._map_list, omni_out)
+        self.cluster(omni_out)
+
+    def valence_map(self):
+        """Generate positive, negative, neutrual valence conjunction maps."""
+        map_val = {
+            "Pos": ["amusement", "awe", "excitement", "joy", "romance"],
+            "Neg": [
+                "anger",
+                "anxiety",
+                "disgust",
+                "fear",
+                "horror",
+                "sadness",
+            ],
+            "Neu": ["calmness", "craving", "neutral", "surprise"],
+        }
+        self._conj_aro_val(map_val, "val")
+
+    def _conj_aro_val(self, map_dict: dict, conj_name: str):
+        """Unpack filenames to list items to make conj maps."""
+        for key in map_dict:
+            val_list = [
+                x for x in self._map_list for y in map_dict[key] if y in x
+            ]
+            out_path = os.path.join(
+                self._out_dir,
+                f"{self._model_level}_{self._model_name}_{self._task_name}_"
+                + f"{self._con_name}_conj-{conj_name}{key}_map.nii.gz",
+            )
+            print(f"Building conjunction map : {conj_name}{key}")
+            self.c3d_add(val_list, out_path)
+            self.cluster(out_path)
+
+    def arousal_map(self):
+        """Generate high, medium, low arousal conjunction maps."""
+        map_aro = {
+            "High": [
+                "amusement",
+                "anger",
+                "anxiety",
+                "craving",
+                "disgust",
+                "excitement",
+                "fear",
+                "horror",
+                "surprise",
+            ],
+            "Low": ["calmness", "neutral", "sadness"],
+            "Med": ["awe", "romance", "joy"],
+        }
+        self._conj_aro_val(map_aro, "aro")

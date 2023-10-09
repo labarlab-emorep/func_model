@@ -931,6 +931,7 @@ def fsl_classify_mask(
     )
     mk_mask = fsl.group.ImportanceMask()
     mk_mask.mine_template(tpl_path)
+    mask_list = []
     for emo_name in emo_list:
         print(f"Making importance mask for : {emo_name}")
         df_emo = df_import[df_import["emo_id"] == emo_name]
@@ -941,3 +942,10 @@ def fsl_classify_mask(
             + f"con-{con_name}Washout_emo-{emo_name}_map.nii.gz",
         )
         _ = mk_mask.make_mask(df_emo, mask_path)
+        mask_list.append(mask_path)
+
+    # Trigger conjunction analyses
+    conj = fsl.group.ConjunctAnalysis(mask_list, out_dir)
+    conj.omni_map()
+    conj.arousal_map()
+    conj.valence_map()
