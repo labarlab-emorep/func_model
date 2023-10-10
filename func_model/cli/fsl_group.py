@@ -14,6 +14,7 @@ Data for these GUI input locations are written (respectively) to:
     - level-third_name-*_comb-*_task-*_stats-contrasts.txt
 
 Combination names:
+    TODO
     - subj = generate third-level input for combining across subjects
                 while maintaining task separate. Generates
                 level-third_name-*_comb-subj_task-*.
@@ -21,8 +22,8 @@ Combination names:
 
 Examples
 --------
-fsl_group -c subj -t movies
-fsl_group -c subj -t scenarios
+fsl_group -l third -c subj --task-name movies
+fsl_group -l third -c sess
 
 """
 
@@ -62,22 +63,28 @@ def _get_args():
             """
         ),
     )
+    parser.add_argument(
+        "--task-name",
+        help="Value of BIDS task field",
+        type=str,
+        choices=["scenarios", "movies"],
+    )
 
     required_args = parser.add_argument_group("Required Arguments")
     required_args.add_argument(
         "-c",
         "--comb-name",
-        help="Combination type",
+        help="Combination type, collapse across a factor/variable",
         type=str,
-        choices=["subj"],
+        choices=["subj", "sess"],
         required=True,
     )
     required_args.add_argument(
-        "-t",
-        "--task-name",
-        help="Value of BIDS task field",
+        "-l",
+        "--model-level",
+        help="FSL model level",
         type=str,
-        choices=["scenarios", "movies"],
+        choices=["third"],
         required=True,
     )
 
@@ -95,14 +102,22 @@ def main():
     proj_dir = args.proj_dir
     comb_name = args.comb_name
     model_name = args.model_name
+    model_level = args.model_level
     task_name = args.task_name
 
-    if comb_name == "subj":
+    # Validate
+    if model_level == "third" and comb_name == "subj" and not task_name:
+        raise ValueError("fsl_group -c subj -l third requires --task-name")
+
+    if comb_name == "subj" and model_level == "third":
         fsl_subj = wf_fsl.FslThirdSubj(
             proj_dir, model_name=model_name, task=task_name
         )
         fsl_subj.build_input_data()
-        fsl_subj.write_out()
+
+    if comb_name == "sess" and model_level == "third":
+        fsl_sess = wf_fsl.FslThirdSess(proj_dir, model_name=model_name)
+        fsl_sess.build_input_data()
 
 
 if __name__ == "__main__":

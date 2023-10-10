@@ -203,7 +203,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         out_path = os.path.join(
             subj_out,
             f"{subj}_{sess}_{task}_level-{model_level}_"
-            + f"name-{model_name}_con-{con_name}_betas.tsv",
+            + f"name-{model_name}_con-{con_name}_betas.csv",
         )
         if os.path.exists(out_path) and not overwrite:
             return out_path
@@ -233,7 +233,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             df_betas = df_betas.drop(self._rm_cols, axis=1)
 
         # Write and clean
-        df_betas.to_csv(out_path, index=False, sep="\t")
+        df_betas.to_csv(out_path, index=False)
         print(f"\t\tWrote : {out_path}")
         del df_betas
         return out_path
@@ -349,7 +349,7 @@ def comb_matrices(
     df_list = sorted(
         glob.glob(
             f"{proj_deriv}/model_fsl/sub*/ses*/func/*level-{model_level}_"
-            + f"name-{model_name}_con-{con_name}_betas.tsv",
+            + f"name-{model_name}_con-{con_name}_betas.csv",
         )
     )
     if not df_list:
@@ -360,15 +360,15 @@ def comb_matrices(
 
     # Combine all beta TSVs, load data in parallel
     all_betas = Pool().starmap(
-        helper.load_tsv, [(beta_path,) for beta_path in beta_list]
+        helper.load_csv, [(beta_path,) for beta_path in beta_list]
     )
     df_betas_all = pd.concat(all_betas, axis=0, ignore_index=True)
     out_path = os.path.join(
         out_dir,
         f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
-        + "voxel-betas.tsv",
+        + "voxel-betas.csv",
     )
-    df_betas_all.to_csv(out_path, index=False, sep="\t")
+    df_betas_all.to_csv(out_path, index=False)
     print(f"\tWrote : {out_path}")
     return (df_betas_all, out_path)
 

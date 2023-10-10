@@ -707,8 +707,13 @@ class FslThirdSubj:
     conduct a third-level FSL analysis which collapses across subject
     to generate group-level task-based emotion maps.
 
-    Writes files to:
-        <proj_dir>/analyses/model_fsl_group/level-third_name-<model_name>
+    Output location:
+        <proj_dir>/nalyses/model_fsl_group/level-third_name-<model_name>
+
+    Output files:
+        level-third_name-*_comb-subj_task-*_data-input.txt
+        level-third_name-*_comb-subj_task-*_stats-evs.txt
+        level-third_name-*_comb-subj_task-*_stats-contrasts.txt
 
     Parameters
     ----------
@@ -741,17 +746,13 @@ class FslThirdSubj:
     build_input_data()
         Generate files with input paths/matrices, builds input_data,
         ev1, ev1_contrast attrs
-    write_out()
-        Write txt files for input_data, ev1, and ev1_contrast
 
     Example
     -------
     fg = wf_fsl.FslThirdSubj(*args, **kwargs)
     fg.build_input_data()
-    fg.write_out()
     fg.task = "scenarios"
     fg.build_input_data()
-    fg.write_out()
 
     """
 
@@ -817,8 +818,9 @@ class FslThirdSubj:
         for _ in self.input_data[1:]:
             self.ev1.append(1.0)
         self.ev1_contrast = [1.0, -1.0]
+        self._write_out()
 
-    def write_out(self):
+    def _write_out(self):
         """Write input_data, ev1, ev1_contrast to disk."""
         if not hasattr(self, "input_data"):
             self.build_input_data()
@@ -828,28 +830,161 @@ class FslThirdSubj:
             f"level-third_name-{self._model_name}_comb-subj_"
             + f"task-{self.task}_data-input.txt",
         )
-        self._write(self.input_data, out_data)
+        self._write_txt(self.input_data, out_data)
 
         out_evs = os.path.join(
             self._group_dir,
             f"level-third_name-{self._model_name}_comb-subj_"
             + f"task-{self.task}_stats-evs.txt",
         )
-        self._write(self.ev1, out_evs)
+        self._write_txt(self.ev1, out_evs)
 
         out_con = os.path.join(
             self._group_dir,
             f"level-third_name-{self._model_name}_comb-subj_"
             + f"task-{self.task}_stats-contrasts.txt",
         )
-        self._write(self.ev1_contrast, out_con)
+        self._write_txt(self.ev1_contrast, out_con)
 
-    def _write(self, data_list, file_path):
+    def _write_txt(self, data_list: list, file_path: Union[str, os.PathLike]):
         """Write list to disk."""
         print(f"Writing : {file_path}")
         with open(file_path, "w") as tf:
             for line in data_list:
                 tf.write(f"{line}\n")
+
+
+# %%
+class FslThirdSess:
+    """Generate reference files for collapsing across sessions.
+
+    Generate files holding info for the data input, stats evs, and
+    stats contrasts fields of the FSL FEAT FMRI analysis GUI. These files
+    are used to populate test_build/fsl_combine_sessions_template.fsf to
+    conduct a third-level FSL analysis which collapses across session
+    to generate group-level emotion maps.
+
+    Output location:
+        <proj_dir>/analyses/model_fsl_group/level-third_name-<model_name>
+
+    Output files:
+        level-third_name-*_comb-sess_data-input.txt
+        level-third_name-*_comb-sess_stats-evs.tsv
+        level-third_name-*_comb-sess_stats-contrasts.tsv
+
+    Parameters
+    ----------
+    proj_dir : str, os.PathLike
+        Location of project parent directory
+    model_name : str, optional
+        ["sep"]
+        FSL model name
+
+    Attributes
+    ----------
+    input_data : list
+        Paths to cope1.feat files for task, input values for
+        FSL > FEAT-FMRI > Data > Select FEAT directories
+    df_evs : pd.DataFrame
+        Input values for FSL > FEAT-FMRI > Stats > Full model setup > EVs
+    df_con : pd.DataFrame
+        Input values for FSL > FEAT-FMRI > Stats > Full model setup >
+        Contrast & F-tests
+
+    Methods
+    -------
+    build_input_data()
+        Generate files with input paths/matrices, builds input_data,
+        df_evs, df_con attrs
+
+    Example
+    -------
+    fg = wf_fsl.FslThirdSess(*args, **kwargs)
+    fg.build_input_data()
+
+    """
+
+    def __init__(self, proj_dir, model_name="sep"):
+        """Title."""
+        self._proj_dir = proj_dir
+        self._model_name = model_name
+        self._deriv_dir = os.path.join(
+            proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
+        )
+        self._group_dir = os.path.join(
+            proj_dir,
+            "analyses/model_fsl_group",
+            f"level-third_name-{model_name}",
+        )
+        if not os.path.exists(self._group_dir):
+            os.makedirs(self._group_dir)
+
+    def build_input_data(self):
+        """Title."""
+        self.input_data = sorted(
+            glob.glob(
+                f"{self._deriv_dir}/sub-*/ses-*/func/level-second_"
+                + f"name-{self._model_name}.gfeat/cope1.feat"
+            )
+        )
+        self._write_txt(
+            self.input_data,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_"
+                + "comb-sess_data-input.txt",
+            ),
+        )
+
+        #
+        subj_list = [
+            x.split("sub-ER")[1].split("/")[0] for x in self.input_data
+        ]
+        self._unq_subj = sorted(list(set(subj_list)))
+        self._build_evs()
+        self._build_con()
+
+    def _build_evs(self):
+        """Title."""
+        self.df_evs = pd.DataFrame(columns=self._unq_subj)
+        for cnt, file_path in enumerate(self.input_data):
+            subid = file_path.split("sub-ER")[1].split("/")[0]
+            self.df_evs.loc[cnt, subid] = 1
+        self.df_evs = self.df_evs.fillna(0)
+        self._write_tsv(
+            self.df_evs,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-sess_stats-evs.tsv",
+            ),
+        )
+
+    def _build_con(self):
+        """Title."""
+        self.df_con = pd.DataFrame(columns=self._unq_subj)
+        for cnt, subj in enumerate(self._unq_subj):
+            self.df_con.loc[cnt, subj] = 1
+        self.df_con = self.df_con.fillna(0)
+        self._write_tsv(
+            self.df_con,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-sess_"
+                + "stats-contrasts.tsv",
+            ),
+        )
+
+    def _write_txt(self, data_list: list, file_path: Union[str, os.PathLike]):
+        """Write list to disk."""
+        print(f"Writing : {file_path}")
+        with open(file_path, "w") as tf:
+            for line in data_list:
+                tf.write(f"{line}\n")
+
+    def _write_tsv(self, df: pd.DataFrame, file_path: Union[str, os.PathLike]):
+        """Write df to disk."""
+        print(f"Writing : {file_path}")
+        df.to_csv(file_path, sep="\t", index=False)
 
 
 # %%
