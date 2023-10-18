@@ -16,6 +16,7 @@ from typing import Union, Tuple
 import subprocess
 import pandas as pd
 from multiprocessing import Process, Pool
+from natsort import natsorted
 from func_model.resources import afni
 from func_model.resources import fsl
 
@@ -320,6 +321,30 @@ class _SupportFslSecond(_SupportFsl):
     def _clean_dcc(self):
         """Remove derivatives from group location."""
         shutil.rmtree(self._subj_final)
+
+
+# %%
+class _SupportFslThirdFourth:
+    """Title.
+
+    Methods
+    -------
+    write_tsv
+    write_txt
+
+    """
+
+    def write_txt(self, data_list: list, file_path: Union[str, os.PathLike]):
+        """Write list to disk."""
+        print(f"Writing : {file_path}")
+        with open(file_path, "w") as tf:
+            for line in data_list:
+                tf.write(f"{line}\n")
+
+    def write_tsv(self, df: pd.DataFrame, file_path: Union[str, os.PathLike]):
+        """Write df to disk."""
+        print(f"Writing : {file_path}")
+        df.to_csv(file_path, sep="\t", index=False)
 
 
 # %%
@@ -698,8 +723,10 @@ class FslSecond(_SupportFslSecond):
 
 
 # %%
-class FslThirdSubj:
+class FslThirdSubj(_SupportFslThirdFourth):
     """Generate reference files for collapsing across subjects.
+
+    Inherits _SupportFslThirdFourth.
 
     Generate text files holding info for the data input, stats evs, and
     stats contrasts fields of the FSL FEAT FMRI analysis GUI. These files
@@ -830,33 +857,28 @@ class FslThirdSubj:
             f"level-third_name-{self._model_name}_comb-subj_"
             + f"task-{self.task}_data-input.txt",
         )
-        self._write_txt(self.input_data, out_data)
+        self.write_txt(self.input_data, out_data)
 
         out_evs = os.path.join(
             self._group_dir,
             f"level-third_name-{self._model_name}_comb-subj_"
             + f"task-{self.task}_stats-evs.txt",
         )
-        self._write_txt(self.ev1, out_evs)
+        self.write_txt(self.ev1, out_evs)
 
         out_con = os.path.join(
             self._group_dir,
             f"level-third_name-{self._model_name}_comb-subj_"
             + f"task-{self.task}_stats-contrasts.txt",
         )
-        self._write_txt(self.ev1_contrast, out_con)
-
-    def _write_txt(self, data_list: list, file_path: Union[str, os.PathLike]):
-        """Write list to disk."""
-        print(f"Writing : {file_path}")
-        with open(file_path, "w") as tf:
-            for line in data_list:
-                tf.write(f"{line}\n")
+        self.write_txt(self.ev1_contrast, out_con)
 
 
 # %%
-class FslThirdSess:
+class FslThirdSess(_SupportFslThirdFourth):
     """Generate reference files for collapsing across sessions.
+
+    Inherits _SupportFslThirdFourth.
 
     Generate files holding info for the data input, stats evs, and
     stats contrasts fields of the FSL FEAT FMRI analysis GUI. These files
@@ -927,7 +949,7 @@ class FslThirdSess:
                 + f"name-{self._model_name}.gfeat/cope1.feat"
             )
         )
-        self._write_txt(
+        self.write_txt(
             self.input_data,
             os.path.join(
                 self._group_dir,
@@ -951,7 +973,7 @@ class FslThirdSess:
             subid = file_path.split("sub-ER")[1].split("/")[0]
             self.df_evs.loc[cnt, subid] = 1
         self.df_evs = self.df_evs.fillna(0)
-        self._write_tsv(
+        self.write_tsv(
             self.df_evs,
             os.path.join(
                 self._group_dir,
@@ -965,7 +987,7 @@ class FslThirdSess:
         for cnt, subj in enumerate(self._unq_subj):
             self.df_con.loc[cnt, subj] = 1
         self.df_con = self.df_con.fillna(0)
-        self._write_tsv(
+        self.write_tsv(
             self.df_con,
             os.path.join(
                 self._group_dir,
@@ -974,17 +996,153 @@ class FslThirdSess:
             ),
         )
 
-    def _write_txt(self, data_list: list, file_path: Union[str, os.PathLike]):
-        """Write list to disk."""
-        print(f"Writing : {file_path}")
-        with open(file_path, "w") as tf:
-            for line in data_list:
-                tf.write(f"{line}\n")
 
-    def _write_tsv(self, df: pd.DataFrame, file_path: Union[str, os.PathLike]):
-        """Write df to disk."""
-        print(f"Writing : {file_path}")
-        df.to_csv(file_path, sep="\t", index=False)
+# %%
+class FslFourthSess(_SupportFslThirdFourth):
+    """Generate reference files for collapsing across sessions.
+
+    Inherits _SupportFslThirdFourth.
+
+    TODO
+
+    Output location:
+        <proj_dir>/analyses/model_fsl_group/level-fourth_name-<model_name>
+
+    Output files:
+        level-fourth_name-*_comb-sess_data-input.txt
+        level-fourth_name-*_comb-sess_stats-evs.tsv
+        level-fourth_name-*_comb-sess_stats-contrasts.tsv
+
+    Parameters
+    ----------
+    proj_dir : str, os.PathLike
+        Location of project parent directory
+    model_name : str, optional
+        ["sep"]
+        FSL model name
+
+    Attributes
+    ----------
+    input_data : list
+    df_evs : pd.DataFrame
+    con
+
+
+    Methods
+    -------
+    build_input_data()
+
+
+    Example
+    -------
+
+
+    """
+
+    def __init__(self, proj_dir, model_name="sep"):
+        """Title."""
+        self._proj_dir = proj_dir
+        self._model_name = model_name
+        self._deriv_dir = os.path.join(
+            proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
+        )
+        group_dir = os.path.join(proj_dir, "analyses/model_fsl_group")
+        self._data_dir = os.path.join(
+            group_dir,
+            f"level-third_name-{model_name}",
+            f"level-third_name-{model_name}_comb-sess.gfeat",
+        )
+        if not os.path.exists(self._data_dir):
+            raise FileNotFoundError(f"Expected FEAT output : {self._data_dir}")
+        self._group_dir = os.path.join(
+            group_dir,
+            f"level-fourth_name-{model_name}",
+        )
+        if not os.path.exists(self._group_dir):
+            os.makedirs(self._group_dir)
+
+    def build_input_data(self):
+        """Title."""
+        print(f"Finding data in : {self._data_dir}")
+        self.input_data = sorted(
+            glob.glob(f"{self._data_dir}/cope*.feat/stats/cope*.nii.gz"),
+            key=len,
+        )
+        self.input_data = natsorted(self.input_data)
+        if not self.input_data:
+            raise ValueError(f"Expected FEAT output : {self._data_dir}")
+        self.write_txt(
+            self.input_data,
+            os.path.join(
+                self._group_dir,
+                f"level-fourth_name-{self._model_name}_"
+                + "comb-sess_data-input.txt",
+            ),
+        )
+        self._build_evs()
+        self._build_con()
+
+    def _build_evs(self):
+        """Title."""
+        #
+        cope_all = [x.split("/")[-3] for x in self.input_data]
+        cope_list = [x for x in natsorted(list(set(cope_all)))]
+        emo_list = [
+            "Amusement",
+            "Anger",
+            "Anxiety",
+            "Awe",
+            "Calmness",
+            "Craving",
+            "Disgust",
+            "Excitement",
+            "Fear",
+            "Horror",
+            "Joy",
+            "Neutral",
+            "Romance",
+            "Sadness",
+            "Surprise",
+        ]
+        if len(cope_list) != len(emo_list):
+            raise ValueError("Unexpected number of emotions")
+        self._cope_dict = {x: y for x, y in zip(emo_list, cope_list)}
+
+        #
+        subj_all = [os.path.basename(x) for x in self.input_data]
+        subj_list = [x for x in natsorted(list(set(subj_all)))]
+
+        #
+        self.df_evs = pd.DataFrame(columns=emo_list)
+        cnt_row = 0
+        for col in emo_list:
+            for _ in subj_list:
+                self.df_evs.loc[cnt_row, col] = 1
+                cnt_row += 1
+        self.df_evs = self.df_evs.fillna(0)
+        self.write_tsv(
+            self.df_evs,
+            os.path.join(
+                self._group_dir,
+                f"level-fourth_name-{self._model_name}_"
+                + "comb-sess_stats-evs.tsv",
+            ),
+        )
+
+    def _build_con(self):
+        """Title."""
+        self.df_con = pd.DataFrame(columns=self._cope_dict.keys())
+        for row, col in enumerate(self._cope_dict.keys()):
+            self.df_con.loc[row, col] = 1
+        self.df_con = self.df_con.fillna(0)
+        self.write_tsv(
+            self.df_con,
+            os.path.join(
+                self._group_dir,
+                f"level-fourth_name-{self._model_name}_comb-sess_"
+                + "stats-contrasts.tsv",
+            ),
+        )
 
 
 # %%
