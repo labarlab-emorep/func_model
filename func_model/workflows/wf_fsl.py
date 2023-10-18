@@ -1152,7 +1152,7 @@ def fsl_classify_mask(
         <proj-dir>/analyses/classify_fMRI_plsda/classifier_output
 
     and writes output to:
-        <proj-dir>/analyses/classify_fMRI_plsda/voxel_importance_maps
+        <proj-dir>/analyses/classify_fMRI_plsda/voxel_importance_maps/name-*_task-*_maps
 
     Parameters
     ----------
@@ -1219,8 +1219,12 @@ def fsl_classify_mask(
 
     # Make a mask for each emotion in dataframe
     out_dir = os.path.join(
-        proj_dir, "analyses/classify_fMRI_plsda/voxel_importance_maps"
+        proj_dir,
+        "analyses/classify_fMRI_plsda/voxel_importance_maps",
+        f"name-{model_name}_task-{task_name}_maps",
     )
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
     mk_mask = fsl.group.ImportanceMask()
     mk_mask.mine_template(tpl_path)
     mask_list = []

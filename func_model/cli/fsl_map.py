@@ -10,7 +10,7 @@ Check for data in:
     proj_dir/analyses/classify_fMRI_plsda/classifier_output
 
 and writes output to:
-    proj_dir/analyses/classify_fMRI_plsda/voxel_importance_maps
+    proj_dir/analyses/classify_fMRI_plsda/voxel_importance_maps/name-*_task-*_maps
 
 Examples
 --------
