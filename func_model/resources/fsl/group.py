@@ -454,7 +454,9 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
     -------
     im_obj = group.ImportanceMask()
     im_obj.mine_template("/path/to/template.nii.gz")
-    im_obj.make_mask(pd.DataFrame, "/path/to/output/mask.nii.gz")
+    im_obj.make_mask(
+        pd.DataFrame, "/path/to/output/mask.nii.gz", "task-movies"
+    )
 
     """
 
@@ -492,7 +494,7 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         self.img_header = img.header
         self.empty_matrix = np.zeros(img_data.shape)
 
-    def make_mask(self, df, mask_path):
+    def make_mask(self, df, mask_path, task_name):
         """Convert row values into matrix and save as NIfTI mask.
 
         Using the dataframe column names, fill an empty matrix
@@ -506,6 +508,8 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
             "(45, 31, 90)".
         mask_path : str, os.PathLike
             Location and name of output NIfTI file
+        task_name : str
+            Name of stimulus type
 
         Returns
         -------
@@ -560,7 +564,8 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
             arr_fill, affine=None, header=self.img_header
         )
         nib.save(emo_img, mask_path)
-        self.cluster(mask_path, vox_value=1)
+        clust_size = 5 if task_name == "scenarios" else 10
+        self.cluster(mask_path, size=clust_size, vox_value=1)
         return arr_fill
 
 

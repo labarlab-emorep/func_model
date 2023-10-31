@@ -4,6 +4,11 @@ FslFirst : GLM task, rest data via FSL
 FslSecond : second-level GLM of task data via FSl
 FslThirdSubj : generate needed info for third-level analyses which
                 collapses across subject
+FslThirdSess : generate needed info for third-level analyses which
+                collapse across session
+FslFourthSess : generate needed info for fourth-level analyses which
+                finishes the collapse across sessions started by
+                FslThirdSess
 fsl_extract : extract task beta-coefficiens from FSL GLM
 fsl_classify_mask : generate template mask from classifier output
 
@@ -325,12 +330,14 @@ class _SupportFslSecond(_SupportFsl):
 
 # %%
 class _SupportFslThirdFourth:
-    """Title.
+    """Methods for third- and fourth-level FSL classes.
 
     Methods
     -------
-    write_tsv
-    write_txt
+    write_tsv()
+        Write pd.DataFrame to TSV
+    write_txt()
+        Write list to TXT
 
     """
 
@@ -755,9 +762,9 @@ class FslThirdSubj(_SupportFslThirdFourth):
 
     Attributes
     ----------
-    task : str
+    task_name : str
         ["movies", "scenarios"]
-        Value of task BIDS field
+        Value of BIDS task field
     input_data : list
         Paths to cope1.feat files for task, input values for
         FSL > FEAT-FMRI > Data > Select FEAT directories
@@ -817,6 +824,8 @@ class FslThirdSubj(_SupportFslThirdFourth):
         if self.task not in ["scenarios", "movies"]:
             raise ValueError(f"Unsupported task name : {self.task}")
 
+        # Find data for each subject
+        print("Building input_data, ev1, and ev1_contrast ...")
         self.input_data = []
         for subj in self._subj_list:
 
@@ -849,29 +858,30 @@ class FslThirdSubj(_SupportFslThirdFourth):
 
     def _write_out(self):
         """Write input_data, ev1, ev1_contrast to disk."""
-        if not hasattr(self, "input_data"):
-            self.build_input_data()
-
-        out_data = os.path.join(
-            self._group_dir,
-            f"level-third_name-{self._model_name}_comb-subj_"
-            + f"task-{self.task}_data-input.txt",
+        self.write_txt(
+            self.input_data,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-subj_"
+                + f"task-{self.task}_data-input.txt",
+            ),
         )
-        self.write_txt(self.input_data, out_data)
-
-        out_evs = os.path.join(
-            self._group_dir,
-            f"level-third_name-{self._model_name}_comb-subj_"
-            + f"task-{self.task}_stats-evs.txt",
+        self.write_txt(
+            self.ev1,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-subj_"
+                + f"task-{self.task}_stats-evs.txt",
+            ),
         )
-        self.write_txt(self.ev1, out_evs)
-
-        out_con = os.path.join(
-            self._group_dir,
-            f"level-third_name-{self._model_name}_comb-subj_"
-            + f"task-{self.task}_stats-contrasts.txt",
+        self.write_txt(
+            self.ev1_contrast,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-subj_"
+                + f"task-{self.task}_stats-contrasts.txt",
+            ),
         )
-        self.write_txt(self.ev1_contrast, out_con)
 
 
 # %%
@@ -927,7 +937,14 @@ class FslThirdSess(_SupportFslThirdFourth):
     """
 
     def __init__(self, proj_dir, model_name="sep"):
-        """Title."""
+        """Initialize."""
+        print("Initializing wf_fsl.FslThirdSess ...")
+
+        # Validate
+        if model_name not in ["sep"]:
+            raise ValueError(f"Unsupported model name : {model_name}")
+
+        # Setup
         self._proj_dir = proj_dir
         self._model_name = model_name
         self._deriv_dir = os.path.join(
@@ -942,7 +959,10 @@ class FslThirdSess(_SupportFslThirdFourth):
             os.makedirs(self._group_dir)
 
     def build_input_data(self):
-        """Title."""
+        """Build input_data, df_evs, df_con attrs."""
+        print("Building input_data, df_con, df_evs ...")
+
+        # Find all input data
         self.input_data = sorted(
             glob.glob(
                 f"{self._deriv_dir}/sub-*/ses-*/func/level-second_"
@@ -958,7 +978,7 @@ class FslThirdSess(_SupportFslThirdFourth):
             ),
         )
 
-        #
+        # Find all subjects, trigger evs, con
         subj_list = [
             x.split("sub-ER")[1].split("/")[0] for x in self.input_data
         ]
@@ -967,7 +987,8 @@ class FslThirdSess(_SupportFslThirdFourth):
         self._build_con()
 
     def _build_evs(self):
-        """Title."""
+        """Build df_evs attr."""
+        # Contrast dataframe where column=subj and rows=sess
         self.df_evs = pd.DataFrame(columns=self._unq_subj)
         for cnt, file_path in enumerate(self.input_data):
             subid = file_path.split("sub-ER")[1].split("/")[0]
@@ -1395,7 +1416,7 @@ def fsl_classify_mask(
             f"level-{model_level}_name-{model_name}_task-{task_name}_"
             + f"con-{con_name}Washout_emo-{emo_name}_map.nii.gz",
         )
-        _ = mk_mask.make_mask(df_emo, mask_path)
+        _ = mk_mask.make_mask(df_emo, mask_path, task_name)
         mask_list.append(mask_path)
 
     # Trigger conjunction analyses
