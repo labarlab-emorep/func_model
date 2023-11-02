@@ -185,7 +185,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         # Validate model variables
         if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
-        if model_name not in ["sep", "tog"]:
+        if model_name not in ["sep", "tog", "lss"]:
             raise ValueError(
                 f"Unsupported value for model_name : {model_name}"
             )
@@ -614,6 +614,7 @@ class ConjunctAnalysis(_MapMethods):
             _emo,
             _suff,
         ) = os.path.basename(map_list[0]).split("_")
+        self._clust_size = 5 if self._task_name == "scenarios" else 10
 
     def omni_map(self):
         """Generate omnibus conjunction from all map_list files."""
@@ -624,7 +625,7 @@ class ConjunctAnalysis(_MapMethods):
         )
         print("Building conjunction map : omni")
         self.c3d_add(self._map_list, omni_out)
-        self.cluster(omni_out)
+        self.cluster(omni_out, size=self._clust_size, vox_value=1)
 
     def valence_map(self):
         """Generate positive, negative, neutrual valence conjunction maps."""
@@ -655,7 +656,7 @@ class ConjunctAnalysis(_MapMethods):
             )
             print(f"Building conjunction map : {conj_name}{key}")
             self.c3d_add(val_list, out_path)
-            self.cluster(out_path)
+            self.cluster(out_path, size=self._clust_size, vox_value=1)
 
     def arousal_map(self):
         """Generate high, medium, low arousal conjunction maps."""
