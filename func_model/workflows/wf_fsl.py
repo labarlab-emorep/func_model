@@ -501,7 +501,6 @@ class FslFirst(_SupportFslFirst):
         # Generate design files for each run
         design_list = []
         for preproc_path in self._sess_preproc:
-
             # Set run attr, determine template type
             self._get_run(os.path.basename(preproc_path))
             use_short = (
@@ -828,7 +827,6 @@ class FslThirdSubj(_SupportFslThirdFourth):
         print("Building input_data, ev1, and ev1_contrast ...")
         self.input_data = []
         for subj in self._subj_list:
-
             # Find task path
             deriv_path = f"{self._deriv_dir}/{subj}/ses-*/func"
             task_list = glob.glob(
@@ -1167,16 +1165,59 @@ class FslFourthSess(_SupportFslThirdFourth):
 
 
 # %%
-def fsl_extract(
-    proj_dir,
-    subj_list,
-    model_name,
-    model_level,
-    con_name,
-    overwrite,
-    group_mask="template",
-    comb_all=True,
-):
+class _SupportExtract:
+    def __init__(
+        self,
+        proj_dir,
+        model_name,
+        model_level,
+        con_name,
+        group_mask,
+        overwrite,
+    ):
+        self._proj_dir = proj_dir
+        self._model_name = model_name
+        self._model_level = model_level
+        self._con_name = con_name
+        self._group_mask = group_mask
+        self._overwrite = overwrite
+
+    def _gen_valid(self):
+        if self._model_name not in ["sep", "tog", "lss"]:
+            raise ValueError(
+                f"Unsupported value for model_name : {self._model_name}"
+            )
+        if not fsl.helper.valid_level(self._model_level):
+            raise ValueError(
+                f"Unsupported value for model_level : {self._model_level}"
+            )
+
+        # Validate optional args
+        if self._group_mask not in ["template"]:
+            raise ValueError("Unexpected group_mask parameter")
+        if not isinstance(self._overwrite, bool):
+            raise TypeError("Expected type bool for overwrite")
+
+    def _raise_model_con_err(self, model_name, con_name):
+        """Raise err for bad model-contrast pairing."""
+        raise ValueError(
+            f"Unsupported con_name for model_name={self._model_name} "
+            + f": {self._con_name}"
+        )
+
+    def _setup(self):
+        """Set attrs out_dir, proj_deriv and make dirs."""
+        self._out_dir = os.path.join(
+            self._proj_dir, "analyses/model_fsl_group"
+        )
+        self._proj_deriv = os.path.join(
+            self._proj_dir, "data_scanner_BIDS/derivatives"
+        )
+        if not os.path.exists(self._out_dir):
+            os.makedirs(self._out_dir)
+
+
+class ExtractReg(_SupportExtract, fsl.group.ExtractTaskBetas):
     """Extract cope voxel betas and generate dataframe.
 
     Match cope.nii files to contrast name by mining design.con files
@@ -1197,66 +1238,106 @@ def fsl_extract(
         Subject IDs to include in dataframe
     model_name : str
         [sep | tog]
-        FSL model identifier
-    model_level : str
-        [first]
-        FSL model level
+        FSL model identifier, note:
+            - sep requires con_name="stim" or con_name="replay"
+            - tog requires con_name="tog"
     con_name : str
         [stim | replay | tog]
         Desired contrast from which coefficients will be extracted
-            - stim|replay require model_name=sep
-            - tog requires model_name=tog
     overwrite : bool
         Whether to overwrite existing beta TSV files
-    group_mask : str, optional
-        [template]
-        Generate a group-level mask, used to identify and remove
-        voxels of no interest from beta dataframe
-    comb_all : bool, optional
+    comb_all : bool
         Combine all participant beta dataframes into an
         omnibus one
 
-    Raises
-    ------
-    ValueError
-        Unexpected values for model_name, model_level, or group_mask
-
     """
-    # Validate parameters
-    if model_name not in ["sep", "tog"]:
-        raise ValueError(f"Unsupported value for model_name : {model_name}")
-    if not fsl.helper.valid_level(model_level):
-        raise ValueError(f"Unsupported value for model_level : {model_level}")
-    if group_mask not in ["template"]:
-        raise ValueError("Unexpected group_mask parameter")
-    if not isinstance(overwrite, bool):
-        raise TypeError("Expected type bool for overwrite")
-    if model_name == "tog" and con_name != "tog":
-        raise ValueError(
-            f"Unsupported con_name for model_name={model_name} : {con_name}"
+
+    def __init__(
+        self,
+        proj_dir,
+        subj_list,
+        model_name,
+        con_name,
+        overwrite,
+        comb_all,
+    ):
+        """Initialize."""
+        self._proj_dir = proj_dir
+        self._subj_list = subj_list
+        self._model_name = model_name
+        self._model_level = "first"
+        self._con_name = con_name
+        self._overwrite = overwrite
+        self._group_mask = "template"
+        self._comb_all = comb_all
+        super().__init__(
+            proj_dir,
+            model_name,
+            self._model_level,
+            con_name,
+            self._group_mask,
+            overwrite,
         )
-    if model_name == "sep" and (con_name != "stim" and con_name != "replay"):
-        raise ValueError(
-            f"Unsupported con_name for model_name={model_name} : {con_name}"
-        )
+        fsl.group.ExtractTaskBetas.__init__(proj_dir)
+        self._gen_valid()
+        self._validate()
 
-    # Orient to project directory
-    out_dir = os.path.join(proj_dir, "analyses/model_fsl_group")
-    proj_deriv = os.path.join(proj_dir, "data_scanner_BIDS", "derivatives")
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    def _validate(self):
+        """Title."""
+        self._
+        if self._model_name == "tog" and self._con_name != "tog":
+            self._raise_model_con_err()
+        if self._model_name == "sep" and (
+            self._con_name != "stim" and self._con_name != "replay"
+        ):
+            self._raise_model_con_err()
 
-    # Initialize beta extraction, generate mask and identify
-    # censor coordinates
-    get_betas = fsl.group.ExtractTaskBetas(proj_dir)
-    mask_path = afni.masks.tpl_gm(out_dir)
-    get_betas.mask_coord(mask_path)
+    def get_betas(self):
+        """Title."""
+        self._setup()
+        _mask_path = afni.masks.tpl_gm(self._out_dir)
+        self.mask_coord(_mask_path)
+        for self._subj in self._subj_list:
+            self._subj_dir = os.path.join(
+                self._proj_deriv, "model_fsl", self._subj
+            )
+            self._sess_list = [
+                os.path.basename(x)
+                for x in sorted(glob.glob(f"{self._subj_dir}/ses-*"))
+            ]
+            self._mult_proc()
 
-    def _get_betas(subj: str, sess: str, subj_dir: Union[str, os.PathLike]):
+        #
+        if self._comb_all:
+            _, _ = fsl.group.comb_matrices(
+                self._subj_list,
+                self._model_name,
+                self._model_level,
+                self._con_name,
+                self._proj_deriv,
+                self._out_dir,
+            )
+
+    def _mult_proc(self):
+        """Run session mining in parallel."""
+        mult_proc = [
+            Process(
+                target=self._mine_betas,
+                args=(sess,),
+            )
+            for sess in self._sess_list
+        ]
+        for proc in mult_proc:
+            proc.start()
+        for proc in mult_proc:
+            proc.join()
+        print("\t\tDone", flush=True)
+
+    def _mine_betas(self, sess: str):
         """Flatten MRI beta matrix."""
         # Identify task name from condition files
-        subj_func_dir = os.path.join(subj_dir, sess, "func")
-        task_path = glob.glob(f"{subj_func_dir}/condition_files/*_events.txt")[
+        subj_func_dir = os.path.join(self._subj_dir, sess, "func")
+        task_path = glob.glob(f"{subj_func_dir}/condition_files/*_event*.txt")[
             0
         ]
         _subj, _sess, task, _run, _desc, _suff = os.path.basename(
@@ -1267,54 +1348,105 @@ def fsl_extract(
         # session dataframe
         design_list = sorted(
             glob.glob(
-                f"{subj_func_dir}/run-*{model_level}*{model_name}*"
+                f"{subj_func_dir}/run-*{self._model_level}*{self._model_name}*"
                 + "/design.con"
             )
         )
         if not design_list:
             return
-        _ = get_betas.make_func_matrix(
-            subj,
+        _ = self.make_func_matrix(
+            self._subj,
             sess,
             task,
-            model_name,
-            model_level,
-            con_name,
+            self._model_name,
+            self._model_level,
+            self._con_name,
             design_list,
             subj_func_dir,
-            overwrite=overwrite,
+            overwrite=self._overwrite,
         )
 
-    # Make beta dataframe for each subject, session
-    for subj in subj_list:
-        subj_dir = os.path.join(proj_deriv, "model_fsl", subj)
-        sess_list = [
-            os.path.basename(x) for x in sorted(glob.glob(f"{subj_dir}/ses-*"))
-        ]
 
-        # Run sessions in parallel
-        mult_proc = [
-            Process(
-                target=_get_betas,
-                args=(
-                    subj,
-                    sess,
-                    subj_dir,
-                ),
+class ExtractLss(_SupportExtract):
+    """Title.
+
+    Parameters
+    ----------
+    proj_dir : path
+        Location of project directory
+    subj_list : list
+        Subject IDs to include in dataframe
+    overwrite : bool
+        Whether to overwrite existing beta TSV files
+    comb_all : bool
+        Combine all participant beta dataframes into an
+        omnibus one
+
+    """
+
+    def __init__(
+        self,
+        proj_dir,
+        subj_list,
+        overwrite,
+        comb_all,
+    ):
+        """Initialize."""
+        self._proj_dir = proj_dir
+        self._subj_list = subj_list
+        self._model_name = "lss"
+        self._model_level = "first"
+        self._con_name = "tog"
+        self._overwrite = overwrite
+        self._comb_all = comb_all
+        super().__init__(
+            proj_dir,
+            self._model_name,
+            self._model_level,
+            self._con_name,
+            self._group_mask,
+            overwrite,
+        )
+        self._gen_valid()
+        self._validate()
+
+    def _validate(self):
+        """Title."""
+        if self._model_name == "lss" and self._con_name != "tog":
+            self._raise_model_con_err()
+
+    def get_betas(self):
+        self._setup()
+        _mask_path = afni.masks.tpl_gm(self._out_dir)
+        self.mask_coord(_mask_path)
+        return
+
+
+class FslExtract(ExtractReg, ExtractLss):
+    """Title."""
+
+    def trigger_extract(
+        self,
+        proj_dir,
+        subj_list,
+        model_name,
+        con_name,
+        overwrite,
+        comb_all=False,
+    ):
+        """Trigger LSS or regular model beta extraction."""
+        if self._model_name != "lss":
+            ExtractReg.__init__(
+                proj_dir, subj_list, model_name, con_name, overwrite, comb_all
             )
-            for sess in sess_list
-        ]
-        for proc in mult_proc:
-            proc.start()
-        for proc in mult_proc:
-            proc.join()
-        print("\t\tDone", flush=True)
-
-    # Combine all participant dataframes
-    if comb_all:
-        _, _ = fsl.group.comb_matrices(
-            subj_list, model_name, model_level, con_name, proj_deriv, out_dir
-        )
+        elif self._model_name != "lss":
+            ExtractLss.__init__(
+                proj_dir,
+                subj_list,
+                overwrite,
+                comb_all,
+            )
+        self.get_betas()
 
 
 # %%
