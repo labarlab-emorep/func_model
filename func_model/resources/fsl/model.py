@@ -167,7 +167,6 @@ class ConditionFiles:
         emo_list = [x for x in emo_list if x == x]
         out_dict = {}
         for emo in emo_list:
-
             # Find onset, offset index of emotion trials
             print(f"\t\tBuilding combined conditions for emotion : {emo}")
             pos_emo = [i for i, j in enumerate(pos_emo_all) if j == emo]
@@ -221,7 +220,6 @@ class ConditionFiles:
         emo_list = [x for x in emo_list if x == x]
         out_dict = {}
         for emo in emo_list:
-
             # Identify the position of the emotion in pos_emo_all
             print(f"\t\tBuilding separate conditions for emotion : {emo}")
             pos_emo = [i for i, j in enumerate(pos_emo_all) if j == emo]
@@ -269,7 +267,6 @@ class ConditionFiles:
         cond_dict = self.session_together_events()
         lss_dict = {}
         for cond_name, cond_path in cond_dict.items():
-
             # Get condition info, setup output
             lss_dict[cond_name] = {}
             cond_path = cond_dict[cond_name]
@@ -574,17 +571,32 @@ def _write_design(
 class _FirstSep:
     """Support writing first-level sep model design.fsf.
 
-    Intended for inheritance by MakeFirstFsf, references attrs
-    set by child.
+    Parameters
+    ----------
+    fsf_edit : str
+        Loaded design template
+    field_switch : dict
+        Maps replacement fields in template to values
+    subj_work : str, os.PathLike
+        Subject output location
+    run : str
+        BIDs run identifier
 
     Methods
     -------
-    write_sep()
+    write_fsf()
         Coordinating writing of design.fsf, returns path to file
 
     """
 
-    def write_sep(self):
+    def __init__(self, fsf_edit, field_switch, subj_work, run):
+        """Initialize."""
+        self._fsf_edit = fsf_edit
+        self._field_switch = field_switch
+        self._subj_work = subj_work
+        self._run = run
+
+    def write_fsf(self):
         """Make first-level FSF for model sep.
 
         Write a design FSF by updating fields in the template FSF for
@@ -599,17 +611,14 @@ class _FirstSep:
         """
         # Update field_switch, make design file
         self._sep_switch()
-        fsf_edit = self._tp_short if self._use_short else self._tp_full
         for old, new in self._field_switch.items():
-            fsf_edit = fsf_edit.replace(old, new)
+            self._fsf_edit = self._fsf_edit.replace(old, new)
 
         # Write out
         # design_path = self._write_first(fsf_edit)
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = (
-            f"{self._run}_level-first_name-" + f"{self._model_name}_design.fsf"
-        )
-        out_path = _write_design(out_dir, out_name, fsf_edit)
+        out_name = f"{self._run}_level-first_name-sep_design.fsf"
+        out_path = _write_design(out_dir, out_name, self._fsf_edit)
         return out_path
 
     def _sep_switch(self):
@@ -677,18 +686,33 @@ class _FirstSep:
 class _FirstTog:
     """Support writing first-level tog model design.fsf.
 
-    Intended for inheritance by MakeFirstFsf, references attrs
-    set by child.
+    Parameters
+    ----------
+    fsf_edit : str
+        Loaded design template
+    field_switch : dict
+        Maps replacement fields in template to values
+    subj_work : str, os.PathLike
+        Subject output location
+    run : str
+        BIDs run identifier
 
     Methods
     -------
-    write_tog()
+    write_fsf()
         Coordinating writing of design.fsf, returns path to file
 
     """
 
-    def write_tog(self):
-        """Make first-level FSF for model sep.
+    def __init__(self, fsf_edit, field_switch, subj_work, run):
+        """Initialize."""
+        self._fsf_edit = fsf_edit
+        self._field_switch = field_switch
+        self._subj_work = subj_work
+        self._run = run
+
+    def write_fsf(self):
+        """Make first-level FSF for model tog.
 
         Write a design FSF by updating fields in the template FSF for
         model_name == tog. Write out design files to subject working
@@ -702,16 +726,13 @@ class _FirstTog:
         """
         # Update field_switch, make design file
         self._tog_switch()
-        fsf_edit = self._tp_short if self._use_short else self._tp_full
         for old, new in self._field_switch.items():
-            fsf_edit = fsf_edit.replace(old, new)
+            self._fsf_edit = self._fsf_edit.replace(old, new)
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = (
-            f"{self._run}_level-first_name-" + f"{self._model_name}_design.fsf"
-        )
-        out_path = _write_design(out_dir, out_name, fsf_edit)
+        out_name = f"{self._run}_level-first_name-tog_design.fsf"
+        out_path = _write_design(out_dir, out_name, self._fsf_edit)
         return out_path
 
     def _tog_switch(self):
@@ -765,22 +786,44 @@ class _FirstTog:
 class _FirstLss:
     """Support writing first-level LSS model designs.
 
-    Intended for inheritance by MakeFirstFsf, references attrs
-    set by child.
+    Parameters
+    ----------
+    fsf_edit : str
+        Loaded design template
+    field_switch : dict
+        Maps replacement fields in template to values
+    subj_work : str, os.PathLike
+        Subject output location
+    run : str
+        BIDs run identifier
+    tog_cond : dict
+        "Together" condition files
+    lss_cond : dict
+        "LSS" condition files
 
     Methods
     -------
-    write_lss()
-        Coordinate writing of design.fsf, returns list of lists
+    write_fsf()
+        Coordinating writing of design.fsf, returns path to file
 
     """
 
-    def write_lss(self) -> list:
+    def __init__(
+        self, fsf_edit, field_switch, subj_work, run, tog_cond, lss_cond
+    ):
+        """Initialize."""
+        self._fsf_edit = fsf_edit
+        self._field_switch = field_switch
+        self._subj_work = subj_work
+        self._run = run
+        self._tog_cond = tog_cond
+        self._lss_cond = lss_cond
+
+    def write_fsf(self) -> list:
         """Coordinate writing of all design files for each condition."""
         # Generate a set of design lists for each condition (e.g. stimRomance)
         design_list = []
         for self._stim_name, _ in self._tog_cond.items():
-
             # Make a switch for all names, paths of conditions that
             # are not the current iteration.
             self._switch_tog = {}
@@ -803,7 +846,6 @@ class _FirstLss:
         """Make an lss switch for each event, trigger design generation."""
         lss_list = []
         for _num, event_dict in lss_dict.items():
-
             # Restart attr, set output dir name
             self._switch_lss = {}
             self._switch_lss[
@@ -835,17 +877,16 @@ class _FirstLss:
         field_switch.update(self._switch_lss)
 
         # Update fields in relevant template
-        fsf_edit = self._tp_short if self._use_short else self._tp_full
         for old, new in field_switch.items():
-            fsf_edit = fsf_edit.replace(old, new)
+            self._fsf_edit = self._fsf_edit.replace(old, new)
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
         out_name = (
-            f"{self._run}_level-first_name-{self._model_name}_"
+            f"{self._run}_level-first_name-lss_"
             + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
         )
-        out_path = _write_design(out_dir, out_name, fsf_edit)
+        out_path = _write_design(out_dir, out_name, self._fsf_edit)
         return out_path
 
 
@@ -949,13 +990,12 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
         # Set attrs, variables
         print("\t\t\tBuilding resting design.fsf")
-        self._run = run
         pp_file = self._pp_path(preproc_path)
         num_vol = fsl.helper.count_vol(preproc_path)
         len_tr = fsl.helper.get_tr(preproc_path)
 
         # Setup replace dictionary, update design template
-        self._field_switch = {
+        field_switch = {
             "[[run]]": run,
             "[[num_vol]]": str(num_vol),
             "[[len_tr]]": str(len_tr),
@@ -965,14 +1005,12 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
             "[[deriv_dir]]": self._proj_deriv,
         }
         fsf_edit = self._tp_full
-        for old, new in self._field_switch.items():
+        for old, new in field_switch.items():
             fsf_edit = fsf_edit.replace(old, new)
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = (
-            f"{self._run}_level-first_name-{self._model_name}_design.fsf"
-        )
+        out_name = f"{run}_level-first_name-{self._model_name}_design.fsf"
         design_path = _write_design(out_dir, out_name, fsf_edit)
         return design_path
 
@@ -1034,17 +1072,17 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
         # Capture LSS kwargs
         if "tog_cond" in kwargs:
-            self._tog_cond = kwargs["tog_cond"]
+            tog_cond = kwargs["tog_cond"]
         if "lss_cond" in kwargs:
-            self._lss_cond = kwargs["lss_cond"]
-
-        # Set helper attrs
-        print("\tBuilding task design.fsf")
-        self._run = run
-        self._use_short = use_short
+            lss_cond = kwargs["lss_cond"]
+        if (self._model_name == "lss" and not tog_cond) or (
+            self._model_name == "lss" and not lss_cond
+        ):
+            raise ValueError("model_name lss requires tog_cond, lss_cond")
 
         # Start replace switch
-        self._field_switch = {
+        print("\tBuilding task design.fsf")
+        field_switch = {
             "[[run]]": run,
             "[[num_vol]]": str(fsl.helper.count_vol(preproc_path)),
             "[[preproc_path]]": self._pp_path(preproc_path),
@@ -1058,8 +1096,34 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         }
 
         # Trigger model method
-        write_meth = getattr(self, f"write_{self._model_name}")
-        fsf_path = write_meth()
+        fsf_edit = self._tp_short if use_short else self._tp_full
+        if self._model_name == "sep":
+            write_run = _FirstSep(
+                self,
+                fsf_edit,
+                field_switch,
+                self._subj_work,
+                run,
+            )
+        elif self._model_name == "tog":
+            write_run = _FirstTog(
+                self,
+                fsf_edit,
+                field_switch,
+                self._subj_work,
+                run,
+            )
+        elif self._model_name == "lss":
+            write_run = _FirstLss(
+                self,
+                fsf_edit,
+                field_switch,
+                self._subj_work,
+                run,
+                tog_cond,
+                lss_cond,
+            )
+        fsf_path = write_run.write_fsf()
         return fsf_path
 
     def _pp_path(
