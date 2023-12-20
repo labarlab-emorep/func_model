@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 from typing import Union, Tuple
 from func_model.resources.general import submit
-from func_model.resources import fsl
+from func_model.resources.fsl import helper as fsl_helper
 
 
 # %%
@@ -71,7 +71,7 @@ class ConditionFiles:
 
     def __init__(self, subj, sess, task, subj_work):
         """Initialize."""
-        if not fsl.helper.valid_task(task):
+        if not fsl_helper.valid_task(task):
             raise ValueError(f"Unexpected task name : {task}")
 
         print("\nInitializing ConditionFiles")
@@ -491,7 +491,7 @@ def simul_cond_motion(subj, sess, run, task, subj_work, subj_fsl):
     except IndexError:
         print(f"No preproc file for {run} found at : {subj_fsl}")
         raise
-    len_tr = fsl.helper.get_tr(run_pp)
+    len_tr = fsl_helper.get_tr(run_pp)
 
     # Find confound file
     conf_dir = os.path.join(subj_work, "confounds_files")
@@ -928,7 +928,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
     def __init__(self, subj_work, proj_deriv, model_name):
         """Initialize."""
-        if not fsl.helper.valid_name(model_name):
+        if not fsl_helper.valid_name(model_name):
             raise ValueError(f"Unexpected value for model_name : {model_name}")
 
         print("\t\tInitializing MakeFirstFSF")
@@ -940,15 +940,15 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
     def _load_templates(self):
         """Load design templates."""
         if self._model_name == "rest":
-            self._tp_full = fsl.helper.load_reference(
+            self._tp_full = fsl_helper.load_reference(
                 "design_template_level-first_" + f"name-{self._model_name}.fsf"
             )
         else:
-            self._tp_full = fsl.helper.load_reference(
+            self._tp_full = fsl_helper.load_reference(
                 "design_template_level-first_"
                 + f"name-{self._model_name}_desc-full.fsf"
             )
-            self._tp_short = fsl.helper.load_reference(
+            self._tp_short = fsl_helper.load_reference(
                 "design_template_level-first_"
                 + f"name-{self._model_name}_desc-short.fsf"
             )
@@ -991,8 +991,8 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         # Set attrs, variables
         print("\t\t\tBuilding resting design.fsf")
         pp_file = self._pp_path(preproc_path)
-        num_vol = fsl.helper.count_vol(preproc_path)
-        len_tr = fsl.helper.get_tr(preproc_path)
+        num_vol = fsl_helper.count_vol(preproc_path)
+        len_tr = fsl_helper.get_tr(preproc_path)
 
         # Setup replace dictionary, update design template
         field_switch = {
@@ -1084,7 +1084,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         print("\tBuilding task design.fsf")
         field_switch = {
             "[[run]]": run,
-            "[[num_vol]]": str(fsl.helper.count_vol(preproc_path)),
+            "[[num_vol]]": str(fsl_helper.count_vol(preproc_path)),
             "[[preproc_path]]": self._pp_path(preproc_path),
             "[[conf_path]]": confound_path,
             "[[judge_path]]": common_cond["judgment"],
@@ -1207,7 +1207,7 @@ class MakeSecondFsf:
                 cnt_cope += 1
 
         # Load template and update planned values
-        design_tpl = fsl.helper.load_reference(
+        design_tpl = fsl_helper.load_reference(
             f"design_template_level-second_name-{self._model_name}.fsf"
         )
         for old, new in field_switch.items():
@@ -1342,9 +1342,9 @@ def run_feat(fsf_path, subj, sess, model_name, log_dir, model_level="first"):
         Inappropriate model name or level
 
     """
-    if not fsl.helper.valid_name(model_name):
+    if not fsl_helper.valid_name(model_name):
         raise ValueError(f"Unexpected value for model_name : {model_name}")
-    if not fsl.helper.valid_level(model_level):
+    if not fsl_helper.valid_level(model_level):
         raise ValueError(f"Unexpected value for model_level : {model_level}")
 
     # Setup, avoid repeating work

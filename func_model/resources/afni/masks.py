@@ -1,7 +1,7 @@
 """Methods for mask construction."""
 import os
 import glob
-from func_model.resources.afni import helper
+from func_model.resources.afni import helper as afni_helper
 from func_model.resources.general import submit, matrix
 
 
@@ -83,7 +83,7 @@ class MakeMasks:
         self._anat_dict = anat_dict
         self._func_dict = func_dict
         self._sing_afni = sing_afni
-        self._sing_prep = helper.prepend_afni_sing(
+        self._sing_prep = afni_helper.prepend_afni_sing(
             self._proj_deriv, self._subj_work, self._sing_afni
         )
 
@@ -301,7 +301,6 @@ class MakeMasks:
         # Make minimum value mask for each run
         min_list = []
         for run_file in self._func_dict["func-preproc"]:
-
             # Mask epi voxels that have some data
             h_name_bin = "tmp_bin_" + os.path.basename(run_file)
             h_out_bin = os.path.join(self._subj_work, h_name_bin)

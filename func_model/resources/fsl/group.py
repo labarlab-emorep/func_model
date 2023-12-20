@@ -15,7 +15,7 @@ import pandas as pd
 import numpy as np
 from multiprocessing import Pool
 import nibabel as nib
-from func_model.resources.fsl import helper
+from func_model.resources.fsl import helper as fsl_helper
 from func_model.resources.general import matrix
 from func_model.resources.general import submit
 
@@ -29,11 +29,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Inherits general.matrix.NiftiArray.
 
-    Parameters
-    ----------
-    proj_dir : path
-        Location of project directory
-
     Methods
     -------
     make_func_matrix(**args)
@@ -42,17 +37,16 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Example
     -------
-    etb_obj = group.ExtractTaskBetas(*args)
-    etb_obj.mask_coord("/path/to/binary/mask/nii")
+    etb_obj = group.ExtractTaskBetas()
+    etb_obj.mask_coord("/path/to/binary/mask.nii")
     df_path = etb_obj.make_func_matrix(*args)
 
     """
 
-    def __init__(self, proj_dir):
+    def __init__(self):
         """Initialize."""
         print("Initializing ExtractTaskBetas")
         super().__init__()
-        self._proj_dir = proj_dir
 
     def _read_contrast(self):
         """Match contrast name to number, set as self._con_dict."""
@@ -170,8 +164,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         Returns
         -------
-        path
-            Output location of beta dataframe
+        list
+            Output locations of beta dataframe
 
         Raises
         ------
@@ -183,87 +177,71 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         """
         # Validate model variables
-        if not helper.valid_task(task):
+        if not fsl_helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
         if model_name not in ["sep", "tog", "lss"]:
             raise ValueError(
                 f"Unsupported value for model_name : {model_name}"
             )
-        if not helper.valid_level(model_level):
+        if not fsl_helper.valid_level(model_level):
             raise ValueError(
                 f"Unsupported value for model_level : {model_level}"
             )
-        if not helper.valid_contrast(con_name):
+        if not fsl_helper.valid_contrast(con_name):
             raise ValueError(f"Unsupported value for con_name : {con_name}")
         if not isinstance(overwrite, bool):
             raise TypeError("Expected type bool for overwrite")
 
         # Setup and check for existing work
-        print(f"\tGetting betas from {subj}, {sess}")
-        out_path = os.path.join(
-            subj_out,
-            f"{subj}_{sess}_{task}_level-{model_level}_"
-            + f"name-{model_name}_con-{con_name}_betas.csv",
-        )
-        if os.path.exists(out_path) and not overwrite:
-            return out_path
-        self._con_name = con_name
+        self._subj = subj
+        self._sess = sess
+        self._task = task
+        self._model_name = f"name-{model_name}"
+        self._model_level = f"level-{model_level}"
+        self._con_name = con_name  # used for cleaning design.con strings
+        self._con = f"con-{con_name}"
+        self._subj_out = subj_out
+        self._mot_thresh = mot_thresh
+        self._overwrite = overwrite
 
         # Mine files from each design.con, run in parallel
-        mult_df = Pool(processes=8).starmap(
+        out_list = Pool(processes=8).starmap(
             self._mine_copes,
-            [
-                (
-                    design_path,
-                    subj,
-                    sess,
-                    task,
-                    subj_out,
-                    mot_thresh,
-                )
-                for design_path in design_list
-            ],
+            [(design_path,) for design_path in design_list],
         )
-        df_betas = pd.concat(mult_df, axis=0, ignore_index=True)
-        del mult_df
-
-        # Clean if workflow uses mask_coord
-        print("\tCleaning dataframe ...")
-        if hasattr(self, "_rm_cols"):
-            df_betas = df_betas.drop(self._rm_cols, axis=1)
-
-        # Write and clean
-        df_betas.to_csv(out_path, index=False)
-        print(f"\t\tWrote : {out_path}")
-        del df_betas
-        return out_path
+        return out_list
 
     def _mine_copes(
         self,
-        design_path,
-        subj,
-        sess,
-        task,
-        subj_out,
-        mot_thresh,
-    ):
+        design_path: Union[str, os.PathLike],
+    ) -> Union[str, os.PathLike]:
         """Vectorize cope betas for run."""
         self._design_path = design_path
-        subj_short = subj.split("-")[-1]
-        task_short = task.split("-")[-1]
 
-        # Determine run number for identifier columns
-        run_dir = os.path.basename(os.path.dirname(self._design_path))
-        run_num = run_dir.split("_")[0].split("-")[1]
-        if len(run_num) != 2:
+        # Determine run number for file name
+        _run_dir = os.path.basename(os.path.dirname(self._design_path))
+        _run_num = _run_dir.split("_")[0].split("-")[1]
+        run = f"run-{_run_num}"
+        if len(_run_num) != 2:
             raise ValueError("Error parsing path for run number")
+
+        # Check for previous run
+        out_path = os.path.join(
+            self._subj_out,
+            f"{self._subj}_{self._sess}_{self._task}_{run}_"
+            + f"{self._model_level}_{self._model_name}_"
+            + f"{self._con}_betas.csv",
+        )
+        if os.path.exists(out_path) and not self._overwrite:
+            return out_path
+        print(f"\tGetting betas from {self._subj}, {self._sess}, {run}")
 
         # Compare proportion of outliers to criterion, skip run
         # if the the threshold is exceeded
         prop_path = os.path.join(
-            subj_out,
+            self._subj_out,
             "confounds_proportions",
-            f"{subj}_{sess}_{task}_run-{run_num}_"
+            f"{self._subj}_{self._sess}_{self._task}_{run}_"
             + "desc-confounds_proportion.json",
         )
         if not os.path.exists(prop_path):
@@ -271,32 +249,27 @@ class ExtractTaskBetas(matrix.NiftiArray):
         with open(prop_path) as jf:
             prop_dict = json.load(jf)
         prop_mot = prop_dict["CensorProp"]
-        if prop_mot >= mot_thresh:
+        if prop_mot >= self._mot_thresh:
             return
 
         # Find and match copes to emotions, get voxel betas
         cope_dict = self._find_copes()
         for emo, cope_path in cope_dict.items():
-            h_arr = self.nifti_to_arr(cope_path)
-            img_arr = self.add_arr_id(
-                subj_short,
-                task_short,
-                emo,
-                h_arr,
-                run=run_num,
-            )
+            img_arr = self.nifti_to_arr(cope_path)
 
             # Create/update dataframe
             if "df_out" not in locals():
-                df_out = self.arr_to_df(img_arr)
+                df_out = self.arr_to_df(img_arr, f"emo_{emo}")
             else:
-                df_tmp = self.arr_to_df(img_arr)
-                df_out = pd.concat(
-                    [df_out, df_tmp],
-                    axis=0,
-                    ignore_index=True,
-                )
-        return df_out
+                df_tmp = self.arr_to_df(img_arr, f"emo_{emo}")
+                df_out[f"emo_{emo}"] = df_tmp[f"emo_{emo}"]
+                del df_tmp
+
+        # Write run df, return path
+        df_out.to_csv(out_path)
+        del df_out
+        print(f"\t\tWrote : {out_path}")
+        return out_path
 
 
 def comb_matrices(
@@ -337,11 +310,11 @@ def comb_matrices(
         Missing participant dataframes
 
     """
-    if not helper.valid_name(model_name):
+    if not fsl_helper.valid_name(model_name):
         raise ValueError(f"Unsupported value for model_name : {model_name}")
-    if not helper.valid_level(model_level):
+    if not fsl_helper.valid_level(model_level):
         raise ValueError(f"Unsupported value for model_level : {model_level}")
-    if not helper.valid_contrast(con_name):
+    if not fsl_helper.valid_contrast(con_name):
         raise ValueError(f"Unsupported value for con_name : {con_name}")
 
     # Find desired dataframes
@@ -360,7 +333,7 @@ def comb_matrices(
 
     # Combine all beta TSVs, load data in parallel
     all_betas = Pool().starmap(
-        helper.load_csv, [(beta_path,) for beta_path in beta_list]
+        fsl_helper.load_csv, [(beta_path,) for beta_path in beta_list]
     )
     df_betas_all = pd.concat(all_betas, axis=0, ignore_index=True)
     out_path = os.path.join(

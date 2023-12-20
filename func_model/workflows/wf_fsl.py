@@ -22,8 +22,10 @@ import subprocess
 import pandas as pd
 from multiprocessing import Process, Pool
 from natsort import natsorted
-from func_model.resources import afni
-from func_model.resources import fsl
+from func_model.resources.afni import masks
+from func_model.resources.fsl import model
+from func_model.resources.fsl import group as fsl_group
+from func_model.resources.fsl import helper as fsl_helper
 
 
 # %%
@@ -211,7 +213,7 @@ class _SupportFslFirst(_SupportFsl):
             .split("task-")[1]
             .split("_")[0]
         )
-        if not fsl.helper.valid_task(self._task):
+        if not fsl_helper.valid_task(self._task):
             raise ValueError(f"Unexpected task name : {self._task}")
 
     def _get_run(self, file_name: str) -> str:
@@ -427,9 +429,9 @@ class FslFirst(_SupportFslFirst):
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
-        if not fsl.helper.valid_name(model_name):
+        if not fsl_helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
-        if not fsl.helper.valid_preproc(preproc_type):
+        if not fsl_helper.valid_preproc(preproc_type):
             raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
@@ -460,7 +462,7 @@ class FslFirst(_SupportFslFirst):
         self._setup()
 
         # Initialize needed classes, find preprocessed resting EPI
-        make_fsf = fsl.model.MakeFirstFsf(
+        make_fsf = model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
         rest_preproc = self._sess_preproc[0]
@@ -491,10 +493,10 @@ class FslFirst(_SupportFslFirst):
         # Setup and initialize needed classes
         print("\tRunning first-level task model")
         self._setup()
-        make_fsf = fsl.model.MakeFirstFsf(
+        make_fsf = model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
-        self._make_cf = fsl.model.ConditionFiles(
+        self._make_cf = model.ConditionFiles(
             self._subj, self._sess, self._task, self._subj_work
         )
 
@@ -517,7 +519,7 @@ class FslFirst(_SupportFslFirst):
 
             # Make task or lss design files
             if self._model_name == "lss":
-                fsl.model.simul_cond_motion(
+                model.simul_cond_motion(
                     self._subj,
                     self._sess,
                     self._run,
@@ -592,14 +594,14 @@ class FslFirst(_SupportFslFirst):
             return
 
         # Generate confound files
-        _, self._conf_path = fsl.model.confounds(
+        _, self._conf_path = model.confounds(
             sess_confounds[0], self._subj_work
         )
 
     def _run_feat(self, design_list: list):
         """Run FSL FEAT and clean output."""
         _ = Pool().starmap(
-            fsl.model.run_feat,
+            model.run_feat,
             [
                 (
                     fsf_path,
@@ -611,7 +613,7 @@ class FslFirst(_SupportFslFirst):
                 for fsf_path in design_list
             ],
         )
-        fsl.helper.clean_up(
+        fsl_helper.clean_up(
             self._subj_work, self._subj_final, self._model_name
         )
 
@@ -676,7 +678,7 @@ class FslSecond(_SupportFslSecond):
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
-        if not fsl.helper.valid_name(model_name):
+        if not fsl_helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
 
         print("Initializing FslSecond")
@@ -703,13 +705,13 @@ class FslSecond(_SupportFslSecond):
         """
         # Make second-level design
         self._setup()
-        make_sec = fsl.model.MakeSecondFsf(
+        make_sec = model.MakeSecondFsf(
             self._subj_work, self._subj_deriv, self._model_name
         )
         design_path = make_sec.write_task_fsf()
 
         # Execute design file
-        _ = fsl.model.run_feat(
+        _ = model.run_feat(
             design_path,
             self._subj,
             self._sess,
@@ -719,7 +721,7 @@ class FslSecond(_SupportFslSecond):
         )
 
         # Clean up
-        fsl.helper.clean_up(
+        fsl_helper.clean_up(
             self._subj_work,
             self._subj_final,
             self._model_name,
@@ -1187,7 +1189,7 @@ class _SupportExtract:
             raise ValueError(
                 f"Unsupported value for model_name : {self._model_name}"
             )
-        if not fsl.helper.valid_level(self._model_level):
+        if not fsl_helper.valid_level(self._model_level):
             raise ValueError(
                 f"Unsupported value for model_level : {self._model_level}"
             )
@@ -1217,7 +1219,7 @@ class _SupportExtract:
             os.makedirs(self._out_dir)
 
 
-class ExtractReg(_SupportExtract, fsl.group.ExtractTaskBetas):
+class ExtractReg(_SupportExtract):
     """Extract cope voxel betas and generate dataframe.
 
     Match cope.nii files to contrast name by mining design.con files
@@ -1278,13 +1280,12 @@ class ExtractReg(_SupportExtract, fsl.group.ExtractTaskBetas):
             self._group_mask,
             overwrite,
         )
-        fsl.group.ExtractTaskBetas.__init__(proj_dir)
+        self._ex_betas = fsl_group.ExtractTaskBetas()
         self._gen_valid()
         self._validate()
 
     def _validate(self):
         """Title."""
-        self._
         if self._model_name == "tog" and self._con_name != "tog":
             self._raise_model_con_err()
         if self._model_name == "sep" and (
@@ -1294,9 +1295,12 @@ class ExtractReg(_SupportExtract, fsl.group.ExtractTaskBetas):
 
     def get_betas(self):
         """Title."""
+        #
         self._setup()
-        _mask_path = afni.masks.tpl_gm(self._out_dir)
-        self.mask_coord(_mask_path)
+        _mask_path = masks.tpl_gm(self._out_dir)
+        self._ex_betas.mask_coord(_mask_path)
+
+        #
         for self._subj in self._subj_list:
             self._subj_dir = os.path.join(
                 self._proj_deriv, "model_fsl", self._subj
@@ -1307,9 +1311,10 @@ class ExtractReg(_SupportExtract, fsl.group.ExtractTaskBetas):
             ]
             self._mult_proc()
 
-        #
+        # TODO deprecate combine all
+        return
         if self._comb_all:
-            _, _ = fsl.group.comb_matrices(
+            _, _ = fsl_group.comb_matrices(
                 self._subj_list,
                 self._model_name,
                 self._model_level,
@@ -1354,7 +1359,7 @@ class ExtractReg(_SupportExtract, fsl.group.ExtractTaskBetas):
         )
         if not design_list:
             return
-        _ = self.make_func_matrix(
+        _ = self._ex_betas.make_func_matrix(
             self._subj,
             sess,
             task,
@@ -1417,7 +1422,7 @@ class ExtractLss(_SupportExtract):
 
     def get_betas(self):
         self._setup()
-        _mask_path = afni.masks.tpl_gm(self._out_dir)
+        _mask_path = masks.tpl_gm(self._out_dir)
         self.mask_coord(_mask_path)
         return
 
@@ -1499,7 +1504,7 @@ def fsl_classify_mask(
         raise ValueError(f"Unsupported model name : {model_name}")
     if model_level != "first":
         raise ValueError(f"Unsupported model level : {model_level}")
-    if not fsl.helper.valid_contrast(con_name):
+    if not fsl_helper.valid_contrast(con_name):
         raise ValueError(f"Unsupported contrast name : {con_name}")
     if task_name not in ["movies", "scenarios", "all"]:
         raise ValueError(f"Unexpected value for task : {task_name}")
@@ -1536,7 +1541,7 @@ def fsl_classify_mask(
     )
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    mk_mask = fsl.group.ImportanceMask()
+    mk_mask = fsl_group.ImportanceMask()
     mk_mask.mine_template(tpl_path)
     mask_list = []
     for emo_name in emo_list:
@@ -1552,7 +1557,7 @@ def fsl_classify_mask(
         mask_list.append(mask_path)
 
     # Trigger conjunction analyses
-    conj = fsl.group.ConjunctAnalysis(mask_list, out_dir)
+    conj = fsl_group.ConjunctAnalysis(mask_list, out_dir)
     conj.omni_map()
     conj.arousal_map()
     conj.valence_map()

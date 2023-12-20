@@ -9,14 +9,28 @@ identifying coordinates in a group-level mask.
 Dataframes are written for each subject in --subj-list/all, and
 a group dataframe can be generated from all subject dataframes.
 
-Subject-level dataframes are titled
-    <subj>_<sess>_<task>_<model-level>_<model-name>_betas.tsv
-and written to:
-    <proj_dir>/data_scanner_BIDS/derivatives/model_fsl/<subj>/<sess>/func
+Model names (see fsl_model):
+    - lss = conduct full GLMs for every single trial,
+            requires --contrast-name tog
+    - sep = model stimulus and replay separately,
+            requires --contrast-name stim|replay
+    - tog = model stimulus and replay together,
+            requires --contrast-name tog
 
-The group-level dataframe is titled:
+Contrast names:
+    - replay = replay vs washout
+    - stim = stimulus vs washout
+    - tog = stim and replay (together) vs washout
+
+Notes
+-----
+- Subject-level dataframes are titled
+    <subj>_<sess>_<task>_<model-level>_<model-name>_betas.tsv
+  and written to:
+    <proj_dir>/data_scanner_BIDS/derivatives/model_fsl/<subj>/<sess>/func
+- The group-level dataframe is titled:
     <model-level>_<model-name>_<contrast>_voxel-betas.tsv
-and written to:
+  and written to:
     <proj_dir>/analyses/model_fsl_group
 
 Examples
@@ -24,6 +38,7 @@ Examples
 fsl_extract --sub-all
 fsl_extract --sub-all --contrast-name replay
 fsl_extract --sub-list sub-ER0009 sub-ER0016 --overwrite
+fsl_extract --sub-all --model-name lss --contrast-name tog
 
 """
 # %%
@@ -34,7 +49,6 @@ import textwrap
 from copy import deepcopy
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_fsl
-from func_model.resources import fsl
 
 
 # %%
@@ -47,12 +61,11 @@ def _get_args():
         "--contrast-name",
         type=str,
         default="tog",
-        choices=["tog", "stim", "replay"],
+        choices=["replay", "stim", "tog"],
         help=textwrap.dedent(
             """\
             Desired contrast from which coefficients will be extracted,
-            substring of design.fsf EV Title. For tog, model-name=tog
-            required. For stim|replay, model-name=sep required.
+            substring of design.fsf EV Title.
             (default : %(default)s)
             """
         ),
@@ -72,8 +85,8 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="tog",
-        choices=["tog", "sep"],
+        default="sep",
+        choices=["lss", "sep", "tog"],
         help=textwrap.dedent(
             """\
             FSL model name, for triggering different workflows.
@@ -125,6 +138,12 @@ def _get_args():
     return parser
 
 
+def _err_msg(model_name: str, con_name: str):
+    """Print to user and kill if bad args specified."""
+    print(f"Unsupported contrast for model {model_name} : {con_name}")
+    sys.exit(1)
+
+
 # %%
 def main():
     """Setup working environment."""
@@ -138,15 +157,12 @@ def main():
     overwrite = args.overwrite
 
     # Check user input
-    if not fsl.helper.valid_contrast(con_name):
-        print(f"Unsupported contrast name : {con_name}")
-        sys.exit(1)
     if model_name == "tog" and con_name != "tog":
-        print(f"Unsupported contrast for model {model_name} : {con_name}")
-        sys.exit(1)
+        _err_msg(model_name, con_name)
     if model_name == "sep" and (con_name != "stim" and con_name != "replay"):
-        print(f"Unsupported contrast for model {model_name} : {con_name}")
-        sys.exit(1)
+        _err_msg(model_name, con_name)
+    if model_name == "lss" and con_name != "tog":
+        _err_msg(model_name, con_name)
 
     # Check, make subject list
     proj_deriv = os.path.join(

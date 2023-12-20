@@ -1,4 +1,4 @@
-"""Helper methods for FSl-based pipelines.
+"""Helper methods for FSL-based pipelines.
 
 valid_name : check for valid model name
 valid_level : check for valid model level
