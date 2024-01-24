@@ -35,7 +35,7 @@ fsl_model -s sub-ER0009 \
 import os
 import sys
 import time
-import socket
+import platform
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
@@ -123,7 +123,13 @@ def _get_args():
 
 # %%
 def main():
-    """Setup working environment."""
+    """Trigger workflow."""
+    # Check env
+    if "dcc" not in platform.uname().node:
+        print("fsl_model workflow is required to run on DCC.")
+        sys.exit(1)
+
+    # Get cli input
     args = _get_args().parse_args()
     subj_list = args.sub_list
     proj_dir = args.proj_dir
@@ -194,8 +200,7 @@ def main():
 if __name__ == "__main__":
     # Require proj env
     env_found = [x for x in sys.path if "emorep" in x]
-    host_name = socket.gethostname()
-    if not env_found and "dcc" not in host_name:
+    if not env_found:
         print("\nERROR: missing required project environment 'emorep'.")
         print("\tHint: $labar_env emorep\n")
         sys.exit(1)

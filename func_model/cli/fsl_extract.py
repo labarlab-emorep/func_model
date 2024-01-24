@@ -44,6 +44,7 @@ fsl_extract --sub-all --model-name lss --contrast-name tog
 import os
 import sys
 import glob
+import platform
 import textwrap
 from copy import deepcopy
 from argparse import ArgumentParser, RawTextHelpFormatter
@@ -65,18 +66,6 @@ def _get_args():
             """\
             Desired contrast from which coefficients will be extracted,
             substring of design.fsf EV Title.
-            (default : %(default)s)
-            """
-        ),
-    )
-    parser.add_argument(
-        "--model-level",
-        type=str,
-        default="first",
-        choices=["first"],
-        help=textwrap.dedent(
-            """\
-            FSL model level, for triggering different workflows
             (default : %(default)s)
             """
         ),
@@ -132,30 +121,21 @@ def _get_args():
     return parser
 
 
-def _err_msg(model_name: str, con_name: str):
-    """Print to user and kill if bad args specified."""
-    print(f"Unsupported contrast for model {model_name} : {con_name}")
-    sys.exit(1)
-
-
 # %%
 def main():
-    """Setup working environment."""
+    """Trigger workflow."""
+    # Check env
+    if "labarserv2" not in platform.uname().node:
+        print("fsl_extract is required to run on labarserv2.")
+        sys.exit(1)
+
+    # Get cli args
     args = _get_args().parse_args()
     subj_list = args.sub_list
     subj_all = args.sub_all
     proj_dir = args.proj_dir
     con_name = args.contrast_name
     model_name = args.model_name
-    model_level = args.model_level
-
-    # Check user input
-    if model_name == "tog" and con_name != "tog":
-        _err_msg(model_name, con_name)
-    if model_name == "sep" and (con_name != "stim" and con_name != "replay"):
-        _err_msg(model_name, con_name)
-    if model_name == "lss" and con_name != "tog":
-        _err_msg(model_name, con_name)
 
     # Check, make subject list
     proj_deriv = os.path.join(
@@ -166,18 +146,11 @@ def main():
     ]
     if not subj_avail:
         raise ValueError(f"No FSL output found at : {proj_deriv}")
-    if subj_list:
-        for subj in subj_list:
-            if subj not in subj_avail:
-                raise ValueError(
-                    "Specified subject not found in "
-                    + f"derivatives/model_fsl : {subj}"
-                )
     if subj_all:
         subj_list = deepcopy(subj_avail)
 
     # Submit workflow
-    wf_fsl.fsl_extract(proj_dir, subj_list, model_name, model_level, con_name)
+    wf_fsl.fsl_extract(proj_dir, subj_list, model_name, con_name)
 
 
 if __name__ == "__main__":

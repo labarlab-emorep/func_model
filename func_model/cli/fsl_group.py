@@ -34,6 +34,7 @@ fsl_group -l fourth -c sess
 
 # %%
 import sys
+import platform
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_fsl
@@ -102,7 +103,13 @@ def _get_args():
 
 # %%
 def main():
-    """Setup working environment."""
+    """Trigger workflow."""
+    # Check env
+    if "labarserv2" not in platform.uname().node:
+        print("fsl_group is required to run on labarserv2.")
+        sys.exit(1)
+
+    # Get CLI input
     args = _get_args().parse_args()
     proj_dir = args.proj_dir
     comb_name = args.comb_name
@@ -141,7 +148,6 @@ def main():
 
 
 if __name__ == "__main__":
-
     # Require proj env
     env_found = [x for x in sys.path if "emorep" in x]
     if not env_found:

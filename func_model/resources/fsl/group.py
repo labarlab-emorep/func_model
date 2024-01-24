@@ -96,7 +96,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Methods
     -------
-    make_func_matrix(*args)
+    make_beta_matrix(*args)
         Identify and align cope.nii files, mine for betas
         and generate dataframe
 
@@ -104,7 +104,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
     -------
     etb_obj = group.ExtractTaskBetas()
     etb_obj.mask_coord("/path/to/binary/mask.nii")
-    df_path = etb_obj.make_func_matrix(*args)
+    df_path = etb_obj.make_beta_matrix(*args)
 
     """
 
@@ -113,7 +113,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         print("Initializing ExtractTaskBetas")
         super().__init__()
 
-    def make_func_matrix(
+    def make_beta_matrix(
         self,
         subj,
         sess,

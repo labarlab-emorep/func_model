@@ -158,7 +158,9 @@ class MysqlUpdate(_RefMaps):
         self._tbl_name = f"tbl_betas_{model}_{con}_gm"
 
         #
-        print(f"Updating db_emorep {self._tbl_name} for {self._subj}, {task}")
+        print(
+            f"\tUpdating db_emorep {self._tbl_name} for {self._subj}, {task}"
+        )
         if model == "lss":
             self._update_lss_betas()
         else:

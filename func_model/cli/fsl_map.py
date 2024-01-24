@@ -25,6 +25,7 @@ fsl_map -t movies \
 import os
 import sys
 import textwrap
+import platform
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_fsl
 from func_model.resources.fsl import helper as fsl_helper
@@ -109,7 +110,13 @@ def _get_args():
 
 # %%
 def main():
-    """Setup working environment."""
+    """Trigger workflow."""
+    # Check env
+    if "labarserv2" not in platform.uname().node:
+        print("fsl_group is required to run on labarserv2.")
+        sys.exit(1)
+
+    # Get CLI input
     args = _get_args().parse_args()
     proj_dir = args.proj_dir
     con_name = args.contrast_name
