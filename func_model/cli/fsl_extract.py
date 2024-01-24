@@ -36,8 +36,7 @@ Notes
 Examples
 --------
 fsl_extract --sub-all
-fsl_extract --sub-all --contrast-name replay
-fsl_extract --sub-list sub-ER0009 sub-ER0016 --overwrite
+fsl_extract --sub-list sub-ER0009 sub-ER0016 --contrast-name replay
 fsl_extract --sub-all --model-name lss --contrast-name tog
 
 """
@@ -60,7 +59,7 @@ def _get_args():
     parser.add_argument(
         "--contrast-name",
         type=str,
-        default="tog",
+        default="stim",
         choices=["replay", "stim", "tog"],
         help=textwrap.dedent(
             """\
@@ -93,11 +92,6 @@ def _get_args():
             (default : %(default)s)
             """
         ),
-    )
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Whether to overwrite subject-level beta TSV files",
     )
     parser.add_argument(
         "--proj-dir",
@@ -154,7 +148,6 @@ def main():
     con_name = args.contrast_name
     model_name = args.model_name
     model_level = args.model_level
-    overwrite = args.overwrite
 
     # Check user input
     if model_name == "tog" and con_name != "tog":
@@ -184,13 +177,10 @@ def main():
         subj_list = deepcopy(subj_avail)
 
     # Submit workflow
-    wf_fsl.fsl_extract(
-        proj_dir, subj_list, model_name, model_level, con_name, overwrite
-    )
+    wf_fsl.fsl_extract(proj_dir, subj_list, model_name, model_level, con_name)
 
 
 if __name__ == "__main__":
-
     # Require proj env
     env_found = [x for x in sys.path if "emorep" in x]
     if not env_found:

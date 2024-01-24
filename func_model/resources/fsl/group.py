@@ -1,16 +1,14 @@
 """Methods for group-level analyses.
 
 ExtractTaskBetas : mine nii to generate dataframes of beta estimates
-comb_matrices : concatenate participant beta-estimate dfs
 ImportanceMask : generate mask in template space from classifier output
 ConjunctAnalysis : generate conjunction maps from ImportanceMask output
 
 """
 import os
-import glob
 import re
 import json
-from typing import Union
+from typing import Union, Tuple
 import pandas as pd
 import numpy as np
 from multiprocessing import Pool
@@ -18,35 +16,39 @@ import nibabel as nib
 from func_model.resources.fsl import helper as fsl_helper
 from func_model.resources.general import matrix
 from func_model.resources.general import submit
+from func_model.resources.general import sql_database
 
 
-class ExtractTaskBetas(matrix.NiftiArray):
-    """Generate dataframe of voxel beta-coefficients.
+class _GetCopes:
+    """Title."""
 
-    Align FSL cope.nii files with their corresponding contrast
-    names and then extract all voxel beta weights for contrasts
-    of interest. Converts extracted beta weights into a dataframe.
+    def __init__(self, con_name):
+        """Title."""
+        self._con_name = con_name  # used for cleaning design.con strings
 
-    Inherits general.matrix.NiftiArray.
+    def find_copes(self, design_path: Union[str, os.PathLike]) -> dict:
+        """Match emotion name to cope file."""
+        self._design_path = design_path
 
-    Methods
-    -------
-    make_func_matrix(**args)
-        Identify and align cope.nii files, mine for betas
-        and generate dataframe
+        # Mine, organize design.con info
+        self._read_contrast()
+        self._drop_contrast()
+        self._clean_contrast()
 
-    Example
-    -------
-    etb_obj = group.ExtractTaskBetas()
-    etb_obj.mask_coord("/path/to/binary/mask.nii")
-    df_path = etb_obj.make_func_matrix(*args)
+        # Orient from design.con to stats dir
+        feat_dir = os.path.dirname(self._design_path)
+        stats_dir = os.path.join(feat_dir, "stats")
 
-    """
-
-    def __init__(self):
-        """Initialize."""
-        print("Initializing ExtractTaskBetas")
-        super().__init__()
+        # Match emotion to nii path
+        cope_dict = {}
+        for emo, num in self._con_dict.items():
+            nii_path = os.path.join(stats_dir, f"cope{num}.nii.gz")
+            if not os.path.exists(nii_path):
+                raise FileNotFoundError(
+                    f"Missing expected cope file : {nii_path}"
+                )
+            cope_dict[emo] = nii_path
+        return cope_dict
 
     def _read_contrast(self):
         """Match contrast name to number, set as self._con_dict."""
@@ -69,20 +71,12 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     def _drop_contrast(self):
         """Drop contrasts of no interest from self._con_dict."""
-        if not hasattr(self, "_con_dict"):
-            raise AttributeError(
-                "Missing self._con_dict, try self._read_contrast"
-            )
         for key in list(self._con_dict.keys()):
             if not key.startswith(self._con_name):
                 del self._con_dict[key]
 
     def _clean_contrast(self):
         """Clean self._con_dict into pairs of emotion: contrast num."""
-        if not hasattr(self, "_con_dict"):
-            raise AttributeError(
-                "Missing self._con_dict, try self._read_contrast"
-            )
         out_dict = {}
         clean_num = len(self._con_name)
         for key, value in self._con_dict.items():
@@ -90,27 +84,34 @@ class ExtractTaskBetas(matrix.NiftiArray):
             out_dict[new_key] = value[-1]
         self._con_dict = out_dict
 
-    def _find_copes(self) -> dict:
-        """Match emotion name to cope file."""
-        # Mine, organize design.con info
-        self._read_contrast()
-        self._drop_contrast()
-        self._clean_contrast()
 
-        # Orient from desing.con to stats dir
-        feat_dir = os.path.dirname(self._design_path)
-        stats_dir = os.path.join(feat_dir, "stats")
+class ExtractTaskBetas(matrix.NiftiArray):
+    """Generate dataframe of voxel beta-coefficients.
 
-        # Match emotion to nii path
-        cope_dict = {}
-        for emo, num in self._con_dict.items():
-            nii_path = os.path.join(stats_dir, f"cope{num}.nii.gz")
-            if not os.path.exists(nii_path):
-                raise FileNotFoundError(
-                    f"Missing expected cope file : {nii_path}"
-                )
-            cope_dict[emo] = nii_path
-        return cope_dict
+    Align FSL cope.nii files with their corresponding contrast
+    names and then extract all voxel beta weights for contrasts
+    of interest. Converts extracted beta weights into a dataframe.
+
+    Inherits general.matrix.NiftiArray.
+
+    Methods
+    -------
+    make_func_matrix(*args)
+        Identify and align cope.nii files, mine for betas
+        and generate dataframe
+
+    Example
+    -------
+    etb_obj = group.ExtractTaskBetas()
+    etb_obj.mask_coord("/path/to/binary/mask.nii")
+    df_path = etb_obj.make_func_matrix(*args)
+
+    """
+
+    def __init__(self):
+        """Initialize."""
+        print("Initializing ExtractTaskBetas")
+        super().__init__()
 
     def make_func_matrix(
         self,
@@ -123,7 +124,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
         design_list,
         subj_out,
         mot_thresh=0.2,
-        overwrite=False,
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
 
@@ -159,8 +159,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
         mot_thresh : float, optional
             Runs with a proportion of volumes >= mot_thresh will
             not be included in output dataframe
-        overwrite : bool, optional
-            Whether to overwrite existing beta TSV files
 
         Returns
         -------
@@ -189,8 +187,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
             )
         if not fsl_helper.valid_contrast(con_name):
             raise ValueError(f"Unsupported value for con_name : {con_name}")
-        if not isinstance(overwrite, bool):
-            raise TypeError("Expected type bool for overwrite")
 
         # Setup and check for existing work
         self._subj = subj
@@ -198,43 +194,34 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._task = task
         self._model_name = f"name-{model_name}"
         self._model_level = f"level-{model_level}"
-        self._con_name = con_name  # used for cleaning design.con strings
-        self._con = f"con-{con_name}"
+        self._con_name = con_name
         self._subj_out = subj_out
         self._mot_thresh = mot_thresh
-        self._overwrite = overwrite
+
+        #
+        self._get_copes = _GetCopes(con_name)
 
         # Mine files from each design.con, run in parallel
-        out_list = Pool(processes=8).starmap(
+        self._data_obj = Pool(processes=8).starmap(
             self._mine_copes,
             [(design_path,) for design_path in design_list],
         )
-        return out_list
+
+        #
+        self._write_csv()
+        self._update_mysql()
 
     def _mine_copes(
         self,
         design_path: Union[str, os.PathLike],
-    ) -> Union[str, os.PathLike]:
+    ) -> Tuple:
         """Vectorize cope betas for run."""
-        self._design_path = design_path
-
         # Determine run number for file name
-        _run_dir = os.path.basename(os.path.dirname(self._design_path))
-        _run_num = _run_dir.split("_")[0].split("-")[1]
-        run = f"run-{_run_num}"
-        if len(_run_num) != 2:
+        _run_dir = os.path.basename(os.path.dirname(design_path))
+        run_num = _run_dir.split("_")[0].split("-")[1]
+        run = f"run-{run_num}"
+        if len(run_num) != 2:
             raise ValueError("Error parsing path for run number")
-
-        # Check for previous run
-        out_path = os.path.join(
-            self._subj_out,
-            f"{self._subj}_{self._sess}_{self._task}_{run}_"
-            + f"{self._model_level}_{self._model_name}_"
-            + f"{self._con}_betas.csv",
-        )
-        if os.path.exists(out_path) and not self._overwrite:
-            return out_path
-        print(f"\tGetting betas from {self._subj}, {self._sess}, {run}")
 
         # Compare proportion of outliers to criterion, skip run
         # if the the threshold is exceeded
@@ -248,12 +235,12 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise FileNotFoundError(f"Expected to find : {prop_path}")
         with open(prop_path) as jf:
             prop_dict = json.load(jf)
-        prop_mot = prop_dict["CensorProp"]
-        if prop_mot >= self._mot_thresh:
+        if prop_dict["CensorProp"] >= self._mot_thresh:
             return
 
         # Find and match copes to emotions, get voxel betas
-        cope_dict = self._find_copes()
+        print(f"\tGetting betas from {self._subj}, {self._sess}, {run}")
+        cope_dict = self._get_copes.find_copes(design_path)
         for emo, cope_path in cope_dict.items():
             img_arr = self.nifti_to_arr(cope_path)
 
@@ -265,85 +252,56 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 df_out[f"emo_{emo}"] = df_tmp[f"emo_{emo}"]
                 del df_tmp
 
-        # Write run df, return path
-        df_out.to_csv(out_path)
-        del df_out
-        print(f"\t\tWrote : {out_path}")
-        return out_path
+        # Return df and run num (to ensure proper order from multiproc)
+        df_out = df_out.reset_index()
+        return (df_out, int(run_num))
 
+    def _write_csv(self):
+        """Title."""
+        for idx, _ in enumerate(self._data_obj):
+            df = self._data_obj[idx][0]
+            run = self._data_obj[idx][1]
 
-def comb_matrices(
-    subj_list, model_name, model_level, con_name, proj_deriv, out_dir
-):
-    """Combine participant beta dataframes into master.
+            #
+            out_path = os.path.join(
+                self._subj_out,
+                f"{self._subj}_{self._sess}_{self._task}_run-0{run}_"
+                + f"{self._model_level}_{self._model_name}_"
+                + f"con-{self._con_name}_betas.csv",
+            )
+            print(f"\tWriting : {out_path}")
+            df.to_csv(out_path, index=False)
 
-    Find beta-coefficient dataframes for participants in subj_list
-    and combine into a single dataframe.
+    def _update_mysql(self):
+        """Title."""
+        #
+        df_a = self._data_obj[0][0][["voxel_name"]].copy()
+        df_b = self._data_obj[0][0][["voxel_name"]].copy()
+        df_a["num_exposure"] = 1
+        df_b["num_exposure"] = 2
 
-    Parameters
-    ----------
-    subj_list : list
-        Participants to include in final dataframe
-    model_name : str
-        FSL model identifier
-    model_level : str
-        FSL model level
-    con_name : str
-        Desired contrast from which coefficients will be extracted
-    proj_deriv : path
-        Location of project derivatives, will search for dataframes
-        in <proj_deriv>/model_fsl/sub-*.
-    out_dir : path
-        Output location of final dataframe
+        #
+        for idx, _ in enumerate(self._data_obj):
+            df = self._data_obj[idx][0]
+            run_num = self._data_obj[idx][1]
+            if run_num < 5:
+                df_a = df_a.merge(df, how="left", on="voxel_name")
+            else:
+                df_b = df_b.merge(df, how="left", on="voxel_name")
+        df_in = pd.concat([df_a, df_b])
+        del self._data_obj, df_a, df_b
 
-    Returns
-    -------
-    tuple
-        [0] = pd.DataFrame
-        [1] = str, os.PathLike
-            Location of output dataframe
-
-    Raises
-    ------
-    ValueError
-        Unexpected values for model_name, model_level
-        Missing participant dataframes
-
-    """
-    if not fsl_helper.valid_name(model_name):
-        raise ValueError(f"Unsupported value for model_name : {model_name}")
-    if not fsl_helper.valid_level(model_level):
-        raise ValueError(f"Unsupported value for model_level : {model_level}")
-    if not fsl_helper.valid_contrast(con_name):
-        raise ValueError(f"Unsupported value for con_name : {con_name}")
-
-    # Find desired dataframes
-    print("\tCombining participant beta tsv files ...")
-    df_list = sorted(
-        glob.glob(
-            f"{proj_deriv}/model_fsl/sub*/ses*/func/*level-{model_level}_"
-            + f"name-{model_name}_con-{con_name}_betas.csv",
+        #
+        db_con = sql_database.DbConnect()
+        up_mysql = sql_database.MysqlUpdate(db_con)
+        up_mysql.update_db(
+            df_in,
+            self._subj,
+            self._task,
+            self._model_name.split("-")[-1],
+            self._con_name,
         )
-    )
-    if not df_list:
-        raise ValueError("No subject beta-coefficient dataframes found.")
-    beta_list = [
-        x for x in df_list if os.path.basename(x).split("_")[0] in subj_list
-    ]
-
-    # Combine all beta TSVs, load data in parallel
-    all_betas = Pool().starmap(
-        fsl_helper.load_csv, [(beta_path,) for beta_path in beta_list]
-    )
-    df_betas_all = pd.concat(all_betas, axis=0, ignore_index=True)
-    out_path = os.path.join(
-        out_dir,
-        f"level-{model_level}_name-{model_name}_con-{con_name}Washout_"
-        + "voxel-betas.csv",
-    )
-    df_betas_all.to_csv(out_path, index=False)
-    print(f"\tWrote : {out_path}")
-    return (df_betas_all, out_path)
+        db_con.close_con()
 
 
 # %%

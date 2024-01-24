@@ -1246,11 +1246,6 @@ class ExtractReg(_SupportExtract):
     con_name : str
         [stim | replay | tog]
         Desired contrast from which coefficients will be extracted
-    overwrite : bool
-        Whether to overwrite existing beta TSV files
-    comb_all : bool
-        Combine all participant beta dataframes into an
-        omnibus one
 
     """
 
@@ -1260,8 +1255,6 @@ class ExtractReg(_SupportExtract):
         subj_list,
         model_name,
         con_name,
-        overwrite,
-        comb_all,
     ):
         """Initialize."""
         self._proj_dir = proj_dir
@@ -1269,16 +1262,13 @@ class ExtractReg(_SupportExtract):
         self._model_name = model_name
         self._model_level = "first"
         self._con_name = con_name
-        self._overwrite = overwrite
         self._group_mask = "template"
-        self._comb_all = comb_all
         super().__init__(
             proj_dir,
             model_name,
             self._model_level,
             con_name,
             self._group_mask,
-            overwrite,
         )
         self._ex_betas = fsl_group.ExtractTaskBetas()
         self._gen_valid()
@@ -1311,17 +1301,17 @@ class ExtractReg(_SupportExtract):
             ]
             self._mult_proc()
 
-        # TODO deprecate combine all
-        return
-        if self._comb_all:
-            _, _ = fsl_group.comb_matrices(
-                self._subj_list,
-                self._model_name,
-                self._model_level,
-                self._con_name,
-                self._proj_deriv,
-                self._out_dir,
-            )
+        # # TODO deprecate combine all
+        # return
+        # if self._comb_all:
+        #     _, _ = fsl_group.comb_matrices(
+        #         self._subj_list,
+        #         self._model_name,
+        #         self._model_level,
+        #         self._con_name,
+        #         self._proj_deriv,
+        #         self._out_dir,
+        #     )
 
     def _mult_proc(self):
         """Run session mining in parallel."""
@@ -1436,20 +1426,19 @@ class FslExtract(ExtractReg, ExtractLss):
         subj_list,
         model_name,
         con_name,
-        overwrite,
-        comb_all=False,
     ):
         """Trigger LSS or regular model beta extraction."""
         if self._model_name != "lss":
             ExtractReg.__init__(
-                proj_dir, subj_list, model_name, con_name, overwrite, comb_all
+                proj_dir,
+                subj_list,
+                model_name,
+                con_name,
             )
         elif self._model_name != "lss":
             ExtractLss.__init__(
                 proj_dir,
                 subj_list,
-                overwrite,
-                comb_all,
             )
         self.get_betas()
 
