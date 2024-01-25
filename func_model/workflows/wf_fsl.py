@@ -1245,6 +1245,8 @@ class _ExtractReg(_SupportExtract):
         [stim | replay | tog]
         Desired contrast from which coefficients will be extracted
 
+    overwrite : bool
+
     Example
     -------
     ex_reg = _ExtractReg(*args)
@@ -1258,9 +1260,11 @@ class _ExtractReg(_SupportExtract):
         subj_list,
         model_name,
         con_name,
+        overwrite,
     ):
         """Initialize."""
         self._subj_list = subj_list
+        self._overwrite = overwrite
         super().__init__(
             proj_dir,
             model_name,
@@ -1344,6 +1348,7 @@ class _ExtractReg(_SupportExtract):
             self._con_name,
             design_list,
             subj_func,
+            self._overwrite,
         )
 
 
@@ -1394,7 +1399,7 @@ class _ExtractLss(_SupportExtract):
         return
 
 
-def fsl_extract(proj_dir, subj_list, model_name, con_name):
+def fsl_extract(proj_dir, subj_list, model_name, con_name, overwrite):
     """Title.
 
     Parameters
@@ -1420,7 +1425,9 @@ def fsl_extract(proj_dir, subj_list, model_name, con_name):
     if model_name == "lss":
         return
     else:
-        ex_reg = _ExtractReg(proj_dir, subj_list, model_name, con_name)
+        ex_reg = _ExtractReg(
+            proj_dir, subj_list, model_name, con_name, overwrite
+        )
         ex_reg.get_betas()
 
 

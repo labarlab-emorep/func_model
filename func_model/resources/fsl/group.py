@@ -123,6 +123,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         con_name,
         design_list,
         subj_out,
+        overwrite,
         mot_thresh=0.2,
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
@@ -160,6 +161,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             Runs with a proportion of volumes >= mot_thresh will
             not be included in output dataframe
 
+        overwrite : bool
+
         Returns
         -------
         list
@@ -188,7 +191,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         if not fsl_helper.valid_contrast(con_name):
             raise ValueError(f"Unsupported value for con_name : {con_name}")
 
-        # Setup and check for existing work
+        # Setup
         self._subj = subj
         self._sess = sess
         self._task = task
@@ -196,7 +199,17 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._model_level = f"level-{model_level}"
         self._con_name = con_name
         self._subj_out = subj_out
+        self._overwrite = overwrite
         self._mot_thresh = mot_thresh
+
+        #
+        data_exist = self._check_exist()
+        if not self._overwrite and data_exist:
+            print(
+                f"\tData already exist for {subj}, {task}, "
+                + f"{model_name}, {con_name}; Continuing ..."
+            )
+            return
 
         #
         self._get_copes = _GetCopes(con_name)
@@ -207,9 +220,26 @@ class ExtractTaskBetas(matrix.NiftiArray):
             [(design_path,) for design_path in design_list],
         )
 
+        # TODO manage empty data_obj
+
         #
         self._write_csv()
         self._update_mysql()
+
+    def _check_exist(self) -> bool:
+        """Title."""
+        # Using separate connection here from _up_mysql
+        # to avoid multiproc pickle issue.
+        db_con = sql_database.DbConnect()
+        up_mysql = sql_database.MysqlUpdate(db_con)
+        data_exist = up_mysql.check_db(
+            self._subj,
+            self._task,
+            self._model_name.split("-")[-1],
+            self._con_name,
+        )
+        db_con.close_con()
+        return data_exist
 
     def _mine_copes(
         self,
@@ -300,6 +330,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             self._task,
             self._model_name.split("-")[-1],
             self._con_name,
+            self._overwrite,
         )
         db_con.close_con()
 

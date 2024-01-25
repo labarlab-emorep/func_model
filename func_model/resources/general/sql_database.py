@@ -7,7 +7,7 @@ MysqlUpdate : update db_emorep tables
 # %%
 import os
 import pandas as pd
-from typing import Type
+from typing import Type, Tuple
 import mysql.connector
 from contextlib import contextmanager
 
@@ -54,9 +54,9 @@ class DbConnect:
         )
 
     @contextmanager
-    def connect(self):
+    def connect(self, buf=False):
         """Yield cursor."""
-        cursor = self.con.cursor()
+        cursor = self.con.cursor(buffered=buf)
         try:
             yield cursor
         finally:
@@ -74,6 +74,13 @@ class DbConnect:
             cur.execute(sql_cmd)
             df = pd.DataFrame(cur.fetchall(), columns=col_names)
         return df
+
+    def fetch_one(self, sql_cmd: str) -> Tuple:
+        """Title."""
+        with self.connect(buf=True) as cur:
+            cur.execute(sql_cmd)
+            row = cur.fetchone()
+        return row
 
     def close_con(self):
         """Title."""
@@ -133,6 +140,22 @@ class MysqlUpdate(_RefMaps):
         """Initialize."""
         super().__init__(db_con)
 
+    def check_db(self, subj, task, model, con) -> bool:
+        """Title.
+
+        Parameters
+        ----------
+
+        """
+        subj_id = int(subj.split("-ER")[-1])
+        task_id = self.ref_task[task.split("-")[-1]]
+        sql_cmd = (
+            f"select * from tbl_betas_{model}_{con}_gm "
+            + f"where task_id = {task_id} and subj_id = {subj_id}"
+        )
+        row = self._db_con.fetch_one(sql_cmd)
+        return True if row else False
+
     def update_db(
         self,
         df,
@@ -140,7 +163,7 @@ class MysqlUpdate(_RefMaps):
         task,
         model,
         con,
-        subj_col="subj_id",
+        overwrite,
     ):
         """Title.
 
@@ -149,12 +172,11 @@ class MysqlUpdate(_RefMaps):
 
         """
         #
-
-        #
         self._df = df
         self._subj = subj
         self._task = task
-        self._subj_col = subj_col
+        self._overwrite = overwrite
+        self._subj_col = "subj_id"
         self._tbl_name = f"tbl_betas_{model}_{con}_gm"
 
         #
@@ -186,15 +208,20 @@ class MysqlUpdate(_RefMaps):
         all_cols = id_list + emo_list
 
         #
-        val_list = []
-        val_list += ["%s" for x in all_cols]
+        val_list = ["%s" for x in all_cols]
         tbl_input = list(self._df[all_cols].itertuples(index=False, name=None))
 
         #
         sql_cmd = (
-            f"insert ignore into {self._tbl_name} ({', '.join(all_cols)}) "
+            f"insert into {self._tbl_name} ({', '.join(all_cols)}) "
             + f"values ({', '.join(val_list)})"
         )
+        if self._overwrite:
+            vals = [f"{x}=values({x})" for x in emo_list]
+            up_cmd = f" on duplicate key update {', '.join(vals)}"
+            sql_cmd = sql_cmd + up_cmd
+
+        #
         self._db_con.exec_many(
             sql_cmd,
             tbl_input,

@@ -36,7 +36,7 @@ Notes
 Examples
 --------
 fsl_extract --sub-all
-fsl_extract --sub-list sub-ER0009 sub-ER0016 --contrast-name replay
+fsl_extract --sub-list sub-ER0009 sub-ER0016 --contrast-name replay --overwrite
 fsl_extract --sub-all --model-name lss --contrast-name tog
 
 """
@@ -81,6 +81,11 @@ def _get_args():
             (default : %(default)s)
             """
         ),
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Whether to overwrite existing records",
     )
     parser.add_argument(
         "--proj-dir",
@@ -136,6 +141,7 @@ def main():
     proj_dir = args.proj_dir
     con_name = args.contrast_name
     model_name = args.model_name
+    overwrite = args.overwrite
 
     # Check, make subject list
     proj_deriv = os.path.join(
@@ -150,7 +156,7 @@ def main():
         subj_list = deepcopy(subj_avail)
 
     # Submit workflow
-    wf_fsl.fsl_extract(proj_dir, subj_list, model_name, con_name)
+    wf_fsl.fsl_extract(proj_dir, subj_list, model_name, con_name, overwrite)
 
 
 if __name__ == "__main__":
