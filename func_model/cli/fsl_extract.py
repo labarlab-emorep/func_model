@@ -4,7 +4,9 @@ Written for the local labarserv2 environment.
 
 Mine FSL GLM files for contrasts of interest and generate a
 dataframe of voxel beta-coefficients. Dataframes may be masked by
-identifying coordinates in a group-level mask.
+identifying coordinates in a group-level mask. Extracted beta-values
+are written sent to MySQL:
+    db_emorep.tbl_betas_<model-name>_<contrast-name>_gm
 
 Dataframes are written for each subject in --subj-list/all, and
 a group dataframe can be generated from all subject dataframes.
@@ -13,25 +15,11 @@ Model names (see fsl_model):
     - lss = conduct full GLMs for every single trial,
             requires --contrast-name tog
     - sep = model stimulus and replay separately,
-            requires --contrast-name stim|replay
-    - tog = model stimulus and replay together,
-            requires --contrast-name tog
+            requires --contrast-name stim
 
 Contrast names:
-    - replay = replay vs washout
     - stim = stimulus vs washout
     - tog = stim and replay (together) vs washout
-
-Notes
------
-- Subject-level dataframes are titled
-    <subj>_<sess>_<task>_<model-level>_<model-name>_betas.tsv
-  and written to:
-    <proj_dir>/data_scanner_BIDS/derivatives/model_fsl/<subj>/<sess>/func
-- The group-level dataframe is titled:
-    <model-level>_<model-name>_<contrast>_voxel-betas.tsv
-  and written to:
-    <proj_dir>/analyses/model_fsl_group
 
 Examples
 --------
@@ -61,7 +49,7 @@ def _get_args():
         "--contrast-name",
         type=str,
         default="stim",
-        choices=["replay", "stim", "tog"],
+        choices=["stim", "tog"],
         help=textwrap.dedent(
             """\
             Desired contrast from which coefficients will be extracted,
@@ -74,7 +62,7 @@ def _get_args():
         "--model-name",
         type=str,
         default="sep",
-        choices=["lss", "sep", "tog"],
+        choices=["lss", "sep"],
         help=textwrap.dedent(
             """\
             FSL model name, for triggering different workflows.

@@ -1416,9 +1416,7 @@ def fsl_extract(proj_dir, subj_list, model_name, con_name, overwrite):
         )
 
     # Check user input
-    if model_name == "tog" and con_name != "tog":
-        _err_msg()
-    if model_name == "sep" and (con_name != "stim" and con_name != "replay"):
+    if model_name == "sep" and con_name != "stim":
         _err_msg()
     if model_name == "lss" and con_name != "tog":
         _err_msg()
