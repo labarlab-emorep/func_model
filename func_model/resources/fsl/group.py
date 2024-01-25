@@ -9,7 +9,6 @@ import os
 import re
 import json
 from typing import Union, Tuple
-import pandas as pd
 import numpy as np
 from multiprocessing import Pool
 import nibabel as nib
@@ -203,6 +202,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._mot_thresh = mot_thresh
 
         #
+        print(f"Working on {subj}, {task}, {model_name}, {con_name}")
         data_exist = self._check_exist()
         if not self._overwrite and data_exist:
             print(
@@ -219,8 +219,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             self._mine_copes,
             [(design_path,) for design_path in design_list],
         )
-
-        # TODO manage empty data_obj
+        if not isinstance(self._data_obj[0], tuple):
+            return
 
         #
         self._write_csv()
@@ -269,7 +269,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             return
 
         # Find and match copes to emotions, get voxel betas
-        print(f"\tGetting betas from {self._subj}, {self._sess}, {run}")
+        print(f"\tGetting betas from {self._subj}, {self._task}, {run}")
         cope_dict = self._get_copes.find_copes(design_path)
         for emo, cope_path in cope_dict.items():
             img_arr = self.nifti_to_arr(cope_path)
@@ -289,6 +289,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
     def _write_csv(self):
         """Title."""
         for idx, _ in enumerate(self._data_obj):
+            if not isinstance(self._data_obj[idx], tuple):
+                continue
             df = self._data_obj[idx][0]
             run = self._data_obj[idx][1]
 
@@ -304,6 +306,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     def _update_mysql(self):
         """Title."""
+        db_con = sql_database.DbConnect()
+        up_mysql = sql_database.MysqlUpdate(db_con)
+
         #
         df_a = self._data_obj[0][0][["voxel_name"]].copy()
         df_b = self._data_obj[0][0][["voxel_name"]].copy()
@@ -312,26 +317,35 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         #
         for idx, _ in enumerate(self._data_obj):
+            if not isinstance(self._data_obj[idx], tuple):
+                continue
             df = self._data_obj[idx][0]
             run_num = self._data_obj[idx][1]
             if run_num < 5:
                 df_a = df_a.merge(df, how="left", on="voxel_name")
             else:
                 df_b = df_b.merge(df, how="left", on="voxel_name")
-        df_in = pd.concat([df_a, df_b])
-        del self._data_obj, df_a, df_b
 
         #
-        db_con = sql_database.DbConnect()
-        up_mysql = sql_database.MysqlUpdate(db_con)
-        up_mysql.update_db(
-            df_in,
-            self._subj,
-            self._task,
-            self._model_name.split("-")[-1],
-            self._con_name,
-            self._overwrite,
-        )
+        if df_a.shape[1] > 2:
+            up_mysql.update_db(
+                df_a,
+                self._subj,
+                self._task,
+                self._model_name.split("-")[-1],
+                self._con_name,
+                self._overwrite,
+            )
+        if df_b.shape[1] > 2:
+            up_mysql.update_db(
+                df_b,
+                self._subj,
+                self._task,
+                self._model_name.split("-")[-1],
+                self._con_name,
+                self._overwrite,
+            )
+
         db_con.close_con()
 
 
