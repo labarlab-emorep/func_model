@@ -228,11 +228,11 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     def _check_exist(self) -> bool:
         """Title."""
-        # Using separate connection here from _up_mysql
+        # Using separate connection here from _update_betas
         # to avoid multiproc pickle issue.
         db_con = sql_database.DbConnect()
-        up_mysql = sql_database.MysqlUpdate(db_con)
-        data_exist = up_mysql.check_db(
+        update_betas = sql_database.DbUpdateBetas(db_con)
+        data_exist = update_betas.check_db(
             self._subj,
             self._task,
             self._model_name.split("-")[-1],
@@ -307,7 +307,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
     def _update_mysql(self):
         """Title."""
         db_con = sql_database.DbConnect()
-        up_mysql = sql_database.MysqlUpdate(db_con)
+        update_betas = sql_database.DbUpdateBetas(db_con)
 
         #
         df_a = self._data_obj[0][0][["voxel_name"]].copy()
@@ -328,7 +328,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         #
         if df_a.shape[1] > 2:
-            up_mysql.update_db(
+            update_betas.update_db(
                 df_a,
                 self._subj,
                 self._task,
@@ -337,7 +337,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._overwrite,
             )
         if df_b.shape[1] > 2:
-            up_mysql.update_db(
+            update_betas.update_db(
                 df_b,
                 self._subj,
                 self._task,
