@@ -1168,17 +1168,17 @@ class FslFourthSess(_SupportFslThirdFourth):
 
 # %%
 class _SupportExtract:
-    """Title."""
+    """Generic helper methods for beta extraction."""
 
     def __init__(
         self,
-        proj_dir,
-        model_name,
-        model_level,
-        con_name,
-        group_mask,
+        proj_dir: Union[str, os.PathLike],
+        model_name: str,
+        model_level: str,
+        con_name: str,
+        group_mask: str,
     ):
-        """Title."""
+        """Initialize."""
         self._proj_dir = proj_dir
         self._model_name = model_name
         self._model_level = model_level
@@ -1186,8 +1186,8 @@ class _SupportExtract:
         self._group_mask = group_mask
 
     def _gen_valid(self):
-        """Title."""
-        if self._model_name not in ["sep", "tog", "lss"]:
+        """Conduct generic validation."""
+        if self._model_name not in ["sep", "lss"]:
             raise ValueError(
                 f"Unsupported value for model_name : {self._model_name}"
             )
@@ -1227,9 +1227,6 @@ class _ExtractReg(_SupportExtract):
     A binary brain mask can be generated and used to reduce the
     size of the dataframes.
 
-    Output of group_mask and comb_all are written to:
-        <proj_dir>/analyses/model_fsl_group
-
     Parameters
     ----------
     proj_dir : path
@@ -1237,15 +1234,13 @@ class _ExtractReg(_SupportExtract):
     subj_list : list
         Subject IDs to include in dataframe
     model_name : str
-        [sep | tog]
-        FSL model identifier, note:
-            - sep requires con_name="stim" or con_name="replay"
-            - tog requires con_name="tog"
+        [sep]
+        FSL model identifier
     con_name : str
-        [stim | replay | tog]
+        [stim]
         Desired contrast from which coefficients will be extracted
-
     overwrite : bool
+        Whether to overwrite existing data
 
     Example
     -------
@@ -1273,28 +1268,30 @@ class _ExtractReg(_SupportExtract):
             "template",
         )
 
-        #
+        # Setup and validate
         self._ex_reg = fsl_group.ExtractTaskBetas()
         self._gen_valid()
         self._validate()
 
     def _validate(self):
-        """Title."""
-        if self._model_name == "tog" and self._con_name != "tog":
-            self._raise_model_con_err()
-        if self._model_name == "sep" and (
-            self._con_name != "stim" and self._con_name != "replay"
-        ):
+        """Validate user args."""
+        if self._model_name == "sep" and self._con_name != "stim":
             self._raise_model_con_err()
 
     def get_betas(self):
-        """Title."""
-        #
+        """Extract betas from all detected FSL output.
+
+        Determine mask voxels (used for reducing beta matrix size),
+        then extract betas for all FSL model output found in each
+        session. Sessions are multiprocessed.
+
+        """
+        # Setup and get mask coordinates (set attr rm_voxel)
         self._setup()
         mask_path = masks.tpl_gm(self._out_dir)
         self._ex_reg.mask_coord(mask_path)
 
-        #
+        # Multiproc sessions for subject
         for self._subj in self._subj_list:
             self._subj_dir = os.path.join(
                 self._proj_deriv, "model_fsl", self._subj
@@ -1318,7 +1315,7 @@ class _ExtractReg(_SupportExtract):
             proc.start()
         for proc in mult_proc:
             proc.join()
-        print("\t\tDone", flush=True)
+        print("\tDone", flush=True)
 
     def _mine_betas(self, sess: str):
         """Flatten MRI beta matrix."""

@@ -19,11 +19,18 @@ from func_model.resources.general import sql_database
 
 
 class _GetCopes:
-    """Title."""
+    """Mine design.con to return {emo: nii} dict.
 
-    def __init__(self, con_name):
-        """Title."""
-        self._con_name = con_name  # used for cleaning design.con strings
+    Methods
+    -------
+    find_copes()
+        Find copes and determine {emo: nii} mapping
+
+    """
+
+    def __init__(self, con_name: str):
+        """Initialize."""
+        self._con_name = con_name
 
     def find_copes(self, design_path: Union[str, os.PathLike]) -> dict:
         """Match emotion name to cope file."""
@@ -50,7 +57,7 @@ class _GetCopes:
         return cope_dict
 
     def _read_contrast(self):
-        """Match contrast name to number, set as self._con_dict."""
+        """Match contrast name to number."""
         # Extract design.con lines starting with /ContrastName
         con_lines = []
         with open(self._design_path) as dp:
@@ -69,13 +76,13 @@ class _GetCopes:
             self._con_dict[name] = con
 
     def _drop_contrast(self):
-        """Drop contrasts of no interest from self._con_dict."""
+        """Drop contrasts of no interest."""
         for key in list(self._con_dict.keys()):
             if not key.startswith(self._con_name):
                 del self._con_dict[key]
 
     def _clean_contrast(self):
-        """Clean self._con_dict into pairs of emotion: contrast num."""
+        """Clean emotion: contrast pairs."""
         out_dict = {}
         clean_num = len(self._con_name)
         for key, value in self._con_dict.items():
@@ -91,7 +98,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
     names and then extract all voxel beta weights for contrasts
     of interest. Converts extracted beta weights into a dataframe.
 
-    Inherits general.matrix.NiftiArray.
+    Extracted beta weights are sent to a tbl_betas_* in db_emorep,
+    and are also written to Keoki. Inherits
+    func_model.resources.general.matrix.NiftiArray.
 
     Methods
     -------
@@ -103,7 +112,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
     -------
     etb_obj = group.ExtractTaskBetas()
     etb_obj.mask_coord("/path/to/binary/mask.nii")
-    df_path = etb_obj.make_beta_matrix(*args)
+    etb_obj.make_beta_matrix(*args)
 
     """
 
@@ -131,9 +140,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
         and create a dataframe where each row has all voxel beta-coefficients
         for an event of interest.
 
-        Dataframe is written to:
-            <out_dir>/<subj>_<sess>_<task>_<level>_<name>_<contrast>_betas.tsv
-
         Parameters
         ----------
         subj : str
@@ -150,36 +156,23 @@ class ExtractTaskBetas(matrix.NiftiArray):
             [first]
             FSL model level
         con_name : str
-            [stim | replay | tog]
+            [stim | tog]
             Desired contrast from which coefficients will be extracted
         design_list : list
             Paths to participant design.con files
         subj_out : path
             Output location for betas dataframe
+        overwrite : bool
+            Whether to overwrite existing data
         mot_thresh : float, optional
             Runs with a proportion of volumes >= mot_thresh will
             not be included in output dataframe
 
-        overwrite : bool
-
-        Returns
-        -------
-        list
-            Output locations of beta dataframe
-
-        Raises
-        ------
-        FileNotFoundError
-            Missing outlier proportion file
-        ValueError
-            Unexpected task, model_name, model_level
-            Trouble deriving run number
-
         """
-        # Validate model variables
+        # Validate args and setup
         if not fsl_helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
-        if model_name not in ["sep", "tog", "lss"]:
+        if model_name not in ["sep", "lss"]:
             raise ValueError(
                 f"Unsupported value for model_name : {model_name}"
             )
@@ -187,10 +180,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError(
                 f"Unsupported value for model_level : {model_level}"
             )
-        if not fsl_helper.valid_contrast(con_name):
+        if con_name not in ["stim", "tog"]:
             raise ValueError(f"Unsupported value for con_name : {con_name}")
 
-        # Setup
         self._subj = subj
         self._sess = sess
         self._task = task
@@ -201,7 +193,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._overwrite = overwrite
         self._mot_thresh = mot_thresh
 
-        #
+        # Check if records already exist in db_emorep
         print(f"Working on {subj}, {task}, {model_name}, {con_name}")
         data_exist = self._check_exist()
         if not self._overwrite and data_exist:
@@ -211,10 +203,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             )
             return
 
-        #
+        # Orient to design.con files and mine niis in parallel
         self._get_copes = _GetCopes(con_name)
-
-        # Mine files from each design.con, run in parallel
         self._data_obj = Pool(processes=8).starmap(
             self._mine_copes,
             [(design_path,) for design_path in design_list],
@@ -222,13 +212,13 @@ class ExtractTaskBetas(matrix.NiftiArray):
         if not isinstance(self._data_obj[0], tuple):
             return
 
-        #
+        # Write csv and update db_emorep
         self._write_csv()
-        self._update_mysql()
+        self._update_db_emorep()
 
     def _check_exist(self) -> bool:
-        """Title."""
-        # Using separate connection here from _update_betas
+        """Return bool of whether record exists in db_emorep."""
+        # Using separate connection here from _update_db_emorep
         # to avoid multiproc pickle issue.
         db_con = sql_database.DbConnect()
         update_betas = sql_database.DbUpdateBetas(db_con)
@@ -245,7 +235,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self,
         design_path: Union[str, os.PathLike],
     ) -> Tuple:
-        """Vectorize cope betas for run."""
+        """Vectorize cope betas, return tuple of pd.DataFrame, run number."""
         # Determine run number for file name
         _run_dir = os.path.basename(os.path.dirname(design_path))
         run_num = _run_dir.split("_")[0].split("-")[1]
@@ -254,7 +244,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError("Error parsing path for run number")
 
         # Compare proportion of outliers to criterion, skip run
-        # if the the threshold is exceeded
+        # if the threshold is exceeded.
         prop_path = os.path.join(
             self._subj_out,
             "confounds_proportions",
@@ -287,14 +277,15 @@ class ExtractTaskBetas(matrix.NiftiArray):
         return (df_out, int(run_num))
 
     def _write_csv(self):
-        """Title."""
+        """Write pd.DataFrame to disk."""
+        # Unpack data_obj
         for idx, _ in enumerate(self._data_obj):
             if not isinstance(self._data_obj[idx], tuple):
                 continue
             df = self._data_obj[idx][0]
             run = self._data_obj[idx][1]
 
-            #
+            # Setup output path, write
             out_path = os.path.join(
                 self._subj_out,
                 f"{self._subj}_{self._sess}_{self._task}_run-0{run}_"
@@ -304,21 +295,24 @@ class ExtractTaskBetas(matrix.NiftiArray):
             print(f"\tWriting : {out_path}")
             df.to_csv(out_path, index=False)
 
-    def _update_mysql(self):
-        """Title."""
+    def _update_db_emorep(self):
+        """Update db_emorep beta table."""
+        # Each proc gets own connection
         db_con = sql_database.DbConnect()
         update_betas = sql_database.DbUpdateBetas(db_con)
 
-        #
+        # Start left dfs of proper length, for each exposure
         df_a = self._data_obj[0][0][["voxel_name"]].copy()
         df_b = self._data_obj[0][0][["voxel_name"]].copy()
         df_a["num_exposure"] = 1
         df_b["num_exposure"] = 2
 
-        #
+        # Unpack data_obj
         for idx, _ in enumerate(self._data_obj):
             if not isinstance(self._data_obj[idx], tuple):
                 continue
+
+            # Merge data with appropriate left df
             df = self._data_obj[idx][0]
             run_num = self._data_obj[idx][1]
             if run_num < 5:
@@ -326,7 +320,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             else:
                 df_b = df_b.merge(df, how="left", on="voxel_name")
 
-        #
+        # Update db_emorep beta table
         if df_a.shape[1] > 2:
             update_betas.update_db(
                 df_a,
@@ -345,7 +339,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._con_name,
                 self._overwrite,
             )
-
         db_con.close_con()
 
 
