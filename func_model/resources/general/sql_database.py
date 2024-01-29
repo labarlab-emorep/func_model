@@ -226,20 +226,15 @@ class DbUpdateBetas(_RefMaps):
         self._df = df
         self._subj = subj
         self._task = task
+        self._model = model
         self._overwrite = overwrite
         self._subj_col = "subj_id"
-        self._tbl_name = f"tbl_betas_{model}_{con}_gm"
+        self._tbl_name = f"tbl_betas_{self._model}_{con}_gm"
 
         print(
             f"\tUpdating db_emorep {self._tbl_name} for {self._subj}, {task}"
         )
-        if model == "lss":
-            self._update_lss_betas()
-        else:
-            self._update_reg_betas()
 
-    def _update_reg_betas(self):
-        """Prep pd.DataFrame and then insert records."""
         # Add id columns
         self._df[self._subj_col] = int(self._subj.split("-ER")[-1])
         self._df["task_id"] = self.ref_task[self._task.split("-")[-1]]
@@ -248,12 +243,7 @@ class DbUpdateBetas(_RefMaps):
         )
 
         # Determine relevant columns for table
-        id_list = [
-            self._subj_col,
-            "task_id",
-            "num_exposure",
-            "voxel_id",
-        ]
+        id_list = self._id_cols()
         emo_list = [x for x in self._df.columns if "emo" in x]
         all_cols = id_list + emo_list
 
@@ -275,9 +265,23 @@ class DbUpdateBetas(_RefMaps):
             tbl_input,
         )
 
-    def _update_lss_betas(self):
+    def _id_cols(self) -> list:
         """Title."""
-        pass
+        if self._model == "lss":
+            return [
+                self._subj_col,
+                "task_id",
+                "num_exposure",
+                "num_event",
+                "voxel_id",
+            ]
+        else:
+            return [
+                self._subj_col,
+                "task_id",
+                "num_exposure",
+                "voxel_id",
+            ]
 
 
 # %%

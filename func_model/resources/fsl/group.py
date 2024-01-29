@@ -10,6 +10,7 @@ import re
 import json
 from typing import Union, Tuple
 import numpy as np
+import pandas as pd
 from multiprocessing import Pool
 import nibabel as nib
 from func_model.resources.fsl import helper as fsl_helper
@@ -24,7 +25,7 @@ class _GetCopes:
     Methods
     -------
     find_copes()
-        Find copes and determine {emo: nii} mapping
+        Find copes and return {emo: nii} mapping
 
     """
 
@@ -33,7 +34,7 @@ class _GetCopes:
         self._con_name = con_name
 
     def find_copes(self, design_path: Union[str, os.PathLike]) -> dict:
-        """Match emotion name to cope file."""
+        """Match emotion name to cope file, return {emo: nii}."""
         self._design_path = design_path
 
         # Mine, organize design.con info
@@ -150,7 +151,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             [task-movies | task-scenarios]
             BIDS task identifier
         model_name : str
-            [sep | tog]
+            [sep | lss]
             FSL model identifier
         model_level : str
             [first]
@@ -168,6 +169,11 @@ class ExtractTaskBetas(matrix.NiftiArray):
             Runs with a proportion of volumes >= mot_thresh will
             not be included in output dataframe
 
+        Notes
+        -----
+        - model_name="sep" requires con_name="stim"
+        - model_name="lss" requires con_name="tog"
+
         """
         # Validate args and setup
         if not fsl_helper.valid_task(task):
@@ -182,6 +188,16 @@ class ExtractTaskBetas(matrix.NiftiArray):
             )
         if con_name not in ["stim", "tog"]:
             raise ValueError(f"Unsupported value for con_name : {con_name}")
+        if model_name == "sep" and con_name != "stim":
+            raise ValueError(
+                "Unexpected model contrast pair : "
+                + f"{model_name}, {con_name}"
+            )
+        if model_name == "lss" and con_name != "tog":
+            raise ValueError(
+                "Unexpected model contrast pair : "
+                + f"{model_name}, {con_name}"
+            )
 
         self._subj = subj
         self._sess = sess
@@ -213,8 +229,14 @@ class ExtractTaskBetas(matrix.NiftiArray):
             return
 
         # Write csv and update db_emorep
-        self._write_csv()
-        self._update_db_emorep()
+        # TODO deprecate _write_csv()
+        if model_name != "lss":
+            self._write_csv()
+
+        if model_name == "lss":
+            self._update_fsl_betas_lss()
+        else:
+            self._update_fsl_betas_reg()
 
     def _check_exist(self) -> bool:
         """Return bool of whether record exists in db_emorep."""
@@ -295,8 +317,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             print(f"\tWriting : {out_path}")
             df.to_csv(out_path, index=False)
 
-    def _update_db_emorep(self):
-        """Update db_emorep beta table."""
+    def _update_fsl_betas_reg(self):
+        """Update db_emorep beta table for sep, tog models."""
         # Each proc gets own connection
         db_con = sql_database.DbConnect()
         update_betas = sql_database.DbUpdateBetas(db_con)
@@ -331,6 +353,99 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._overwrite,
             )
         if df_b.shape[1] > 2:
+            update_betas.update_db(
+                df_b,
+                self._subj,
+                self._task,
+                self._model_name.split("-")[-1],
+                self._con_name,
+                self._overwrite,
+            )
+        db_con.close_con()
+
+    def _update_fsl_betas_lss(self):
+        """Title."""
+
+        def _mk_df() -> pd.DataFrame:
+            """Title."""
+            df_par = self._data_obj[0][0][["voxel_name"]].copy()
+            df_par["ev1"] = 1
+            df_par["ev2"] = 2
+            df_par["ev3"] = 3
+            df_par["ev4"] = 4
+            df_par["ev5"] = 5
+
+            df = pd.wide_to_long(
+                df_par, stubnames="ev", i="voxel_name", j="event"
+            )
+            df = df.reset_index()
+            df = df.rename(columns={"event": "num_event"})
+            df = df.drop(["ev"], axis=1)
+            return df
+
+        def _add_df(emo_name, df_l, df_r) -> pd.DataFrame:
+            """Title."""
+            if emo_name not in df_l.columns:
+                df_l = df_l.merge(
+                    df_r,
+                    how="left",
+                    on=["voxel_name", "num_event"],
+                )
+            else:
+                df_l = df_l.merge(
+                    df_r,
+                    how="left",
+                    on=["voxel_name", "num_event"],
+                )
+                df_l[emo_name] = df_l[f"{emo_name}_y"].fillna(
+                    df_l[f"{emo_name}_x"]
+                )
+                df_l = df_l.drop([f"{emo_name}_x", f"{emo_name}_y"], axis=1)
+            return df_l
+
+        # Each proc gets own connection
+        db_con = sql_database.DbConnect()
+        update_betas = sql_database.DbUpdateBetas(db_con)
+
+        df_a = _mk_df()
+        df_a["num_exposure"] = 1
+        df_b = _mk_df()
+        df_b["num_exposure"] = 2
+
+        # Unpack data_obj
+        for idx, _ in enumerate(self._data_obj):
+            if not isinstance(self._data_obj[idx], tuple):
+                continue
+
+            #
+            df = self._data_obj[idx][0]
+            run_num = self._data_obj[idx][1]
+            col_name = df.columns[1]
+            emo_name = col_name.split("_ev")[0]
+            ev_num = int(col_name[-1])
+            df = df.rename(columns={col_name: emo_name})
+            df["num_event"] = ev_num
+
+            if run_num < 5:
+                df_a = _add_df(emo_name, df_a, df)
+            else:
+                df_b = _add_df(emo_name, df_b, df)
+
+        df_a = df_a.replace({np.nan: None})
+        df_b = df_b.replace({np.nan: None})
+
+        # return (df_a, df_b)
+        # Update db_emorep beta table
+        if df_a.shape[1] > 3:
+            update_betas.update_db(
+                df_a,
+                self._subj,
+                self._task,
+                self._model_name.split("-")[-1],
+                self._con_name,
+                self._overwrite,
+            )
+        if df_b.shape[1] > 3:
             update_betas.update_db(
                 df_b,
                 self._subj,
