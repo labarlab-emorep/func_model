@@ -6,26 +6,21 @@ Mine FSL GLM files for contrasts of interest and generate a
 dataframe of voxel beta-coefficients. Dataframes may be masked by
 identifying coordinates in a group-level mask. Extracted beta-values
 are written sent to MySQL:
-    db_emorep.tbl_betas_<model-name>_<contrast-name>_gm
-
-Dataframes are written for each subject in --subj-list/all, and
-a group dataframe can be generated from all subject dataframes.
+    db_emorep.tbl_betas_*
 
 Model names (see fsl_model):
-    - lss = conduct full GLMs for every single trial,
-            requires --contrast-name tog
-    - sep = model stimulus and replay separately,
-            requires --contrast-name stim
+    - lss = conduct full GLMs for every single trial
+    - sep = model stimulus and replay separately
 
-Contrast names:
-    - stim = stimulus vs washout
-    - tog = stim and replay (together) vs washout
+Notes
+-----
+- Extraction of betas for model name 'tog' has been deprecated.
 
 Examples
 --------
 fsl_extract --sub-all
-fsl_extract --sub-list sub-ER0009 sub-ER0016 --contrast-name replay --overwrite
-fsl_extract --sub-all --model-name lss --contrast-name tog
+fsl_extract --sub-list sub-ER0009 sub-ER0016 --overwrite
+fsl_extract --sub-all --model-name lss
 
 """
 # %%
@@ -44,19 +39,6 @@ def _get_args():
     """Get and parse arguments."""
     parser = ArgumentParser(
         description=__doc__, formatter_class=RawTextHelpFormatter
-    )
-    parser.add_argument(
-        "--contrast-name",
-        type=str,
-        default="stim",
-        choices=["stim", "tog"],
-        help=textwrap.dedent(
-            """\
-            Desired contrast from which coefficients will be extracted,
-            substring of design.fsf EV Title.
-            (default : %(default)s)
-            """
-        ),
     )
     parser.add_argument(
         "--model-name",
@@ -127,9 +109,14 @@ def main():
     subj_list = args.sub_list
     subj_all = args.sub_all
     proj_dir = args.proj_dir
-    con_name = args.contrast_name
     model_name = args.model_name
     overwrite = args.overwrite
+
+    # Assign contrast name (now that tog, replay are deprecated)
+    if model_name == "lss":
+        con_name = "tog"
+    elif model_name == "sep":
+        con_name = "stim"
 
     # Check, make subject list
     proj_deriv = os.path.join(
@@ -144,7 +131,10 @@ def main():
         subj_list = deepcopy(subj_avail)
 
     # Submit workflow
-    wf_fsl.fsl_extract(proj_dir, subj_list, model_name, con_name, overwrite)
+    ex_reg = wf_fsl.ExtractBetas(
+        proj_dir, subj_list, model_name, con_name, overwrite
+    )
+    ex_reg.get_betas()
 
 
 if __name__ == "__main__":
@@ -155,3 +145,5 @@ if __name__ == "__main__":
         print("\tHint: $labar_env emorep\n")
         sys.exit(1)
     main()
+
+# %%

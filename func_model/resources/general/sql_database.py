@@ -223,40 +223,31 @@ class DbUpdateBetas(_RefMaps):
         )
 
         """
-        self._df = df
-        self._subj = subj
-        self._task = task
-        self._model = model
-        self._overwrite = overwrite
-        self._subj_col = "subj_id"
-        self._tbl_name = f"tbl_betas_{self._model}_{con}_gm"
-
-        print(
-            f"\tUpdating db_emorep {self._tbl_name} for {self._subj}, {task}"
-        )
+        tbl_name = f"tbl_betas_{model}_{con}_gm"
+        print(f"\tUpdating db_emorep {tbl_name} for {subj}, {task}")
 
         # Add id columns
-        self._df[self._subj_col] = int(self._subj.split("-ER")[-1])
-        self._df["task_id"] = self.ref_task[self._task.split("-")[-1]]
-        self._df["voxel_id"] = self._df.apply(
+        df["subj_id"] = int(subj.split("-ER")[-1])
+        df["task_id"] = self.ref_task[task.split("-")[-1]]
+        df["voxel_id"] = df.apply(
             lambda x: self.voxel_label(x.voxel_name), axis=1
         )
 
         # Determine relevant columns for table
-        id_list = self._id_cols()
-        emo_list = [x for x in self._df.columns if "emo" in x]
+        id_list = self._id_cols(model)
+        emo_list = [x for x in df.columns if "emo" in x]
         all_cols = id_list + emo_list
 
         # Build input data and insert command
         val_list = ["%s" for x in all_cols]
-        tbl_input = list(self._df[all_cols].itertuples(index=False, name=None))
+        tbl_input = list(df[all_cols].itertuples(index=False, name=None))
         sql_cmd = (
-            f"insert into {self._tbl_name} ({', '.join(all_cols)}) "
+            f"insert into {tbl_name} ({', '.join(all_cols)}) "
             + f"values ({', '.join(val_list)})"
         )
 
         # Manage overwrite request, update table
-        if self._overwrite:
+        if overwrite:
             vals = [f"{x}=values({x})" for x in emo_list]
             up_cmd = f" on duplicate key update {', '.join(vals)}"
             sql_cmd = sql_cmd + up_cmd
@@ -265,11 +256,11 @@ class DbUpdateBetas(_RefMaps):
             tbl_input,
         )
 
-    def _id_cols(self) -> list:
-        """Title."""
-        if self._model == "lss":
+    def _id_cols(self, model: str) -> list:
+        """Return list of primary key columns."""
+        if model == "lss":
             return [
-                self._subj_col,
+                "subj_id",
                 "task_id",
                 "num_exposure",
                 "num_event",
@@ -277,7 +268,7 @@ class DbUpdateBetas(_RefMaps):
             ]
         else:
             return [
-                self._subj_col,
+                "subj_id",
                 "task_id",
                 "num_exposure",
                 "voxel_id",

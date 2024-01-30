@@ -148,16 +148,16 @@ class ExtractTaskBetas(matrix.NiftiArray):
         sess : str
             BIDS session identifier
         task : str
-            [task-movies | task-scenarios]
+            {"task-movies", "task-scenarios"}
             BIDS task identifier
         model_name : str
-            [sep | lss]
+            {"lss", "sep"}
             FSL model identifier
         model_level : str
-            [first]
+            {"first"}
             FSL model level
         con_name : str
-            [stim | tog]
+            {"stim", "tog"}
             Desired contrast from which coefficients will be extracted
         design_list : list
             Paths to participant design.con files
@@ -182,7 +182,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError(
                 f"Unsupported value for model_name : {model_name}"
             )
-        if not fsl_helper.valid_level(model_level):
+        if model_level not in ["first"]:
             raise ValueError(
                 f"Unsupported value for model_level : {model_level}"
             )
@@ -221,10 +221,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         # Orient to design.con files and mine niis in parallel
         self._get_copes = _GetCopes(con_name)
-        self._data_obj = Pool(processes=8).starmap(
-            self._mine_copes,
-            [(design_path,) for design_path in design_list],
-        )
+        with Pool(processes=8) as pool:
+            items = [(x) for x in design_list]
+            self._data_obj = pool.map(self._mine_copes, items)
         if not isinstance(self._data_obj[0], tuple):
             return
 
@@ -237,6 +236,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             self._update_fsl_betas_lss()
         else:
             self._update_fsl_betas_reg()
+        del self._data_obj
 
     def _check_exist(self) -> bool:
         """Return bool of whether record exists in db_emorep."""
@@ -319,9 +319,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     def _update_fsl_betas_reg(self):
         """Update db_emorep beta table for sep, tog models."""
-        # Each proc gets own connection
-        db_con = sql_database.DbConnect()
-        update_betas = sql_database.DbUpdateBetas(db_con)
 
         # Start left dfs of proper length, for each exposure
         df_a = self._data_obj[0][0][["voxel_name"]].copy()
@@ -341,6 +338,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 df_a = df_a.merge(df, how="left", on="voxel_name")
             else:
                 df_b = df_b.merge(df, how="left", on="voxel_name")
+
+        # Each proc gets own connection
+        db_con = sql_database.DbConnect()
+        update_betas = sql_database.DbUpdateBetas(db_con)
 
         # Update db_emorep beta table
         if df_a.shape[1] > 2:
@@ -364,10 +365,11 @@ class ExtractTaskBetas(matrix.NiftiArray):
         db_con.close_con()
 
     def _update_fsl_betas_lss(self):
-        """Title."""
+        """Update db_emorep beta table for lss models."""
 
         def _mk_df() -> pd.DataFrame:
-            """Title."""
+            """Return pd.DataFrame with voxel_name, num_event cols."""
+            # Start with wide format
             df_par = self._data_obj[0][0][["voxel_name"]].copy()
             df_par["ev1"] = 1
             df_par["ev2"] = 2
@@ -375,6 +377,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             df_par["ev4"] = 4
             df_par["ev5"] = 5
 
+            # Conver to long, clean redundant columns
             df = pd.wide_to_long(
                 df_par, stubnames="ev", i="voxel_name", j="event"
             )
@@ -383,8 +386,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
             df = df.drop(["ev"], axis=1)
             return df
 
-        def _add_df(emo_name, df_l, df_r) -> pd.DataFrame:
-            """Title."""
+        def _add_df(
+            emo_name: str, df_l: pd.DataFrame, df_r: pd.DataFrame
+        ) -> pd.DataFrame:
+            """Update df_l with df_r data in col emo_name"""
             if emo_name not in df_l.columns:
                 df_l = df_l.merge(
                     df_r,
@@ -403,10 +408,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 df_l = df_l.drop([f"{emo_name}_x", f"{emo_name}_y"], axis=1)
             return df_l
 
-        # Each proc gets own connection
-        db_con = sql_database.DbConnect()
-        update_betas = sql_database.DbUpdateBetas(db_con)
-
+        # Start dfs for first, second emo block
         df_a = _mk_df()
         df_a["num_exposure"] = 1
         df_b = _mk_df()
@@ -416,25 +418,30 @@ class ExtractTaskBetas(matrix.NiftiArray):
         for idx, _ in enumerate(self._data_obj):
             if not isinstance(self._data_obj[idx], tuple):
                 continue
-
-            #
             df = self._data_obj[idx][0]
             run_num = self._data_obj[idx][1]
+
+            # Identify emotion name and event number
             col_name = df.columns[1]
             emo_name = col_name.split("_ev")[0]
             ev_num = int(col_name[-1])
+
+            # Prep df for merge, update parent dfs
             df = df.rename(columns={col_name: emo_name})
             df["num_event"] = ev_num
-
             if run_num < 5:
                 df_a = _add_df(emo_name, df_a, df)
             else:
                 df_b = _add_df(emo_name, df_b, df)
 
+        # Convert missing data for SQL
         df_a = df_a.replace({np.nan: None})
         df_b = df_b.replace({np.nan: None})
 
-        # return (df_a, df_b)
+        # Each proc gets own connection
+        db_con = sql_database.DbConnect()
+        update_betas = sql_database.DbUpdateBetas(db_con)
+
         # Update db_emorep beta table
         if df_a.shape[1] > 3:
             update_betas.update_db(

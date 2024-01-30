@@ -1,4 +1,4 @@
-"""FSL workflows.
+"""FSL-based workflows.
 
 FslFirst : GLM task, rest data via FSL
 FslSecond : second-level GLM of task data via FSl
@@ -9,7 +9,7 @@ FslThirdSess : generate needed info for third-level analyses which
 FslFourthSess : generate needed info for fourth-level analyses which
                 finishes the collapse across sessions started by
                 FslThirdSess
-fsl_extract : extract task beta-coefficiens from FSL GLM
+ExtractBetas : extract task beta-coefficiens from FSL GLM
 fsl_classify_mask : generate template mask from classifier output
 
 """
@@ -1166,66 +1166,15 @@ class FslFourthSess(_SupportFslThirdFourth):
         )
 
 
-# %%
-class _SupportExtract:
-    """Generic helper methods for beta extraction."""
-
-    def __init__(
-        self,
-        proj_dir: Union[str, os.PathLike],
-        model_name: str,
-        model_level: str,
-        con_name: str,
-        group_mask: str,
-    ):
-        """Initialize."""
-        self._proj_dir = proj_dir
-        self._model_name = model_name
-        self._model_level = model_level
-        self._con_name = con_name
-        self._group_mask = group_mask
-
-    def _gen_valid(self):
-        """Conduct generic validation."""
-        if self._model_name not in ["sep", "lss"]:
-            raise ValueError(
-                f"Unsupported value for model_name : {self._model_name}"
-            )
-        if not fsl_helper.valid_level(self._model_level):
-            raise ValueError(
-                f"Unsupported value for model_level : {self._model_level}"
-            )
-        if self._group_mask not in ["template"]:
-            raise ValueError("Unexpected group_mask parameter")
-
-    def _raise_model_con_err(self, model_name, con_name):
-        """Raise err for bad model-contrast pairing."""
-        raise ValueError(
-            f"Unsupported con_name for model_name={self._model_name} "
-            + f": {self._con_name}"
-        )
-
-    def _setup(self):
-        """Set attrs out_dir, proj_deriv and make dirs."""
-        self._out_dir = os.path.join(
-            self._proj_dir, "analyses/model_fsl_group"
-        )
-        self._proj_deriv = os.path.join(
-            self._proj_dir, "data_scanner_BIDS/derivatives"
-        )
-        if not os.path.exists(self._out_dir):
-            os.makedirs(self._out_dir)
-
-
-class _ExtractReg(_SupportExtract):
-    """Extract cope voxel betas and generate dataframe.
+class ExtractBetas:
+    """Extract cope voxel betas from FSL model.
 
     Match cope.nii files to contrast name by mining design.con files
-    and then extract each voxel's beta-coefficient and convert them
-    into a dataframe.
+    and then extract each voxel's beta-coefficient. Data are then
+    sent to MySQL db_emorep.
 
-    A binary brain mask can be generated and used to reduce the
-    size of the dataframes.
+    A binary brain mask is also generated and used to reduce the
+    size of the dataframes (900K -> 137K voxels).
 
     Parameters
     ----------
@@ -1234,17 +1183,17 @@ class _ExtractReg(_SupportExtract):
     subj_list : list
         Subject IDs to include in dataframe
     model_name : str
-        [sep]
+        {"lss", "sep"}
         FSL model identifier
     con_name : str
-        [stim]
+        {"stim", "tog"}
         Desired contrast from which coefficients will be extracted
     overwrite : bool
         Whether to overwrite existing data
 
     Example
     -------
-    ex_reg = _ExtractReg(*args)
+    ex_reg = ExtractBetas(*args)
     ex_reg.get_betas()
 
     """
@@ -1258,62 +1207,102 @@ class _ExtractReg(_SupportExtract):
         overwrite,
     ):
         """Initialize."""
+        self._proj_dir = proj_dir
         self._subj_list = subj_list
+        self._model_name = model_name
+        self._con_name = con_name
         self._overwrite = overwrite
-        super().__init__(
-            proj_dir,
-            model_name,
-            "first",
-            con_name,
-            "template",
-        )
 
-        # Setup and validate
-        self._ex_reg = fsl_group.ExtractTaskBetas()
-        self._gen_valid()
-        self._validate()
+        # Set attrs for future flexibility, get extraction methods
+        self._model_level = "first"
+        self._group_mask = "template"
+        self._ex_betas = fsl_group.ExtractTaskBetas()
 
     def _validate(self):
-        """Validate user args."""
+        """Validate user-specified arguments for beta extraction."""
+        # Validate user arguments
+        if self._model_name not in ["sep", "lss"]:
+            raise ValueError(
+                f"Unsupported value for model_name : {self._model_name}"
+            )
+        if self._model_level not in ["first"]:
+            raise ValueError(
+                f"Unsupported value for model_level : {self._model_level}"
+            )
+        if self._group_mask not in ["template"]:
+            raise ValueError("Unexpected group_mask parameter")
+
+        # Validate argument combinations
         if self._model_name == "sep" and self._con_name != "stim":
-            self._raise_model_con_err()
+            raise ValueError(
+                "Unexpected model contrast pair : "
+                + f"{self._model_name}, {self._con_name}"
+            )
+        if self._model_name == "lss" and self._con_name != "tog":
+            raise ValueError(
+                "Unexpected model contrast pair : "
+                + f"{self._model_name}, {self._con_name}"
+            )
+
+    def _setup(self):
+        """Set attrs out_dir, proj_deriv and make dirs."""
+        self._out_dir = os.path.join(
+            self._proj_dir, "analyses/model_fsl_group"
+        )
+        self._proj_deriv = os.path.join(
+            self._proj_dir, "data_scanner_BIDS/derivatives"
+        )
+        if not os.path.exists(self._out_dir):
+            os.makedirs(self._out_dir)
 
     def get_betas(self):
         """Extract betas from all detected FSL output.
 
         Determine mask voxels (used for reducing beta matrix size),
         then extract betas for all FSL model output found in each
-        session. Sessions are multiprocessed.
+        session. Sessions are multiprocessed for non-LSS models.
 
         """
-        # Setup and get mask coordinates (set attr rm_voxel)
+        # Validate and setup
+        self._validate()
         self._setup()
-        mask_path = masks.tpl_gm(self._out_dir)
-        self._ex_reg.mask_coord(mask_path)
 
-        # Multiproc sessions for subject
+        # Get mask coordinates (set attr rm_voxel)
+        mask_path = masks.tpl_gm(self._out_dir)
+        self._ex_betas.mask_coord(mask_path)
+
+        # Identify sessions
+        model_dir = (
+            "model_fsl-lss" if self._model_name == "lss" else "model_fsl"
+        )
         for self._subj in self._subj_list:
             self._subj_dir = os.path.join(
-                self._proj_deriv, "model_fsl", self._subj
+                self._proj_deriv, model_dir, self._subj
             )
-            self._sess_list = [
+            sess_list = [
                 os.path.basename(x)
                 for x in sorted(glob.glob(f"{self._subj_dir}/ses-*"))
             ]
-            self._mult_proc()
 
-    def _mult_proc(self):
+            # Multiproc sessions for non-LSS models, run LSS sessions
+            # serially due to large number of beta extractions.
+            if self._model_name == "lss":
+                for sess in sess_list:
+                    self._mine_betas(sess)
+            else:
+                self._mult_proc(sess_list)
+
+    def _mult_proc(self, sess_list: list):
         """Run session mining in parallel."""
         mult_proc = [
             Process(
                 target=self._mine_betas,
                 args=(sess,),
             )
-            for sess in self._sess_list
+            for sess in sess_list
         ]
         for proc in mult_proc:
             proc.start()
-        for proc in mult_proc:
             proc.join()
         print("\tDone", flush=True)
 
@@ -1329,7 +1318,7 @@ class _ExtractReg(_SupportExtract):
         ).split("_")
 
         # Identify all design.con files generated by FEAT, generate
-        # session dataframe
+        # session dataframe.
         design_list = sorted(
             glob.glob(
                 f"{subj_func}/run-*{self._model_level}*{self._model_name}*"
@@ -1338,7 +1327,7 @@ class _ExtractReg(_SupportExtract):
         )
         if not design_list:
             return
-        self._ex_reg.make_beta_matrix(
+        self._ex_betas.make_beta_matrix(
             self._subj,
             sess,
             task,
@@ -1349,83 +1338,6 @@ class _ExtractReg(_SupportExtract):
             subj_func,
             self._overwrite,
         )
-
-
-class _ExtractLss(_SupportExtract):
-    """Title.
-
-    Parameters
-    ----------
-    proj_dir : path
-        Location of project directory
-    subj_list : list
-        Subject IDs to include in dataframe
-
-    """
-
-    def __init__(
-        self,
-        proj_dir,
-        subj_list,
-    ):
-        """Initialize."""
-        self._proj_dir = proj_dir
-        self._subj_list = subj_list
-        self._model_name = "lss"
-        self._model_level = "first"
-        self._con_name = "tog"
-
-        #
-        super().__init__(
-            proj_dir,
-            self._model_name,
-            self._model_level,
-            self._con_name,
-            self._group_mask,
-        )
-        self._gen_valid()
-        self._validate()
-
-    def _validate(self):
-        """Title."""
-        if self._model_name == "lss" and self._con_name != "tog":
-            self._raise_model_con_err()
-
-    def get_betas(self):
-        self._setup()
-        _mask_path = masks.tpl_gm(self._out_dir)
-        self.mask_coord(_mask_path)
-        return
-
-
-def fsl_extract(proj_dir, subj_list, model_name, con_name, overwrite):
-    """Title.
-
-    Parameters
-    ----------
-
-    """
-
-    def _err_msg():
-        """Raise model contrast error."""
-        raise ValueError(
-            f"Unsupported contrast for model {model_name} : {con_name}"
-        )
-
-    # Check user input
-    if model_name == "sep" and con_name != "stim":
-        _err_msg()
-    if model_name == "lss" and con_name != "tog":
-        _err_msg()
-
-    #
-    if model_name == "lss":
-        return
-    else:
-        ex_reg = _ExtractReg(
-            proj_dir, subj_list, model_name, con_name, overwrite
-        )
-        ex_reg.get_betas()
 
 
 # %%
