@@ -5,6 +5,7 @@ ImportanceMask : generate mask in template space from classifier output
 ConjunctAnalysis : generate conjunction maps from ImportanceMask output
 
 """
+
 import os
 import re
 import json
@@ -323,8 +324,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
         # Start left dfs of proper length, for each exposure
         df_a = self._data_obj[0][0][["voxel_name"]].copy()
         df_b = self._data_obj[0][0][["voxel_name"]].copy()
-        df_a["num_exposure"] = 1
-        df_b["num_exposure"] = 2
+        df_a["num_block"] = 1
+        df_b["num_block"] = 2
 
         # Unpack data_obj
         for idx, _ in enumerate(self._data_obj):
@@ -410,9 +411,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         # Start dfs for first, second emo block
         df_a = _mk_df()
-        df_a["num_exposure"] = 1
+        df_a["num_block"] = 1
         df_b = _mk_df()
-        df_b["num_exposure"] = 2
+        df_b["num_block"] = 2
 
         # Unpack data_obj
         for idx, _ in enumerate(self._data_obj):

@@ -4,6 +4,7 @@ DbConnect : connect to and interact with db_emorep on mysql server
 DbUpdateBetas : update db_emorep tables
 
 """
+
 # %%
 import os
 import pandas as pd
@@ -262,7 +263,7 @@ class DbUpdateBetas(_RefMaps):
             return [
                 "subj_id",
                 "task_id",
-                "num_exposure",
+                "num_block",
                 "num_event",
                 "voxel_id",
             ]
@@ -270,7 +271,7 @@ class DbUpdateBetas(_RefMaps):
             return [
                 "subj_id",
                 "task_id",
-                "num_exposure",
+                "num_block",
                 "voxel_id",
             ]
 
