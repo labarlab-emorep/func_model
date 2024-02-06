@@ -135,6 +135,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         subj_out,
         overwrite,
         mot_thresh=0.2,
+        max_value=9999,
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
 
@@ -169,6 +170,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
         mot_thresh : float, optional
             Runs with a proportion of volumes >= mot_thresh will
             not be included in output dataframe
+        max_value : int, optional
+            Maximum expected beta value, anything > max_value or
+            < -max_value will be censored.
 
         Notes
         -----
@@ -209,6 +213,11 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._subj_out = subj_out
         self._overwrite = overwrite
         self._mot_thresh = mot_thresh
+        self._max_value = max_value
+
+        # Manage sep vs lss float precision
+        if model_name == "lss":
+            self._float_prec = 3
 
         # Check if records already exist in db_emorep
         print(f"Working on {subj}, {task}, {model_name}, {con_name}")
@@ -295,8 +304,14 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 df_out[f"emo_{emo}"] = df_tmp[f"emo_{emo}"]
                 del df_tmp
 
-        # Return df and run num (to ensure proper order from multiproc)
+        # Censor extreme outliers and return df and run num
+        # (to ensure proper order from multiproc).
         df_out = df_out.reset_index()
+        emo_list = [x for x in df_out.columns if "emo" in x]
+        df_out[
+            (df_out[emo_list] > self._max_value)
+            | (df_out[emo_list] < -self._max_value)
+        ] = np.nan
         return (df_out, int(run_num))
 
     def _write_csv(self):
