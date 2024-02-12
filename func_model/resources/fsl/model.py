@@ -8,6 +8,7 @@ MakeSecondFsf   : write second-level design.fsf files
 run_feat        : execute design.fsf via FEAT
 
 """
+
 # %%
 import os
 import time
@@ -848,19 +849,19 @@ class _FirstLss:
         for _num, event_dict in lss_dict.items():
             # Restart attr, set output dir name
             self._switch_lss = {}
-            self._switch_lss[
-                "[[bids_desc_trial]]"
-            ] = f"desc-{self._stim_name}_trial-{_num}"
+            self._switch_lss["[[bids_desc_trial]]"] = (
+                f"desc-{self._stim_name}_trial-{_num}"
+            )
 
             # Supply name, path to single/remaining events
-            self._switch_lss[
-                "[[desc_trial_event_name]]"
-            ] = f"{self._stim_name}_event_{_num}"
+            self._switch_lss["[[desc_trial_event_name]]"] = (
+                f"{self._stim_name}_event_{_num}"
+            )
             self._switch_lss["[[desc_trial_event_path]]"] = event_dict["event"]
 
-            self._switch_lss[
-                "[[desc_trial_remain_name]]"
-            ] = f"{self._stim_name}_remain_{_num}"
+            self._switch_lss["[[desc_trial_remain_name]]"] = (
+                f"{self._stim_name}_remain_{_num}"
+            )
             self._switch_lss["[[desc_trial_remain_path]]"] = event_dict[
                 "remain"
             ]
@@ -1099,7 +1100,6 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         fsf_edit = self._tp_short if use_short else self._tp_full
         if self._model_name == "sep":
             write_run = _FirstSep(
-                self,
                 fsf_edit,
                 field_switch,
                 self._subj_work,
@@ -1107,7 +1107,6 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
             )
         elif self._model_name == "tog":
             write_run = _FirstTog(
-                self,
                 fsf_edit,
                 field_switch,
                 self._subj_work,
@@ -1115,7 +1114,6 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
             )
         elif self._model_name == "lss":
             write_run = _FirstLss(
-                self,
                 fsf_edit,
                 field_switch,
                 self._subj_work,
