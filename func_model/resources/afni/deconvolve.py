@@ -7,7 +7,7 @@ import statistics
 import subprocess
 import pandas as pd
 import numpy as np
-from func_model.resources.afni import helper
+from func_model.resources.afni import helper as afni_helper
 from func_model.resources.general import submit
 
 
@@ -90,7 +90,7 @@ class TimingFiles:
         # Set attributes, make output location
         self._sess_events = sess_events
         self._subj_tf_dir = os.path.join(subj_work, "timing_files")
-        self._emo_switch = helper.emo_switch()
+        self._emo_switch = afni_helper.emo_switch()
         if not os.path.exists(self._subj_tf_dir):
             os.makedirs(self._subj_tf_dir)
 
@@ -269,7 +269,6 @@ class TimingFiles:
         # Generate timing files for all events in common_dict
         out_list = []
         for event, tf_name in common_dict.items():
-
             # Make an empty file
             tf_path = os.path.join(
                 self._subj_tf_dir,
@@ -279,7 +278,6 @@ class TimingFiles:
 
             # Get event info for each run
             for run in self._events_run:
-
                 # Identify index of events, make an AFNI line for events
                 idx_event = self._df_events.index[
                     (self._df_events["trial_type"] == event)
@@ -383,7 +381,6 @@ class TimingFiles:
         # Generate timing files for all events in select_dict
         out_list = []
         for select, tf_name in select_dict.items():
-
             # Make an empty file
             tf_path = os.path.join(
                 self._subj_tf_dir,
@@ -393,7 +390,6 @@ class TimingFiles:
 
             # Get event info for each run
             for run in self._events_run:
-
                 # Identify index of events, make an AFNI line for events
                 idx_select = self._df_events.index[
                     (self._df_events["trial_type"] == select)
@@ -487,7 +483,6 @@ class TimingFiles:
                 )
             emo_list = [emotion_name]
         else:
-
             # Identify unique emotions in dataframe
             trial_type_value = task[:-1]
             idx_sess = self._df_events.index[
@@ -499,7 +494,6 @@ class TimingFiles:
         # Generate timing files for all events in emo_list
         out_list = []
         for emo in emo_list:
-
             # Check that emo is found in planned dictionary
             if emo not in self._emo_switch.keys():
                 raise ValueError(f"Unexpected emotion encountered : {emo}")
@@ -514,7 +508,6 @@ class TimingFiles:
 
             # Get emo info for each run
             for run in self._events_run:
-
                 # Identify index of emotions, account for emotion
                 # not occurring in current run, make appropriate
                 # AFNI line for event.
@@ -590,7 +583,6 @@ class TimingFiles:
         out_list = []
         block_dict = {}
         for emo in emo_list:
-
             # Check that emo is found in planned dictionary
             if emo not in self._emo_switch.keys():
                 raise ValueError(f"Unexpected emotion encountered : {emo}")
@@ -606,7 +598,6 @@ class TimingFiles:
             # Get emo info for each run
             dur_list = []
             for run in self._events_run:
-
                 # Identify index of emotions, account for emotion
                 # not occurring in current run, make appropriate
                 # AFNI line for event.
@@ -731,7 +722,7 @@ class MotionCensor:
         self._func_motion = func_motion
         self._subj_work = subj_work
         self._sing_afni = sing_afni
-        self._sing_prep = helper.prepend_afni_sing(
+        self._sing_prep = afni_helper.prepend_afni_sing(
             self._proj_deriv, self._subj_work, self._sing_afni
         )
         self._out_dir = os.path.join(subj_work, "motion_files")
@@ -1037,7 +1028,7 @@ class WriteDecon:
         self._func_dict = sess_func
         self._anat_dict = sess_anat
         self._sing_afni = sing_afni
-        self._afni_prep = helper.prepend_afni_sing(
+        self._afni_prep = afni_helper.prepend_afni_sing(
             self._proj_deriv, self._subj_work, self._sing_afni
         )
 
@@ -1072,7 +1063,7 @@ class WriteDecon:
 
         """
         # Validate model name
-        model_valid = helper.valid_models(model_name)
+        model_valid = afni_helper.valid_models(model_name)
         if not model_valid:
             raise ValueError(f"Unsupported model name : {model_name}")
 
@@ -1443,7 +1434,6 @@ class WriteDecon:
         run_len = []
         num_vol = []
         for epi_file in self._func_dict["func-scaled"]:
-
             # Extract number of volumes
             bash_cmd = f"""
                 fslhd \
@@ -1545,7 +1535,7 @@ class RunReml:
         self._sess_func = sess_func
         self._sing_afni = sing_afni
         self._log_dir = log_dir
-        self._afni_prep = helper.prepend_afni_sing(
+        self._afni_prep = afni_helper.prepend_afni_sing(
             proj_deriv, subj_work, sing_afni
         )
 
@@ -1710,7 +1700,6 @@ class RunReml:
         # Convert reml command into list
         reml_list = []
         for count, content in enumerate(line_list):
-
             # Keep -input param together but deal with double
             # quotes for compatibilty with sbatch --wrap
             if count == 1:
@@ -1799,7 +1788,7 @@ class ProjectRest:
         self._sess = sess
         self._subj_work = subj_work
         self._log_dir = log_dir
-        self._afni_prep = helper.prepend_afni_sing(
+        self._afni_prep = afni_helper.prepend_afni_sing(
             proj_deriv, self._subj_work, sing_afni
         )
 
@@ -2005,7 +1994,6 @@ class ProjectRest:
         # Find correlation with seeds, z-transform
         corr_dict = {}
         for seed, seed_ts in seed_dict.items():
-
             # Set output path/name, avoid repeating work
             print(f"\t\tWorking on seed {seed} ...")
             ztrans_file = self._reg_matrix.replace("+tlrc", f"_{seed}_ztrans")
@@ -2083,7 +2071,6 @@ class ProjectRest:
         print("\t\tBuilding seeds")
         seed_dict = {}
         for seed, coord in coord_dict.items():
-
             # Avoid repeating work
             print(f"\t\t\tWorking on seed {seed}")
             seed_ts = os.path.join(

@@ -3,7 +3,7 @@
 import os
 import glob
 import pandas as pd
-from func_model.resources.afni import helper
+from func_model.resources.afni import helper as afni_helper
 from func_model.resources.general import submit, matrix
 
 
@@ -179,14 +179,13 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         """
         # Invert emo_switch to unpack sub-bricks
-        _emo_switch = helper.emo_switch()
+        _emo_switch = afni_helper.emo_switch()
         emo_switch = {j: i for i, j in _emo_switch.items()}
 
         # Extract desired sub-bricks from deconvolve file by label name
         self.get_label_names()
         self.beta_dict = {}
         for sub_label in self.stim_label:
-
             # Identify emo string
             emo_long = emo_switch[sub_label[3:6]]
             if emo_name and emo_long != emo_name:
@@ -253,7 +252,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         """
         # Check input, set attributes and output location
-        if not helper.valid_task(task):
+        if not afni_helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
 
         print(f"\tGetting betas from {subj}, {sess}")
@@ -457,7 +456,6 @@ class EtacTest(_SetupTest):
         set_list = []
         get_subbrick = ExtractTaskBetas(self._proj_dir)
         for subj, decon_path in decon_dict.items():
-
             # Get label integer
             get_subbrick.decon_path = decon_path
             get_subbrick.subj_out_dir = self._out_dir
@@ -481,7 +479,7 @@ class EtacTest(_SetupTest):
             raise ValueError("Improper format of sub_label")
 
         # Check model name
-        if not helper.valid_univ_test(self._model_name):
+        if not afni_helper.valid_univ_test(self._model_name):
             raise ValueError("Improper model name specified")
 
     def _etac_opts(
@@ -627,7 +625,6 @@ class MvmTest(_SetupTest):
         self._table_list = []
         for subj in self._group_dict:
             for task, info_dict in self._group_dict[subj].items():
-
                 # Organize session data to write mulitple lines
                 stim = task.split("-")[1]
                 row_dict = {
@@ -697,14 +694,14 @@ class MvmTest(_SetupTest):
 
         """
         # Validate
-        if not helper.valid_mvm_test(model_name):
+        if not afni_helper.valid_mvm_test(model_name):
             raise ValueError(f"Unexpected model_name : {model_name}")
         first_keys = list(group_dict.keys())
         if not any("sub-ER" in x for x in first_keys):
             raise KeyError("First-level key not matching format : sub-ER*")
         second_keys = list(group_dict[first_keys[0]].keys())
         for task in second_keys:
-            if not helper.valid_task(task):
+            if not afni_helper.valid_task(task):
                 raise KeyError(f"Unexpected second-level key : {task}")
         third_keys = list(group_dict[first_keys[0]][second_keys[0]].keys())
         valid_keys = ["sess", "decon_path", "emo_label", "wash_label"]

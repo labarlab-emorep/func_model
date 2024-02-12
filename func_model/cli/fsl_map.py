@@ -10,7 +10,7 @@ Check for data in:
     proj_dir/analyses/classify_fMRI_plsda/classifier_output
 
 and writes output to:
-    proj_dir/analyses/classify_fMRI_plsda/voxel_importance_maps
+    proj_dir/analyses/classify_fMRI_plsda/voxel_importance_maps/name-*_task-*_maps
 
 Examples
 --------
@@ -25,9 +25,10 @@ fsl_map -t movies \
 import os
 import sys
 import textwrap
+import platform
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_fsl
-from func_model.resources import fsl
+from func_model.resources.fsl import helper as fsl_helper
 
 
 # %%
@@ -109,7 +110,13 @@ def _get_args():
 
 # %%
 def main():
-    """Setup working environment."""
+    """Trigger workflow."""
+    # Check env
+    if "labarserv2" not in platform.uname().node:
+        print("fsl_group is required to run on labarserv2.")
+        sys.exit(1)
+
+    # Get CLI input
     args = _get_args().parse_args()
     proj_dir = args.proj_dir
     con_name = args.contrast_name
@@ -118,10 +125,10 @@ def main():
     task_name = args.task_name
 
     # Check user input
-    if not fsl.helper.valid_level(model_level):
+    if not fsl_helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
-    if not fsl.helper.valid_contrast(con_name):
+    if not fsl_helper.valid_contrast(con_name):
         print(f"Unsupported contrast name : {con_name}")
         sys.exit(1)
 
@@ -148,7 +155,6 @@ def main():
 
 
 if __name__ == "__main__":
-
     # Require proj env
     env_found = [x for x in sys.path if "emorep" in x]
     if not env_found:

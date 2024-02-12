@@ -2,7 +2,8 @@
 import os
 import glob
 import fnmatch
-from func_model.resources.afni import helper, deconvolve, masks
+from func_model.resources.afni import helper as afni_helper
+from func_mode.resources.afni import deconvolve, masks
 from func_model.resources.general import submit
 
 
@@ -50,7 +51,6 @@ def _smooth_epi(
     print("\nSmoothing EPI files ...")
     func_smooth = []
     for epi_path in func_preproc:
-
         # Setup output names/paths, avoid repeating work
         epi_preproc = os.path.basename(epi_path)
         desc_preproc = epi_preproc.split("desc-")[1].split("_")[0]
@@ -69,7 +69,9 @@ def _smooth_epi(
             f"-prefix {out_path}",
             epi_path,
         ]
-        sing_prep = helper.prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+        sing_prep = afni_helper.prepend_afni_sing(
+            proj_deriv, subj_work, sing_afni
+        )
         bash_cmd = " ".join(sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
 
@@ -118,7 +120,6 @@ def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
     print("\nScaling EPI files ...")
     func_scaled = []
     for epi_path in func_preproc:
-
         # Setup output names, avoid repeating work
         epi_preproc = os.path.basename(epi_path)
         desc_preproc = epi_preproc.split("desc-")[1].split("_")[0]
@@ -137,7 +138,9 @@ def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
             f"-prefix {out_tstat}",
             epi_path,
         ]
-        sing_prep = helper.prepend_afni_sing(proj_deriv, subj_work, sing_afni)
+        sing_prep = afni_helper.prepend_afni_sing(
+            proj_deriv, subj_work, sing_afni
+        )
         bash_cmd = " ".join(sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
 

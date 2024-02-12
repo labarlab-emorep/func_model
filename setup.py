@@ -16,11 +16,13 @@ setup(
             "fsl_model=func_model.cli.fsl_model:main",
             "fsl_extract=func_model.cli.fsl_extract:main",
             "fsl_map=func_model.cli.fsl_map:main",
+            "fsl_group=func_model.cli.fsl_group:main",
         ]
     },
     include_package_data=True,
     package_data={"": ["reference_files/design*.fsf"]},
     install_requires=[
+        "natsort>=8.4.0",
         "nibabel>=4.0.1",
         "numpy>=1.22.3",
         "pandas>=1.4.4",

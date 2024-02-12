@@ -1,8 +1,15 @@
-"""Pipelines supporting AFNI and FSL.
+"""FSL-based workflows.
 
 FslFirst : GLM task, rest data via FSL
 FslSecond : second-level GLM of task data via FSl
-fsl_extract : extract task beta-coefficiens from FSL GLM
+FslThirdSubj : generate needed info for third-level analyses which
+                collapses across subject
+FslThirdSess : generate needed info for third-level analyses which
+                collapse across session
+FslFourthSess : generate needed info for fourth-level analyses which
+                finishes the collapse across sessions started by
+                FslThirdSess
+ExtractBetas : extract task beta-coefficiens from FSL GLM
 fsl_classify_mask : generate template mask from classifier output
 
 """
@@ -14,8 +21,11 @@ from typing import Union, Tuple
 import subprocess
 import pandas as pd
 from multiprocessing import Process, Pool
-from func_model.resources import afni
-from func_model.resources import fsl
+from natsort import natsorted
+from func_model.resources.afni import masks
+from func_model.resources.fsl import model
+from func_model.resources.fsl import group as fsl_group
+from func_model.resources.fsl import helper as fsl_helper
 
 
 # %%
@@ -203,7 +213,7 @@ class _SupportFslFirst(_SupportFsl):
             .split("task-")[1]
             .split("_")[0]
         )
-        if not fsl.helper.valid_task(self._task):
+        if not fsl_helper.valid_task(self._task):
             raise ValueError(f"Unexpected task name : {self._task}")
 
     def _get_run(self, file_name: str) -> str:
@@ -321,6 +331,32 @@ class _SupportFslSecond(_SupportFsl):
 
 
 # %%
+class _SupportFslThirdFourth:
+    """Methods for third- and fourth-level FSL classes.
+
+    Methods
+    -------
+    write_tsv()
+        Write pd.DataFrame to TSV
+    write_txt()
+        Write list to TXT
+
+    """
+
+    def write_txt(self, data_list: list, file_path: Union[str, os.PathLike]):
+        """Write list to disk."""
+        print(f"Writing : {file_path}")
+        with open(file_path, "w") as tf:
+            for line in data_list:
+                tf.write(f"{line}\n")
+
+    def write_tsv(self, df: pd.DataFrame, file_path: Union[str, os.PathLike]):
+        """Write df to disk."""
+        print(f"Writing : {file_path}")
+        df.to_csv(file_path, sep="\t", index=False)
+
+
+# %%
 class FslFirst(_SupportFslFirst):
     """Conduct first-level models of EPI data.
 
@@ -393,9 +429,9 @@ class FslFirst(_SupportFslFirst):
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
-        if not fsl.helper.valid_name(model_name):
+        if not fsl_helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
-        if not fsl.helper.valid_preproc(preproc_type):
+        if not fsl_helper.valid_preproc(preproc_type):
             raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
@@ -426,7 +462,7 @@ class FslFirst(_SupportFslFirst):
         self._setup()
 
         # Initialize needed classes, find preprocessed resting EPI
-        make_fsf = fsl.model.MakeFirstFsf(
+        make_fsf = model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
         rest_preproc = self._sess_preproc[0]
@@ -457,17 +493,16 @@ class FslFirst(_SupportFslFirst):
         # Setup and initialize needed classes
         print("\tRunning first-level task model")
         self._setup()
-        make_fsf = fsl.model.MakeFirstFsf(
+        make_fsf = model.MakeFirstFsf(
             self._subj_work, self._proj_deriv, self._model_name
         )
-        self._make_cf = fsl.model.ConditionFiles(
+        self._make_cf = model.ConditionFiles(
             self._subj, self._sess, self._task, self._subj_work
         )
 
         # Generate design files for each run
         design_list = []
         for preproc_path in self._sess_preproc:
-
             # Set run attr, determine template type
             self._get_run(os.path.basename(preproc_path))
             use_short = (
@@ -484,7 +519,7 @@ class FslFirst(_SupportFslFirst):
 
             # Make task or lss design files
             if self._model_name == "lss":
-                fsl.model.simul_cond_motion(
+                model.simul_cond_motion(
                     self._subj,
                     self._sess,
                     self._run,
@@ -559,14 +594,14 @@ class FslFirst(_SupportFslFirst):
             return
 
         # Generate confound files
-        _, self._conf_path = fsl.model.confounds(
+        _, self._conf_path = model.confounds(
             sess_confounds[0], self._subj_work
         )
 
     def _run_feat(self, design_list: list):
         """Run FSL FEAT and clean output."""
         _ = Pool().starmap(
-            fsl.model.run_feat,
+            model.run_feat,
             [
                 (
                     fsf_path,
@@ -578,7 +613,7 @@ class FslFirst(_SupportFslFirst):
                 for fsf_path in design_list
             ],
         )
-        fsl.helper.clean_up(
+        fsl_helper.clean_up(
             self._subj_work, self._subj_final, self._model_name
         )
 
@@ -643,7 +678,7 @@ class FslSecond(_SupportFslSecond):
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
-        if not fsl.helper.valid_name(model_name):
+        if not fsl_helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
 
         print("Initializing FslSecond")
@@ -670,13 +705,13 @@ class FslSecond(_SupportFslSecond):
         """
         # Make second-level design
         self._setup()
-        make_sec = fsl.model.MakeSecondFsf(
+        make_sec = model.MakeSecondFsf(
             self._subj_work, self._subj_deriv, self._model_name
         )
         design_path = make_sec.write_task_fsf()
 
         # Execute design file
-        _ = fsl.model.run_feat(
+        _ = model.run_feat(
             design_path,
             self._subj,
             self._sess,
@@ -686,7 +721,7 @@ class FslSecond(_SupportFslSecond):
         )
 
         # Clean up
-        fsl.helper.clean_up(
+        fsl_helper.clean_up(
             self._subj_work,
             self._subj_final,
             self._model_name,
@@ -696,27 +731,450 @@ class FslSecond(_SupportFslSecond):
 
 
 # %%
-def fsl_extract(
-    proj_dir,
-    subj_list,
-    model_name,
-    model_level,
-    con_name,
-    overwrite,
-    group_mask="template",
-    comb_all=True,
-):
-    """Extract cope voxel betas and generate dataframe.
+class FslThirdSubj(_SupportFslThirdFourth):
+    """Generate reference files for collapsing across subjects.
+
+    Inherits _SupportFslThirdFourth.
+
+    Generate text files holding info for the data input, stats evs, and
+    stats contrasts fields of the FSL FEAT FMRI analysis GUI. These files
+    are used to populate test_build/fsl_group_{task}_template.fsf to
+    conduct a third-level FSL analysis which collapses across subject
+    to generate group-level task-based emotion maps.
+
+    Output location:
+        <proj_dir>/nalyses/model_fsl_group/level-third_name-<model_name>
+
+    Output files:
+        level-third_name-*_comb-subj_task-*_data-input.txt
+        level-third_name-*_comb-subj_task-*_stats-evs.txt
+        level-third_name-*_comb-subj_task-*_stats-contrasts.txt
+
+    Parameters
+    ----------
+    proj_dir : str, os.PathLike
+        Location of project parent directory
+    model_name : str, optional
+        ["sep"]
+        FSL model name
+    task_name : str, optional
+        ["movies", "scenarios"]
+        Value of BIDS task field
+
+    Attributes
+    ----------
+    task_name : str
+        ["movies", "scenarios"]
+        Value of BIDS task field
+    input_data : list
+        Paths to cope1.feat files for task, input values for
+        FSL > FEAT-FMRI > Data > Select FEAT directories
+    ev1 : list
+        Input values for FSL > FEAT-FMRI > Stats > Full model setup >
+        EVs > EV1
+    ev1_contrast : list
+        Input values for FSL > FEAT-FMRI > Stats > Full model setup >
+        Contrast & F-tests > EV1
+
+    Methods
+    -------
+    build_input_data()
+        Generate files with input paths/matrices, builds input_data,
+        ev1, ev1_contrast attrs
+
+    Example
+    -------
+    fg = wf_fsl.FslThirdSubj(*args, **kwargs)
+    fg.build_input_data()
+    fg.task = "scenarios"
+    fg.build_input_data()
+
+    """
+
+    def __init__(self, proj_dir, model_name="sep", task="movies"):
+        """Initialize."""
+        print("Initializing wf_fsl.FslThirdSubj ...")
+        if model_name not in ["sep"]:
+            raise ValueError(f"Unsupported model name : {model_name}")
+
+        # Setup
+        self._group_dir = os.path.join(
+            proj_dir,
+            "analyses/model_fsl_group",
+            f"level-third_name-{model_name}",
+        )
+        if not os.path.exists(self._group_dir):
+            os.makedirs(self._group_dir)
+        self._deriv_dir = os.path.join(
+            proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
+        )
+        self._model_name = model_name
+
+        # Find subjects in derivatives, get paths to all second-level output
+        self._subj_list = [
+            os.path.basename(x) for x in glob.glob(f"{self._deriv_dir}/sub-*")
+        ]
+        self._feat_list = glob.glob(
+            f"{self._deriv_dir}/sub-*/ses-*/func/level-second_"
+            + f"name-{model_name}.gfeat/cope1.feat"
+        )
+        self.task = task
+
+    def build_input_data(self):
+        """Build input_data, ev1, ev1_contrast attrs for task."""
+        if self.task not in ["scenarios", "movies"]:
+            raise ValueError(f"Unsupported task name : {self.task}")
+
+        # Find data for each subject
+        print("Building input_data, ev1, and ev1_contrast ...")
+        self.input_data = []
+        for subj in self._subj_list:
+            # Find task path
+            deriv_path = f"{self._deriv_dir}/{subj}/ses-*/func"
+            task_list = glob.glob(
+                f"{deriv_path}/condition_files/*{self.task}_*"
+            )
+            if not task_list:
+                continue
+
+            # Add subj/sess if it contains second-level gfeat output
+            subj, sess, _task, _run, _desc, _suff = os.path.basename(
+                task_list[0]
+            ).split("_")
+            subj_sess_feat = [
+                x for x in self._feat_list if f"{subj}/{sess}" in x
+            ]
+            if subj_sess_feat:
+                self.input_data.append(subj_sess_feat[0])
+        self._build_evs()
+
+    def _build_evs(self):
+        """Build ev1, ev1_contrast attrs."""
+        self.ev1 = [1]
+        for _ in self.input_data[1:]:
+            self.ev1.append(1.0)
+        self.ev1_contrast = [1.0, -1.0]
+        self._write_out()
+
+    def _write_out(self):
+        """Write input_data, ev1, ev1_contrast to disk."""
+        self.write_txt(
+            self.input_data,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-subj_"
+                + f"task-{self.task}_data-input.txt",
+            ),
+        )
+        self.write_txt(
+            self.ev1,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-subj_"
+                + f"task-{self.task}_stats-evs.txt",
+            ),
+        )
+        self.write_txt(
+            self.ev1_contrast,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-subj_"
+                + f"task-{self.task}_stats-contrasts.txt",
+            ),
+        )
+
+
+# %%
+class FslThirdSess(_SupportFslThirdFourth):
+    """Generate reference files for collapsing across sessions.
+
+    Inherits _SupportFslThirdFourth.
+
+    Generate files holding info for the data input, stats evs, and
+    stats contrasts fields of the FSL FEAT FMRI analysis GUI. These files
+    are used to populate test_build/fsl_combine_sessions_template.fsf to
+    conduct a third-level FSL analysis which collapses across session
+    to generate group-level emotion maps.
+
+    Output location:
+        <proj_dir>/analyses/model_fsl_group/level-third_name-<model_name>
+
+    Output files:
+        level-third_name-*_comb-sess_data-input.txt
+        level-third_name-*_comb-sess_stats-evs.tsv
+        level-third_name-*_comb-sess_stats-contrasts.tsv
+
+    Parameters
+    ----------
+    proj_dir : str, os.PathLike
+        Location of project parent directory
+    model_name : str, optional
+        ["sep"]
+        FSL model name
+
+    Attributes
+    ----------
+    input_data : list
+        Paths to cope1.feat files for task, input values for
+        FSL > FEAT-FMRI > Data > Select FEAT directories
+    df_evs : pd.DataFrame
+        Input values for FSL > FEAT-FMRI > Stats > Full model setup > EVs
+    df_con : pd.DataFrame
+        Input values for FSL > FEAT-FMRI > Stats > Full model setup >
+        Contrast & F-tests
+
+    Methods
+    -------
+    build_input_data()
+        Generate files with input paths/matrices, builds input_data,
+        df_evs, df_con attrs
+
+    Example
+    -------
+    fg = wf_fsl.FslThirdSess(*args, **kwargs)
+    fg.build_input_data()
+
+    """
+
+    def __init__(self, proj_dir, model_name="sep"):
+        """Initialize."""
+        print("Initializing wf_fsl.FslThirdSess ...")
+
+        # Validate
+        if model_name not in ["sep"]:
+            raise ValueError(f"Unsupported model name : {model_name}")
+
+        # Setup
+        self._proj_dir = proj_dir
+        self._model_name = model_name
+        self._deriv_dir = os.path.join(
+            proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
+        )
+        self._group_dir = os.path.join(
+            proj_dir,
+            "analyses/model_fsl_group",
+            f"level-third_name-{model_name}",
+        )
+        if not os.path.exists(self._group_dir):
+            os.makedirs(self._group_dir)
+
+    def build_input_data(self):
+        """Build input_data, df_evs, df_con attrs."""
+        print("Building input_data, df_con, df_evs ...")
+
+        # Find all input data
+        self.input_data = sorted(
+            glob.glob(
+                f"{self._deriv_dir}/sub-*/ses-*/func/level-second_"
+                + f"name-{self._model_name}.gfeat/cope1.feat"
+            )
+        )
+        self.write_txt(
+            self.input_data,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_"
+                + "comb-sess_data-input.txt",
+            ),
+        )
+
+        # Find all subjects, trigger evs, con
+        subj_list = [
+            x.split("sub-ER")[1].split("/")[0] for x in self.input_data
+        ]
+        self._unq_subj = sorted(list(set(subj_list)))
+        self._build_evs()
+        self._build_con()
+
+    def _build_evs(self):
+        """Build df_evs attr."""
+        # Contrast dataframe where column=subj and rows=sess
+        self.df_evs = pd.DataFrame(columns=self._unq_subj)
+        for cnt, file_path in enumerate(self.input_data):
+            subid = file_path.split("sub-ER")[1].split("/")[0]
+            self.df_evs.loc[cnt, subid] = 1
+        self.df_evs = self.df_evs.fillna(0)
+        self.write_tsv(
+            self.df_evs,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-sess_stats-evs.tsv",
+            ),
+        )
+
+    def _build_con(self):
+        """Title."""
+        self.df_con = pd.DataFrame(columns=self._unq_subj)
+        for cnt, subj in enumerate(self._unq_subj):
+            self.df_con.loc[cnt, subj] = 1
+        self.df_con = self.df_con.fillna(0)
+        self.write_tsv(
+            self.df_con,
+            os.path.join(
+                self._group_dir,
+                f"level-third_name-{self._model_name}_comb-sess_"
+                + "stats-contrasts.tsv",
+            ),
+        )
+
+
+# %%
+class FslFourthSess(_SupportFslThirdFourth):
+    """Generate reference files for collapsing across sessions.
+
+    Inherits _SupportFslThirdFourth.
+
+    TODO
+
+    Output location:
+        <proj_dir>/analyses/model_fsl_group/level-fourth_name-<model_name>
+
+    Output files:
+        level-fourth_name-*_comb-sess_data-input.txt
+        level-fourth_name-*_comb-sess_stats-evs.tsv
+        level-fourth_name-*_comb-sess_stats-contrasts.tsv
+
+    Parameters
+    ----------
+    proj_dir : str, os.PathLike
+        Location of project parent directory
+    model_name : str, optional
+        ["sep"]
+        FSL model name
+
+    Attributes
+    ----------
+    input_data : list
+    df_evs : pd.DataFrame
+    con
+
+
+    Methods
+    -------
+    build_input_data()
+
+
+    Example
+    -------
+
+
+    """
+
+    def __init__(self, proj_dir, model_name="sep"):
+        """Title."""
+        self._proj_dir = proj_dir
+        self._model_name = model_name
+        self._deriv_dir = os.path.join(
+            proj_dir, "data_scanner_BIDS/derivatives/model_fsl"
+        )
+        group_dir = os.path.join(proj_dir, "analyses/model_fsl_group")
+        self._data_dir = os.path.join(
+            group_dir,
+            f"level-third_name-{model_name}",
+            f"level-third_name-{model_name}_comb-sess.gfeat",
+        )
+        if not os.path.exists(self._data_dir):
+            raise FileNotFoundError(f"Expected FEAT output : {self._data_dir}")
+        self._group_dir = os.path.join(
+            group_dir,
+            f"level-fourth_name-{model_name}",
+        )
+        if not os.path.exists(self._group_dir):
+            os.makedirs(self._group_dir)
+
+    def build_input_data(self):
+        """Title."""
+        print(f"Finding data in : {self._data_dir}")
+        self.input_data = sorted(
+            glob.glob(f"{self._data_dir}/cope*.feat/stats/cope*.nii.gz"),
+            key=len,
+        )
+        self.input_data = natsorted(self.input_data)
+        if not self.input_data:
+            raise ValueError(f"Expected FEAT output : {self._data_dir}")
+        self.write_txt(
+            self.input_data,
+            os.path.join(
+                self._group_dir,
+                f"level-fourth_name-{self._model_name}_"
+                + "comb-sess_data-input.txt",
+            ),
+        )
+        self._build_evs()
+        self._build_con()
+
+    def _build_evs(self):
+        """Title."""
+        #
+        cope_all = [x.split("/")[-3] for x in self.input_data]
+        cope_list = [x for x in natsorted(list(set(cope_all)))]
+        emo_list = [
+            "Amusement",
+            "Anger",
+            "Anxiety",
+            "Awe",
+            "Calmness",
+            "Craving",
+            "Disgust",
+            "Excitement",
+            "Fear",
+            "Horror",
+            "Joy",
+            "Neutral",
+            "Romance",
+            "Sadness",
+            "Surprise",
+        ]
+        if len(cope_list) != len(emo_list):
+            raise ValueError("Unexpected number of emotions")
+        self._cope_dict = {x: y for x, y in zip(emo_list, cope_list)}
+
+        #
+        subj_all = [os.path.basename(x) for x in self.input_data]
+        subj_list = [x for x in natsorted(list(set(subj_all)))]
+
+        #
+        self.df_evs = pd.DataFrame(columns=emo_list)
+        cnt_row = 0
+        for col in emo_list:
+            for _ in subj_list:
+                self.df_evs.loc[cnt_row, col] = 1
+                cnt_row += 1
+        self.df_evs = self.df_evs.fillna(0)
+        self.write_tsv(
+            self.df_evs,
+            os.path.join(
+                self._group_dir,
+                f"level-fourth_name-{self._model_name}_"
+                + "comb-sess_stats-evs.tsv",
+            ),
+        )
+
+    def _build_con(self):
+        """Title."""
+        self.df_con = pd.DataFrame(columns=self._cope_dict.keys())
+        for row, col in enumerate(self._cope_dict.keys()):
+            self.df_con.loc[row, col] = 1
+        self.df_con = self.df_con.fillna(0)
+        self.write_tsv(
+            self.df_con,
+            os.path.join(
+                self._group_dir,
+                f"level-fourth_name-{self._model_name}_comb-sess_"
+                + "stats-contrasts.tsv",
+            ),
+        )
+
+
+class ExtractBetas:
+    """Extract cope voxel betas from FSL model.
 
     Match cope.nii files to contrast name by mining design.con files
-    and then extract each voxel's beta-coefficient and convert them
-    into a dataframe.
+    and then extract each voxel's beta-coefficient. Data are then
+    sent to MySQL db_emorep.
 
-    A binary brain mask can be generated and used to reduce the
-    size of the dataframes.
-
-    Output of group_mask and comb_all are written to:
-        <proj_dir>/analyses/model_fsl_group
+    A binary brain mask is also generated and used to reduce the
+    size of the dataframes (900K -> 137K voxels).
 
     Parameters
     ----------
@@ -725,124 +1183,160 @@ def fsl_extract(
     subj_list : list
         Subject IDs to include in dataframe
     model_name : str
-        [sep | tog]
+        {"lss", "sep"}
         FSL model identifier
-    model_level : str
-        [first]
-        FSL model level
     con_name : str
-        [stim | replay | tog]
+        {"stim", "tog"}
         Desired contrast from which coefficients will be extracted
-            - stim|replay require model_name=sep
-            - tog requires model_name=tog
     overwrite : bool
-        Whether to overwrite existing beta TSV files
-    group_mask : str, optional
-        [template]
-        Generate a group-level mask, used to identify and remove
-        voxels of no interest from beta dataframe
-    comb_all : bool, optional
-        Combine all participant beta dataframes into an
-        omnibus one
+        Whether to overwrite existing data
 
-    Raises
-    ------
-    ValueError
-        Unexpected values for model_name, model_level, or group_mask
+    Example
+    -------
+    ex_reg = ExtractBetas(*args)
+    ex_reg.get_betas()
 
     """
-    # Validate parameters
-    if model_name not in ["sep", "tog"]:
-        raise ValueError(f"Unsupported value for model_name : {model_name}")
-    if not fsl.helper.valid_level(model_level):
-        raise ValueError(f"Unsupported value for model_level : {model_level}")
-    if group_mask not in ["template"]:
-        raise ValueError("Unexpected group_mask parameter")
-    if not isinstance(overwrite, bool):
-        raise TypeError("Expected type bool for overwrite")
-    if model_name == "tog" and con_name != "tog":
-        raise ValueError(
-            f"Unsupported con_name for model_name={model_name} : {con_name}"
-        )
-    if model_name == "sep" and (con_name != "stim" and con_name != "replay"):
-        raise ValueError(
-            f"Unsupported con_name for model_name={model_name} : {con_name}"
-        )
 
-    # Orient to project directory
-    out_dir = os.path.join(proj_dir, "analyses/model_fsl_group")
-    proj_deriv = os.path.join(proj_dir, "data_scanner_BIDS", "derivatives")
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    def __init__(
+        self,
+        proj_dir,
+        subj_list,
+        model_name,
+        con_name,
+        overwrite,
+    ):
+        """Initialize."""
+        self._proj_dir = proj_dir
+        self._subj_list = subj_list
+        self._model_name = model_name
+        self._con_name = con_name
+        self._overwrite = overwrite
 
-    # Initialize beta extraction, generate mask and identify
-    # censor coordinates
-    get_betas = fsl.group.ExtractTaskBetas(proj_dir)
-    mask_path = afni.masks.tpl_gm(out_dir)
-    get_betas.mask_coord(mask_path)
+        # Set attrs for future flexibility, get extraction methods
+        self._model_level = "first"
+        self._group_mask = "template"
+        self._ex_betas = fsl_group.ExtractTaskBetas()
 
-    def _get_betas(subj: str, sess: str, subj_dir: Union[str, os.PathLike]):
-        """Flatten MRI beta matrix."""
-        # Identify task name from condition files
-        subj_func_dir = os.path.join(subj_dir, sess, "func")
-        task_path = glob.glob(f"{subj_func_dir}/condition_files/*_events.txt")[
-            0
-        ]
-        _subj, _sess, task, _run, _desc, _suff = os.path.basename(
-            task_path
-        ).split("_")
-
-        # Identify all design.con files generated by FEAT, generate
-        # session dataframe
-        design_list = sorted(
-            glob.glob(
-                f"{subj_func_dir}/run-*{model_level}*{model_name}*"
-                + "/design.con"
+    def _validate(self):
+        """Validate user-specified arguments for beta extraction."""
+        # Validate user arguments
+        if self._model_name not in ["sep", "lss"]:
+            raise ValueError(
+                f"Unsupported value for model_name : {self._model_name}"
             )
-        )
-        if not design_list:
-            return
-        _ = get_betas.make_func_matrix(
-            subj,
-            sess,
-            task,
-            model_name,
-            model_level,
-            con_name,
-            design_list,
-            subj_func_dir,
-            overwrite=overwrite,
-        )
+        if self._model_level not in ["first"]:
+            raise ValueError(
+                f"Unsupported value for model_level : {self._model_level}"
+            )
+        if self._group_mask not in ["template"]:
+            raise ValueError("Unexpected group_mask parameter")
 
-    # Make beta dataframe for each subject, session
-    for subj in subj_list:
-        subj_dir = os.path.join(proj_deriv, "model_fsl", subj)
-        sess_list = [
-            os.path.basename(x) for x in sorted(glob.glob(f"{subj_dir}/ses-*"))
-        ]
+        # Validate argument combinations
+        if self._model_name == "sep" and self._con_name != "stim":
+            raise ValueError(
+                "Unexpected model contrast pair : "
+                + f"{self._model_name}, {self._con_name}"
+            )
+        if self._model_name == "lss" and self._con_name != "tog":
+            raise ValueError(
+                "Unexpected model contrast pair : "
+                + f"{self._model_name}, {self._con_name}"
+            )
 
-        # Run sessions in parallel
+    def _setup(self):
+        """Set attrs out_dir, proj_deriv and make dirs."""
+        self._out_dir = os.path.join(
+            self._proj_dir, "analyses/model_fsl_group"
+        )
+        self._proj_deriv = os.path.join(
+            self._proj_dir, "data_scanner_BIDS/derivatives"
+        )
+        if not os.path.exists(self._out_dir):
+            os.makedirs(self._out_dir)
+
+    def get_betas(self):
+        """Extract betas from all detected FSL output.
+
+        Determine mask voxels (used for reducing beta matrix size),
+        then extract betas for all FSL model output found in each
+        session. Sessions are multiprocessed for non-LSS models.
+
+        """
+        # Validate and setup
+        self._validate()
+        self._setup()
+
+        # Get mask coordinates (set attr rm_voxel)
+        mask_path = masks.tpl_gm(self._out_dir)
+        self._ex_betas.mask_coord(mask_path)
+
+        # Identify sessions
+        model_dir = (
+            "model_fsl-lss" if self._model_name == "lss" else "model_fsl"
+        )
+        for self._subj in self._subj_list:
+            self._subj_dir = os.path.join(
+                self._proj_deriv, model_dir, self._subj
+            )
+            sess_list = [
+                os.path.basename(x)
+                for x in sorted(glob.glob(f"{self._subj_dir}/ses-*"))
+            ]
+
+            # Multiproc sessions for non-LSS models, run LSS sessions
+            # serially due to large number of beta extractions.
+            if self._model_name == "lss":
+                for sess in sess_list:
+                    self._mine_betas(sess)
+            else:
+                self._mult_proc(sess_list)
+
+    def _mult_proc(self, sess_list: list):
+        """Run session mining in parallel."""
         mult_proc = [
             Process(
-                target=_get_betas,
-                args=(
-                    subj,
-                    sess,
-                    subj_dir,
-                ),
+                target=self._mine_betas,
+                args=(sess,),
             )
             for sess in sess_list
         ]
         for proc in mult_proc:
             proc.start()
-        for proc in mult_proc:
             proc.join()
-        print("\t\tDone", flush=True)
+        print("\tDone", flush=True)
 
-    # Combine all participant dataframes
-    if comb_all:
-        _, _ = fsl.group.comb_matrices(
-            subj_list, model_name, model_level, con_name, proj_deriv, out_dir
+    def _mine_betas(self, sess: str):
+        """Flatten MRI beta matrix."""
+        # Identify task name from condition files
+        subj_func = os.path.join(self._subj_dir, sess, "func")
+        cond_all = glob.glob(f"{subj_func}/condition_files/*_event*.txt")
+        if not cond_all:
+            return
+        _subj, _sess, task, _run, _desc, _suff = os.path.basename(
+            cond_all[0]
+        ).split("_")
+
+        # Identify all design.con files generated by FEAT, generate
+        # session dataframe.
+        design_list = sorted(
+            glob.glob(
+                f"{subj_func}/run-*{self._model_level}*{self._model_name}*"
+                + "/design.con"
+            )
+        )
+        if not design_list:
+            return
+        self._ex_betas.make_beta_matrix(
+            self._subj,
+            sess,
+            task,
+            self._model_name,
+            self._model_level,
+            self._con_name,
+            design_list,
+            subj_func,
+            self._overwrite,
         )
 
 
@@ -860,7 +1354,7 @@ def fsl_classify_mask(
         <proj-dir>/analyses/classify_fMRI_plsda/classifier_output
 
     and writes output to:
-        <proj-dir>/analyses/classify_fMRI_plsda/voxel_importance_maps
+        <proj-dir>/analyses/classify_fMRI_plsda/voxel_importance_maps/name-*_task-*_maps
 
     Parameters
     ----------
@@ -896,7 +1390,7 @@ def fsl_classify_mask(
         raise ValueError(f"Unsupported model name : {model_name}")
     if model_level != "first":
         raise ValueError(f"Unsupported model level : {model_level}")
-    if not fsl.helper.valid_contrast(con_name):
+    if not fsl_helper.valid_contrast(con_name):
         raise ValueError(f"Unsupported contrast name : {con_name}")
     if task_name not in ["movies", "scenarios", "all"]:
         raise ValueError(f"Unexpected value for task : {task_name}")
@@ -927,9 +1421,13 @@ def fsl_classify_mask(
 
     # Make a mask for each emotion in dataframe
     out_dir = os.path.join(
-        proj_dir, "analyses/classify_fMRI_plsda/voxel_importance_maps"
+        proj_dir,
+        "analyses/classify_fMRI_plsda/voxel_importance_maps",
+        f"name-{model_name}_task-{task_name}_maps",
     )
-    mk_mask = fsl.group.ImportanceMask()
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    mk_mask = fsl_group.ImportanceMask()
     mk_mask.mine_template(tpl_path)
     mask_list = []
     for emo_name in emo_list:
@@ -941,11 +1439,11 @@ def fsl_classify_mask(
             f"level-{model_level}_name-{model_name}_task-{task_name}_"
             + f"con-{con_name}Washout_emo-{emo_name}_map.nii.gz",
         )
-        _ = mk_mask.make_mask(df_emo, mask_path)
+        _ = mk_mask.make_mask(df_emo, mask_path, task_name)
         mask_list.append(mask_path)
 
     # Trigger conjunction analyses
-    conj = fsl.group.ConjunctAnalysis(mask_list, out_dir)
+    conj = fsl_group.ConjunctAnalysis(mask_list, out_dir)
     conj.omni_map()
     conj.arousal_map()
     conj.valence_map()
