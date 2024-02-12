@@ -6,14 +6,15 @@ schedule_afni : schedule AFNI workflow with Slurm
 schedule_fsl : schedule FSL workflow with Slurm
 
 """
+
 import os
 import sys
 import subprocess
 import textwrap
-from func_model.resources import fsl
+from func_model.resources.fsl import helper as fsl_helper
 
 
-def submit_subprocess(bash_cmd, chk_path, job_name):
+def submit_subprocess(bash_cmd, chk_path, job_name, force_cont=False):
     """Submit bash command as subprocess.
 
     Check for output file after submission, print stdout
@@ -27,10 +28,12 @@ def submit_subprocess(bash_cmd, chk_path, job_name):
         Location of generated file
     job_name : str
         Identifier for error messages
+    force_cont : bool, optional
+        Skip file check, raising FileNotFoundError
 
     Returns
     -------
-    path
+    str, os.PathLike, None
         Location of generated file
 
     Raises
@@ -42,6 +45,8 @@ def submit_subprocess(bash_cmd, chk_path, job_name):
     h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
     h_out, h_err = h_sp.communicate()
     h_sp.wait()
+    if force_cont:
+        return
     if not os.path.exists(chk_path):
         print(
             f"""\n
@@ -223,8 +228,6 @@ def schedule_fsl(
     proj_deriv,
     work_deriv,
     log_dir,
-    user_name,
-    rsa_key,
 ):
     """Write and schedule pipeline.
 
@@ -255,10 +258,6 @@ def schedule_fsl(
         Output location for intermediates
     log_dir : path
         Output location for log files and scripts
-    user_name : str
-        User name for DCC, labarserv2
-    rsa_key : str, os.PathLike
-        Location of RSA key for labarserv2
 
     Returns
     -------
@@ -272,9 +271,9 @@ def schedule_fsl(
         Unexpected argument parameters
 
     """
-    if not fsl.helper.valid_name(model_name):
+    if not fsl_helper.valid_name(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
-    if not fsl.helper.valid_level(model_level):
+    if not fsl_helper.valid_level(model_level):
         raise ValueError(f"Unexpected model level : {model_level}")
 
     def _sbatch_head() -> str:
@@ -305,8 +304,6 @@ def schedule_fsl(
                 "{proj_deriv}",
                 "{work_deriv}",
                 "{log_dir}",
-                "{user_name}",
-                "{rsa_key}",
             )
             wf_obj.{wf_meth}()
         """
@@ -321,8 +318,6 @@ def schedule_fsl(
                 "{proj_deriv}",
                 "{work_deriv}",
                 "{log_dir}",
-                "{user_name}",
-                "{rsa_key}",
             )
             wf_obj.model_task()
         """

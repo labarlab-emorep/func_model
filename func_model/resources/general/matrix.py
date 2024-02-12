@@ -8,7 +8,7 @@ import os
 import numpy as np
 import pandas as pd
 import nibabel as nib
-from . import submit
+from func_model.resources.general import submit
 
 
 class NiftiArray:
@@ -22,14 +22,19 @@ class NiftiArray:
     float_prec : int, optional
         Float precision of dataframe
 
+    Attributes
+    ----------
+    rm_voxels : list
+        Which voxels have only 0 in mask NIfTI, set
+        by mask_coord
+
     Methods
     -------
-    add_arr_id(subj, task, emo, arr, run=None)
-        Prepend identifier values to 1D array
     arr_to_df(arr)
         Convert 1D array to pd.DataFrame
     mask_coord(mask_path)
-        Identify coordinates outside of group-level binary mask
+        Identify coordinates outside of group-level binary mask,
+        sets rm_voxels attr
     nifti_to_arr(nifti_path)
         Convert 3D NIfTI to 1D array
     nifti_to_img(nifti_path)
@@ -60,7 +65,7 @@ class NiftiArray:
                 for z in np.arange(arr.shape[2]):
                     idx_val.append(
                         [
-                            f"({x}, {y}, {z})",
+                            f"{x}.{y}.{z}",
                             round(arr[x][y][z], self._float_prec),
                         ]
                     )
@@ -78,28 +83,12 @@ class NiftiArray:
         """Return Nibabel Image."""
         return nib.load(nifti_path)
 
-    def add_arr_id(
-        self,
-        subj: str,
-        task: str,
-        emo: str,
-        img_flat: np.ndarray,
-        run: str = None,
-    ) -> np.ndarray:
-        """Prepend 1D array with identifier fields."""
-        title_list = ["subj_id", "task_id", "emo_id"]
-        value_list = [subj, task, emo]
-        if run:
-            title_list.append("run_id")
-            value_list.append(run)
-        id_arr = np.array([title_list, value_list])
-        return np.concatenate((id_arr, img_flat), axis=1)
-
-    def arr_to_df(self, arr: np.ndarray) -> pd.DataFrame:
-        """Make dataframe from flat array."""
-        df = pd.DataFrame(np.transpose(arr), columns=["idx", "val"])
-        df = df.set_index("idx")
-        df = df.transpose().reset_index(drop=True)
+    def arr_to_df(self, arr: np.ndarray, col_name: str) -> pd.DataFrame:
+        """Make dataframe from flat array, drop indices in rm_voxels attr."""
+        df = pd.DataFrame(np.transpose(arr), columns=["voxel_name", col_name])
+        df = df.set_index("voxel_name")
+        if hasattr(self, "rm_voxels"):
+            df = df.drop(self.rm_voxels)
         return df
 
     def mask_coord(self, mask_path):
@@ -116,14 +105,14 @@ class NiftiArray:
 
         Attributes
         ----------
-        _rm_cols : array
-            Column names (coordinates) to drop from beta dataframes
+        rm_voxels : list
+            Indices (voxel coordinates) to drop from beta dataframes
 
         """
         print("\tFinding coordinates to censor ...")
         img_flat = self.nifti_to_arr(mask_path)
-        df_mask = self.arr_to_df(img_flat)
-        self._rm_cols = df_mask.columns[df_mask.isin([0.0]).any()]
+        df_mask = self.arr_to_df(img_flat, "voxel_value")
+        self.rm_voxels = df_mask.index[df_mask["voxel_value"] == 0.0].to_list()
 
 
 class C3dMethods:

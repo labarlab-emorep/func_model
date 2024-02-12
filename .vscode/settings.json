@@ -1,12 +1,11 @@
 {
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
-    "editor.formatOnSave": true,
-    "python.formatting.provider": "black",
-    "python.formatting.blackArgs": [
-        "--line-length",
-        "79",
-    ],
+    "python.formatting.provider": "none",
     "files.trimTrailingWhitespace": true,
-    "files.trimFinalNewlines": false
+    "files.trimFinalNewlines": false,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true
+      }
 }

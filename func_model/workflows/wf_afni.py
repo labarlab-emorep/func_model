@@ -11,7 +11,11 @@ afni_mvm        : conduct ANOVA-style analyses via 3dMVM
 import os
 import glob
 from pathlib import Path
-from func_model.resources import afni
+from func_model.resources.afni import preprocess
+from func_model.resources.afni import deconvolve
+from func_model.resources.afni import masks
+from func_model.resources.afni import helper as afni_helper
+from func_model.resources.afni import group as afni_group
 
 
 # %%
@@ -77,7 +81,7 @@ def afni_task(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps
-    sess_func, sess_anat = afni.preprocess.extra_preproc(
+    sess_func, sess_anat = preprocess.extra_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni
     )
 
@@ -88,11 +92,11 @@ def afni_task(
             f"Expected BIDs events files in {subj_sess_raw}"
         )
     task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
-    if not afni.helper.valid_task(f"task-{task}"):
+    if not afni_helper.valid_task(f"task-{task}"):
         raise ValueError(f"Expected task names movies|scenarios, found {task}")
 
     # Generate, organize timing files
-    make_tf = afni.deconvolve.TimingFiles(subj_work, sess_events)
+    make_tf = deconvolve.TimingFiles(subj_work, sess_events)
     tf_com = make_tf.common_events(subj, sess, task)
     tf_sess = make_tf.session_events(subj, sess, task)
     tf_sel = make_tf.select_events(subj, sess, task)
@@ -107,7 +111,7 @@ def afni_task(
         sess_timing[h_key] = tf_path
 
     # Generate deconvolution command
-    write_decon = afni.deconvolve.WriteDecon(
+    write_decon = deconvolve.WriteDecon(
         subj_work,
         proj_deriv,
         sess_func,
@@ -117,7 +121,7 @@ def afni_task(
     write_decon.build_decon(model_name, sess_tfs=sess_timing)
 
     # Use decon command to make REMl command, execute REML
-    make_reml = afni.deconvolve.RunReml(
+    make_reml = deconvolve.RunReml(
         subj_work,
         proj_deriv,
         sess_anat,
@@ -133,7 +137,7 @@ def afni_task(
     )
 
     # Clean
-    afni.helper.MoveFinal(
+    afni_helper.MoveFinal(
         subj, sess, proj_deriv, subj_work, sess_anat, model_name
     )
     return (sess_timing, sess_anat, sess_func)
@@ -203,10 +207,10 @@ def afni_rest(
         os.makedirs(subj_work)
 
     # Extra pre-processing steps, generate deconvolution command
-    sess_func, sess_anat = afni.preprocess.extra_preproc(
+    sess_func, sess_anat = preprocess.extra_preproc(
         subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
     )
-    write_decon = afni.deconvolve.WriteDecon(
+    write_decon = deconvolve.WriteDecon(
         subj_work,
         proj_deriv,
         sess_func,
@@ -216,7 +220,7 @@ def afni_rest(
     write_decon.build_decon(model_name)
 
     # Project regression matrix
-    proj_reg = afni.deconvolve.ProjectRest(
+    proj_reg = deconvolve.ProjectRest(
         subj, sess, subj_work, proj_deriv, sing_afni, log_dir
     )
     proj_reg.gen_xmatrix(write_decon.decon_cmd, write_decon.decon_name)
@@ -229,7 +233,7 @@ def afni_rest(
 
     # Seed (sanity check) and clean
     corr_dict = proj_reg.seed_corr(sess_anat)
-    afni.helper.MoveFinal(
+    afni_helper.MoveFinal(
         subj, sess, proj_deriv, subj_work, sess_anat, model_name
     )
     return (corr_dict, sess_anat, sess_func)
@@ -286,19 +290,18 @@ def afni_extract(
         os.makedirs(out_dir)
 
     # Initialize beta extraction
-    get_betas = afni.group.ExtractTaskBetas(proj_dir)
+    get_betas = afni_group.ExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
     if group_mask == "template":
-        mask_path = afni.masks.tpl_gm(out_dir)
+        mask_path = masks.tpl_gm(out_dir)
     elif group_mask == "intersection":
-        mask_path = afni.masks.group_mask(proj_deriv, subj_list, out_dir)
+        mask_path = masks.group_mask(proj_deriv, subj_list, out_dir)
     get_betas.mask_coord(mask_path)
 
     # Make beta dataframe for each subject
     for subj in subj_list:
         for sess in ["ses-day2", "ses-day3"]:
-
             # Find decon file
             subj_deriv_func = os.path.join(
                 proj_deriv, "model_afni", subj, sess, "func"
@@ -320,7 +323,7 @@ def afni_extract(
 
     # Combine all participant dataframes
     if comb_all:
-        _ = afni.group.comb_matrices(
+        _ = afni_group.comb_matrices(
             subj_list, model_name, proj_deriv, out_dir
         )
 
@@ -368,11 +371,11 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
         raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
 
     # Validate strings
-    if not afni.helper.valid_task(task):
+    if not afni_helper.valid_task(task):
         raise ValueError(f"Unexpected task value : {task}")
-    if not afni.helper.valid_univ_test(model_name):
+    if not afni_helper.valid_univ_test(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
-    emo_switch = afni.helper.emo_switch()
+    emo_switch = afni_helper.emo_switch()
     if emo_name not in emo_switch.keys():
         raise ValueError(f"Unexpected emotion name : {emo_name}")
 
@@ -411,7 +414,7 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
             }
 
     # Make, get mask
-    mask_path = afni.masks.tpl_gm(group_dir)
+    mask_path = masks.tpl_gm(group_dir)
 
     # Build coefficient name to match sub-brick, recreate name
     # specified by afni.deconvolve.TimingFiles.session_events,
@@ -423,7 +426,7 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
     sub_label = task_short + emo_short + "#0_Coef"
 
     # Generate, execute ETAC command
-    run_etac = afni.group.EtacTest(proj_dir, out_dir, mask_path)
+    run_etac = afni_group.EtacTest(proj_dir, out_dir, mask_path)
     _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
 
 
@@ -474,9 +477,9 @@ def afni_mvm(proj_dir, model_name, emo_name):
         raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
 
     # Validate strings
-    if not afni.helper.valid_mvm_test(model_name):
+    if not afni_helper.valid_mvm_test(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
-    emo_switch = afni.helper.emo_switch()
+    emo_switch = afni_helper.emo_switch()
     if emo_name not in emo_switch.keys():
         raise ValueError(f"Unexpected emotion name : {emo_name}")
 
@@ -500,7 +503,6 @@ def afni_mvm(proj_dir, model_name, emo_name):
     ]
     group_dict = {}
     for subj in subj_all:
-
         # Only include participants with deconvolved data from both sessions
         decon_list = sorted(
             glob.glob(
@@ -541,9 +543,9 @@ def afni_mvm(proj_dir, model_name, emo_name):
 
     # Make, get mask
     print("\tGetting group mask")
-    mask_path = afni.masks.tpl_gm(group_dir)
+    mask_path = masks.tpl_gm(group_dir)
 
     # Generate, execute ETAC command
-    run_mvm = afni.group.MvmTest(proj_dir, out_dir, mask_path)
+    run_mvm = afni_group.MvmTest(proj_dir, out_dir, mask_path)
     run_mvm.clustsim()
     _ = run_mvm.write_exec(group_dict, model_name, emo_short)

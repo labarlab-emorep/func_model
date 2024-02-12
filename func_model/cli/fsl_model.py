@@ -20,12 +20,16 @@ Level names:
     - first = first-level GLM
     - second = second-level GLM, for model-name=sep|tog only
 
+Notes
+-----
+- Requires environmental variable 'RSA_LS2' to contain
+    location of RSA key for labarserv2
+
 Examples
 --------
-fsl_model -s sub-ER0009 -k $RSA_LS2
-fsl_model -s sub-ER0009 sub-ER0016 -k $RSA_LS2
+fsl_model -s sub-ER0009
+fsl_model -s sub-ER0009 sub-ER0016 --model-name tog
 fsl_model -s sub-ER0009 \
-    -k /path/to/.ssh/id_rsa_labarserv2 \
     --model-name rest
     --preproc-type smoothed
 
@@ -35,12 +39,12 @@ fsl_model -s sub-ER0009 \
 import os
 import sys
 import time
-import socket
+import platform
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.resources.general import submit
-from func_model.resources import fsl
+from func_model.resources.fsl import helper as fsl_helper
 
 
 # %%
@@ -53,9 +57,9 @@ def _get_args():
         "--model-level",
         type=str,
         default="first",
+        choices=["first", "second"],
         help=textwrap.dedent(
             """\
-            [first | second]
             FSL model level, for triggering different workflows.
             (default : %(default)s)
             """
@@ -65,9 +69,9 @@ def _get_args():
         "--model-name",
         type=str,
         default="tog",
+        choices=["sep", "tog", "rest", "lss"],
         help=textwrap.dedent(
             """\
-            [sep | tog | rest | lss]
             FSL model name, for triggering different workflows
             (default : %(default)s)
             """
@@ -77,9 +81,9 @@ def _get_args():
         "--preproc-type",
         type=str,
         default="scaled",
+        choices=["scaled", "smoothed"],
         help=textwrap.dedent(
             """\
-            [scaled | smoothed]
             Determine whether to use scaled or smoothed preprocessed EPIs
             (default : %(default)s)
             """
@@ -106,13 +110,6 @@ def _get_args():
         type=str,
         required=True,
     )
-    required_args.add_argument(
-        "-k",
-        "--rsa-key",
-        type=str,
-        help="Location of labarserv2 RSA key",
-        required=True,
-    )
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -123,20 +120,25 @@ def _get_args():
 
 # %%
 def main():
-    """Setup working environment."""
+    """Trigger workflow."""
+    # Check env
+    if "dcc" not in platform.uname().node:
+        print("fsl_model workflow is required to run on DCC.")
+        sys.exit(1)
+
+    # Get cli input
     args = _get_args().parse_args()
     subj_list = args.sub_list
     proj_dir = args.proj_dir
     model_name = args.model_name
     model_level = args.model_level
-    rsa_key = args.rsa_key
     preproc_type = args.preproc_type
 
     # Check model_name, model_level
-    if not fsl.helper.valid_name(model_name):
+    if not fsl_helper.valid_name(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
-    if not fsl.helper.valid_level(model_level):
+    if not fsl_helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
     if (
@@ -144,25 +146,23 @@ def main():
     ) and model_level != "first":
         print("Second level not supported for models lss, rest")
         sys.exit(1)
-    if not os.path.exists(rsa_key):
-        raise FileNotFoundError(f"Expected path to RSA key, found : {rsa_key}")
-    if not fsl.helper.valid_preproc(preproc_type):
+    if not fsl_helper.valid_preproc(preproc_type):
         raise ValueError(f"Unspported preproc type : {preproc_type}")
 
     # Setup group project directory, paths
     proj_deriv = os.path.join(proj_dir, "derivatives")
     proj_rawdata = os.path.join(proj_dir, "rawdata")
 
-    # Get environmental vars
-    user_name = os.environ["USER"]
-    try:
-        os.environ["FSLDIR"]
-    except KeyError:
-        print("Missing required global variable FSLDIR")
-        sys.exit(1)
+    # Check environmental vars
+    for chk_env in ["FSLDIR", "RSA_LS2"]:
+        try:
+            os.environ[chk_env]
+        except KeyError:
+            print(f"Missing required environmental variable {chk_env}")
+            sys.exit(1)
 
     # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", user_name, "EmoRep")
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,
@@ -185,18 +185,14 @@ def main():
                 proj_deriv,
                 work_deriv,
                 log_dir,
-                user_name,
-                rsa_key,
             )
             time.sleep(3)
 
 
 if __name__ == "__main__":
-
     # Require proj env
     env_found = [x for x in sys.path if "emorep" in x]
-    host_name = socket.gethostname()
-    if not env_found and "dcc" not in host_name:
+    if not env_found:
         print("\nERROR: missing required project environment 'emorep'.")
         print("\tHint: $labar_env emorep\n")
         sys.exit(1)

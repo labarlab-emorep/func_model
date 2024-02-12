@@ -15,13 +15,20 @@ def main():
         afni_extract : Extract emotion betas from deconvolve AFNI as a matrix
         afni_univ    : Conduct univariate tests in AFNI
         afni_mvm     : Conduct multivariate tests in AFNI
+
         fsl_model    : Conduct FSL-style first- and second-level regressions
         fsl_extract  : Extract emotion betas from FSL first-level as a matrix
         fsl_map      : Make binary masks from classifier output
+        fsl_group    : Generate required input for group-level analyses
 
-    The sub-packages afni_model, fsl_model are written specifically for the
-    Duke Compute Cluster (DCC), while afni_extract, afni_univ, afni_mvm,
-    fsl_extract, and fsl_map are written for labarserv2.
+    Sub-packages written for Duke Compute Cluster (DCC):
+
+        afni_model, fsl_model
+
+    Sub-packages written for labarserv2:
+
+        afni_extract, afni_univ, afni_mvm
+        fsl_extract, fsl_map, fsl_group
 
     """
     )

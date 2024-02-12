@@ -1,4 +1,4 @@
-"""Helper methods for FSl-based pipelines.
+"""Helper methods for FSL-based pipelines.
 
 valid_name : check for valid model name
 valid_level : check for valid model level
@@ -36,7 +36,7 @@ def valid_level(model_level: str) -> bool:
 
 def valid_task(task: str) -> bool:
     """Check if task name is valid."""
-    return task in ["task-movies", "task-scenarios", "task-rest"]
+    return task in ["task-movies", "task-scenarios", "task-rest", "task-all"]
 
 
 def valid_contrast(con: str) -> bool:
@@ -72,9 +72,9 @@ def get_tr(in_epi: Union[str, os.PathLike]) -> float:
     return len_tr
 
 
-def load_tsv(tsv_path: Union[str, os.PathLike]) -> pd.DataFrame:
-    print(f"\t\tLoading {tsv_path} ...")
-    return pd.read_csv(tsv_path, sep="\t")
+def load_csv(csv_path: Union[str, os.PathLike]) -> pd.DataFrame:
+    print(f"\t\tLoading {csv_path} ...")
+    return pd.read_csv(csv_path)
 
 
 def clean_up(subj_work, subj_final, model_name):
