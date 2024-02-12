@@ -7,10 +7,13 @@ DbUpdateBetas : update db_emorep tables
 
 # %%
 import os
+import platform
 import pandas as pd
 from typing import Type, Tuple
-import mysql.connector
 from contextlib import contextmanager
+
+if "labarserv2" in platform.uname().node:
+    import mysql.connector
 
 
 # %%
