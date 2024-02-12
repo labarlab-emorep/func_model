@@ -6,6 +6,7 @@ schedule_afni : schedule AFNI workflow with Slurm
 schedule_fsl : schedule FSL workflow with Slurm
 
 """
+
 import os
 import sys
 import subprocess
@@ -227,8 +228,6 @@ def schedule_fsl(
     proj_deriv,
     work_deriv,
     log_dir,
-    user_name,
-    rsa_key,
 ):
     """Write and schedule pipeline.
 
@@ -259,10 +258,6 @@ def schedule_fsl(
         Output location for intermediates
     log_dir : path
         Output location for log files and scripts
-    user_name : str
-        User name for DCC, labarserv2
-    rsa_key : str, os.PathLike
-        Location of RSA key for labarserv2
 
     Returns
     -------
@@ -309,8 +304,6 @@ def schedule_fsl(
                 "{proj_deriv}",
                 "{work_deriv}",
                 "{log_dir}",
-                "{user_name}",
-                "{rsa_key}",
             )
             wf_obj.{wf_meth}()
         """
@@ -325,8 +318,6 @@ def schedule_fsl(
                 "{proj_deriv}",
                 "{work_deriv}",
                 "{log_dir}",
-                "{user_name}",
-                "{rsa_key}",
             )
             wf_obj.model_task()
         """

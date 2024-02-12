@@ -15,6 +15,8 @@ Model names (see fsl_model):
 Notes
 -----
 - Extraction of betas for model name 'tog' has been deprecated.
+- Requires environmental variable 'SQL_PASS' to contain
+    user password for db_emorep.
 
 Examples
 --------
@@ -23,6 +25,7 @@ fsl_extract --sub-list sub-ER0009 sub-ER0016 --overwrite
 fsl_extract --sub-all --model-name lss
 
 """
+
 # %%
 import os
 import sys

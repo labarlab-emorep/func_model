@@ -13,6 +13,7 @@ ExtractBetas : extract task beta-coefficiens from FSL GLM
 fsl_classify_mask : generate template mask from classifier output
 
 """
+
 # %%
 import os
 import glob
@@ -34,8 +35,18 @@ class _SupportFsl:
 
     def __init__(self, keoki_path: Union[str, os.PathLike]):
         """Initialize."""
-        self._keoki_ip = "ccn-labarserv2.vm.duke.edu"
+        try:
+            self._rsa_key = os.environ["RSA_LS2"]
+        except KeyError as e:
+            raise Exception(
+                "Missing required environmental variable RSA_LS2"
+            ) from e
         self._keoki_path = keoki_path
+
+    @property
+    def _ls2_ip(self):
+        """Return labarserv2 ip addr."""
+        return "ccn-labarserv2.vm.duke.edu"
 
     def _submit_rsync(self, src: str, dst: str) -> Tuple:
         """Execute rsync between DCC and labarserv2."""
@@ -62,7 +73,7 @@ class _SupportFsl:
         make_dst = f"""\
             ssh \
                 -i {self._rsa_key} \
-                {self._user_name}@{self._keoki_ip} \
+                {os.environ["USER"]}@{self._ls2_ip} \
                 " command ; bash -c 'mkdir -p {keoki_dst}'"
             """
         _, _ = self._quick_sp(make_dst)
@@ -390,10 +401,6 @@ class FslFirst(_SupportFslFirst):
         Output location for intermediates
     log_dir : path
         Output location for log files and scripts
-    user_name : str
-        User name for DCC, labarserv2
-    rsa_key : str, os.PathLike
-        Location of RSA key for labarserv2
     keoki_path : str, os.PathLike, optional
         Location of project directory on Keoki
 
@@ -424,8 +431,6 @@ class FslFirst(_SupportFslFirst):
         proj_deriv,
         work_deriv,
         log_dir,
-        user_name,
-        rsa_key,
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
@@ -444,11 +449,9 @@ class FslFirst(_SupportFslFirst):
         self._proj_deriv = proj_deriv
         self._work_deriv = work_deriv
         self._log_dir = log_dir
-        self._user_name = user_name
         self._keoki_proj = (
-            f"{self._user_name}@{self._keoki_ip}:{self._keoki_path}"
+            f"{os.environ['USER']}@{self._ls2_ip}:{self._keoki_path}"
         )
-        self._rsa_key = rsa_key
 
     def model_rest(self):
         """Run an FSL first-level model for resting EPI data.
@@ -646,10 +649,6 @@ class FslSecond(_SupportFslSecond):
         Output location for intermediates
     log_dir : path
         Output location for log files and scripts
-    user_name : str
-        User name for DCC, labarserv2
-    rsa_key : str, os.PathLike
-        Location of RSA key for labarserv2
     keoki_path : str, os.PathLike, optional
         Location of project directory on Keoki
 
@@ -673,8 +672,6 @@ class FslSecond(_SupportFslSecond):
         proj_deriv,
         work_deriv,
         log_dir,
-        user_name,
-        rsa_key,
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
@@ -689,11 +686,9 @@ class FslSecond(_SupportFslSecond):
         self._proj_deriv = proj_deriv
         self._work_deriv = work_deriv
         self._log_dir = log_dir
-        self._user_name = user_name
         self._keoki_proj = (
-            f"{self._user_name}@{self._keoki_ip}:{self._keoki_path}"
+            f"{os.environ['USER']}@{self._ls2_ip}:{self._keoki_path}"
         )
-        self._rsa_key = rsa_key
         self._model_level = "second"
 
     def model_task(self):

@@ -20,12 +20,16 @@ Level names:
     - first = first-level GLM
     - second = second-level GLM, for model-name=sep|tog only
 
+Notes
+-----
+- Requires environmental variable 'RSA_LS2' to contain
+    location of RSA key for labarserv2
+
 Examples
 --------
-fsl_model -s sub-ER0009 -k $RSA_LS2
-fsl_model -s sub-ER0009 sub-ER0016 -k $RSA_LS2
+fsl_model -s sub-ER0009
+fsl_model -s sub-ER0009 sub-ER0016 --model-name tog
 fsl_model -s sub-ER0009 \
-    -k /path/to/.ssh/id_rsa_labarserv2 \
     --model-name rest
     --preproc-type smoothed
 
@@ -106,13 +110,6 @@ def _get_args():
         type=str,
         required=True,
     )
-    required_args.add_argument(
-        "-k",
-        "--rsa-key",
-        type=str,
-        help="Location of labarserv2 RSA key",
-        required=True,
-    )
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -135,7 +132,6 @@ def main():
     proj_dir = args.proj_dir
     model_name = args.model_name
     model_level = args.model_level
-    rsa_key = args.rsa_key
     preproc_type = args.preproc_type
 
     # Check model_name, model_level
@@ -150,8 +146,6 @@ def main():
     ) and model_level != "first":
         print("Second level not supported for models lss, rest")
         sys.exit(1)
-    if not os.path.exists(rsa_key):
-        raise FileNotFoundError(f"Expected path to RSA key, found : {rsa_key}")
     if not fsl_helper.valid_preproc(preproc_type):
         raise ValueError(f"Unspported preproc type : {preproc_type}")
 
@@ -159,16 +153,16 @@ def main():
     proj_deriv = os.path.join(proj_dir, "derivatives")
     proj_rawdata = os.path.join(proj_dir, "rawdata")
 
-    # Get environmental vars
-    user_name = os.environ["USER"]
-    try:
-        os.environ["FSLDIR"]
-    except KeyError:
-        print("Missing required global variable FSLDIR")
-        sys.exit(1)
+    # Check environmental vars
+    for chk_env in ["FSLDIR", "RSA_LS2"]:
+        try:
+            os.environ[chk_env]
+        except KeyError:
+            print(f"Missing required environmental variable {chk_env}")
+            sys.exit(1)
 
     # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", user_name, "EmoRep")
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,
@@ -191,8 +185,6 @@ def main():
                 proj_deriv,
                 work_deriv,
                 log_dir,
-                user_name,
-                rsa_key,
             )
             time.sleep(3)
 
