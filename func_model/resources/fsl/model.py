@@ -1034,9 +1034,9 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         ----------
         run : str
             BIDS run identifier
-        preproc_path : path
+        preproc_path : str, os.PathLike
             Location and name of preprocessed EPI file
-        confound_path : path
+        confound_path : str, os.PathLike
             Location, name of confounds file
         common_cond : dict
             Contains paths to condition files common

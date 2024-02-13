@@ -199,7 +199,7 @@ class _SupportFslFirst(_SupportFsl):
             )
 
     def _get_preproc(self):
-        """Get preprocessed EPI paths of specific task."""
+        """Set attr sess_preproc for paths to preproc EPIs."""
         all_preproc = sorted(
             glob.glob(f"{self._subj_fsl}/*{self._preproc_type}_bold.nii.gz")
         )
