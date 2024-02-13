@@ -602,10 +602,10 @@ class FslFirst(_SupportFslFirst):
         )
 
     def _run_feat(self, design_list: list):
-        """Run FSL FEAT and clean output."""
-        _ = Pool().starmap(
-            model.run_feat,
-            [
+        """Multiprocess FSL FEAT and clean output."""
+        c_size = 10 if self._model_name == "lss" else None
+        with Pool() as pool:
+            items = [
                 (
                     fsf_path,
                     self._subj,
@@ -614,8 +614,8 @@ class FslFirst(_SupportFslFirst):
                     self._log_dir,
                 )
                 for fsf_path in design_list
-            ],
-        )
+            ]
+            _ = pool.starmap(model.run_feat, items, chunksize=c_size)
         fsl_helper.clean_up(
             self._subj_work, self._subj_final, self._model_name
         )
