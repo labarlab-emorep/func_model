@@ -68,7 +68,7 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="tog",
+        default="sep",
         choices=["sep", "tog", "rest", "lss"],
         help=textwrap.dedent(
             """\
@@ -101,7 +101,7 @@ def _get_args():
         ),
     )
     parser.add_argument(
-        "--sess-list",
+        "--ses-list",
         nargs="+",
         choices=["ses-day2", "ses-day3"],
         default=["ses-day2", "ses-day3"],
@@ -142,7 +142,7 @@ def main():
     # Get cli input
     args = _get_args().parse_args()
     subj_list = args.sub_list
-    sess_list = args.sess_list
+    sess_list = args.ses_list
     proj_dir = args.proj_dir
     model_name = args.model_name
     model_level = args.model_level
