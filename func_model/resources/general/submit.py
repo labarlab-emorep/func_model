@@ -322,12 +322,12 @@ def schedule_fsl(
             wf_obj.model_task()
         """
 
-    # Issues with getattr triggering inner function
-    if model_level == "first":
-        sbatch_cmd = _first_call()
-    else:
-        sbatch_cmd = _second_call()
-    sbatch_cmd = textwrap.dedent(sbatch_cmd)
+    # Trigger appropriate inner function for model_level
+    sbatch_cmd = (
+        textwrap.dedent(_first_call())
+        if model_level == "first"
+        else textwrap.dedent(_second_call())
+    )
     py_script = (
         f"{log_dir}/run-fsl_model-{model_name}_"
         + f"level-{model_level}_{subj}_{sess}.py"

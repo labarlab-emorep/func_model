@@ -28,9 +28,9 @@ Notes
 Examples
 --------
 fsl_model -s sub-ER0009
-fsl_model -s sub-ER0009 sub-ER0016 --model-name tog
-fsl_model -s sub-ER0009 \
-    --model-name rest
+fsl_model -s sub-ER0009 sub-ER0016 \
+    --model-name tog \
+    --ses-list ses-day2 \
     --preproc-type smoothed
 
 """
@@ -68,7 +68,7 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="tog",
+        default="sep",
         choices=["sep", "tog", "rest", "lss"],
         help=textwrap.dedent(
             """\
@@ -100,6 +100,19 @@ def _get_args():
             """
         ),
     )
+    parser.add_argument(
+        "--ses-list",
+        nargs="+",
+        choices=["ses-day2", "ses-day3"],
+        default=["ses-day2", "ses-day3"],
+        help=textwrap.dedent(
+            """\
+            List of subject IDs to submit for pre-processing
+            (default : %(default)s)
+            """
+        ),
+        type=str,
+    )
 
     required_args = parser.add_argument_group("Required Arguments")
     required_args.add_argument(
@@ -129,6 +142,7 @@ def main():
     # Get cli input
     args = _get_args().parse_args()
     subj_list = args.sub_list
+    sess_list = args.ses_list
     proj_dir = args.proj_dir
     model_name = args.model_name
     model_level = args.model_level
@@ -174,7 +188,7 @@ def main():
 
     # Submit jobs for each participant, session
     for subj in subj_list:
-        for sess in ["ses-day2", "ses-day3"]:
+        for sess in sess_list:
             _, _ = submit.schedule_fsl(
                 subj,
                 sess,
