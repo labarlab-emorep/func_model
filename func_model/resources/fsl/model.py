@@ -843,7 +843,7 @@ class _FirstLss:
             )
         return design_list
 
-    def _lss_switch(self, lss_dict) -> list:
+    def _lss_switch(self, lss_dict: dict) -> list:
         """Make an lss switch for each event, trigger design generation."""
         lss_list = []
         for _num, event_dict in lss_dict.items():
@@ -878,8 +878,9 @@ class _FirstLss:
         field_switch.update(self._switch_lss)
 
         # Update fields in relevant template
+        fsf_edit = self._fsf_edit[:]
         for old, new in field_switch.items():
-            self._fsf_edit = self._fsf_edit.replace(old, new)
+            fsf_edit = fsf_edit.replace(old, new)
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
@@ -887,7 +888,7 @@ class _FirstLss:
             f"{self._run}_level-first_name-lss_"
             + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
         )
-        out_path = _write_design(out_dir, out_name, self._fsf_edit)
+        out_path = _write_design(out_dir, out_name, fsf_edit)
         return out_path
 
 
@@ -1034,9 +1035,9 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         ----------
         run : str
             BIDS run identifier
-        preproc_path : path
+        preproc_path : str, os.PathLike
             Location and name of preprocessed EPI file
-        confound_path : path
+        confound_path : str, os.PathLike
             Location, name of confounds file
         common_cond : dict
             Contains paths to condition files common
