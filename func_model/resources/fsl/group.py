@@ -675,6 +675,56 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         self.cluster(mask_path, size=clust_size, vox_value=1)
         return arr_fill
 
+    def sql_masks(self, task, model, con, out_dir):
+        """Title."""
+        #
+        # if task not in ["movies"]
+        db_con = sql_database.DbConnectDCC()
+
+        #
+        task_id, _ = db_con.fetch_data(
+            f"select * from ref_fsl_task where task_name = '{task}'"
+        )
+        model_id, _ = db_con.fetch_data(
+            f"select * from ref_fsl_model where model_name = '{model}'"
+        )
+        con_id, _ = db_con.fetch_data(
+            f"select * from ref_fsl_contrast where con_name = '{con}'"
+        )
+
+        #
+        df_emo = db_con.fetch_df("select emo_name from ref_emo", "emo_name")
+        emo_list = df_emo["emo_name"]
+        emo_sel = [f"a.emo_{x}" for x in emo_list]
+        col_list = ["voxel_name"] + emo_list
+        sql_cmd = f"""select distinct
+            b.voxel_name, {', '.join(emo_sel)}
+            from test_plsda_binary_gm a
+            join ref_voxel_gm b on a.voxel_id = b.voxel_id
+            where a.fsl_task_id = {task_id} and a.fsl_model_id = {model_id}
+                and a.fsl_con_id = {con_id}
+        """
+        df_bin = db_con.fetch_df(sql_cmd, col_list)
+
+        #
+        emo_masks = {}
+        for emo in emo_list[0]:
+            out_file = (
+                f"binary_model-{model}_task-{task}_"
+                + f"con-{con}_emo-{emo}_map.nii.gz"
+            )
+            out_path = os.path.join(out_dir, out_file)
+            arr_fill = self.empty_matrix.copy()
+            for voxel_coord in df_bin["voxel_name"]:
+                x, y, z = voxel_coord.split(".")
+                arr_fill[x][y][z] = df_bin.loc[voxel_coord, emo]
+            emo_img = nib.NiftiImage(
+                arr_fill, affine=None, header=self.img_header
+            )
+            nib.save(emo_img, out_path)
+            emo_masks[emo] = out_path
+        return emo_masks
+
 
 class ConjunctAnalysis(_MapMethods):
     """Generate conjunction maps.

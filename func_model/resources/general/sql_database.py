@@ -14,6 +14,83 @@ from contextlib import contextmanager
 
 if "labarserv2" in platform.uname().node:
     import mysql.connector
+elif "dcc" in platform.uname().node:
+    import pymysql
+    import paramiko
+    from sshtunnel import SSHTunnelForwarder
+
+
+# %%
+class DbConnectDCC:
+    def __init__(self):
+        try:
+            os.environ["SQL_PASS"]
+        except KeyError as e:
+            raise Exception(
+                "No global variable 'SQL_PASS' defined in user env"
+            ) from e
+
+        self._connect_dcc()
+
+    def _connect_dcc(self):
+        """Connect to MySQL server from DCC."""
+        try:
+            os.environ["RSA_LS2"]
+        except KeyError as e:
+            raise Exception(
+                "No global variable 'RSA_LS2' defined in user env"
+            ) from e
+
+        self._connect_ssh()
+        self.con = pymysql.connect(
+            host="127.0.0.1",
+            user=os.environ["USER"],
+            passwd=os.environ["SQL_PASS"],
+            db="db_emorep",
+            port=self._ssh_tunnel.local_bind_port,
+        )
+
+    def _connect_ssh(self):
+        """Start ssh tunnel."""
+        rsa_keoki = paramiko.RSAKey.from_private_key_file(
+            os.environ["RSA_LS2"]
+        )
+        self._ssh_tunnel = SSHTunnelForwarder(
+            ("ccn-labarserv2.vm.duke.edu", 22),
+            ssh_username=os.environ["USER"],
+            ssh_pkey=rsa_keoki,
+            remote_bind_address=("127.0.0.1", 3306),
+        )
+        self._ssh_tunnel.start()
+
+    @contextmanager
+    def _con_cursor(self):
+        """Yield cursor."""
+        cursor = self.con.cursor()
+        try:
+            yield cursor
+        finally:
+            cursor.close()
+
+    def fetch_data(self, sql_cmd: str) -> Tuple:
+        """Return single row from query output."""
+        with self._con_cursor() as cur:
+            cur.execute(sql_cmd)
+            rows = cur.fetchall()
+        return rows
+
+    def fetch_df(self, sql_cmd: str, col_names: list) -> pd.DataFrame:
+        """Return dataframe from query output.
+
+        Example
+        -------
+        db_con = sql_database.DbConnect()
+        sql_cmd = "select * from ref_subj"
+        col_names = ["subj_id", "subj_name"]
+        df_subj = db_con.fetch_all(sql_cmd, col_names)
+
+        """
+        return pd.DataFrame(self.fetch_data(sql_cmd), columns=col_names)
 
 
 # %%
@@ -50,7 +127,7 @@ class DbConnect:
     """
 
     def __init__(self):
-        """Set db_con attr as mysql connection."""
+        """Set con attr as mysql connection."""
         try:
             os.environ["SQL_PASS"]
         except KeyError as e:
