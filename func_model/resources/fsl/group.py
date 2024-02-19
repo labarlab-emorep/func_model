@@ -679,16 +679,16 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         """Title."""
         #
         # if task not in ["movies"]
-        db_con = sql_database.DbConnectDCC()
+        db_con = sql_database.DbConnect()
 
         #
-        task_id, _ = db_con.fetch_data(
+        task_id, _ = db_con.fetch_rows(
             f"select * from ref_fsl_task where task_name = '{task}'"
         )
-        model_id, _ = db_con.fetch_data(
+        model_id, _ = db_con.fetch_rows(
             f"select * from ref_fsl_model where model_name = '{model}'"
         )
-        con_id, _ = db_con.fetch_data(
+        con_id, _ = db_con.fetch_rows(
             f"select * from ref_fsl_contrast where con_name = '{con}'"
         )
 
@@ -705,6 +705,7 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
                 and a.fsl_con_id = {con_id}
         """
         df_bin = db_con.fetch_df(sql_cmd, col_list)
+        db_con.close_con()
 
         #
         emo_masks = {}
