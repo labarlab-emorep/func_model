@@ -144,7 +144,7 @@ class DbConnect:
         df_subj = db_con.fetch_df(sql_cmd, col_names)
 
         """
-        return pd.DataFrame(self.fetch_rows(), columns=col_names)
+        return pd.DataFrame(self.fetch_rows(sql_cmd), columns=col_names)
 
     def fetch_rows(self, sql_cmd: str) -> Tuple:
         """Return rows from query output.
