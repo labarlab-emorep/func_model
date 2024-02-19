@@ -9,7 +9,7 @@ DbUpdateBetas : update db_emorep tables
 import os
 import platform
 import pandas as pd
-from typing import Type, Tuple
+from typing import Type
 from contextlib import contextmanager
 
 if "labarserv2" in platform.uname().node:
@@ -146,7 +146,7 @@ class DbConnect:
         """
         return pd.DataFrame(self.fetch_rows(sql_cmd), columns=col_names)
 
-    def fetch_rows(self, sql_cmd: str) -> Tuple:
+    def fetch_rows(self, sql_cmd: str) -> list:
         """Return rows from query output.
 
         Example

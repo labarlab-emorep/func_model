@@ -1341,43 +1341,28 @@ def fsl_classify_mask(
 ):
     """Convert a dataframe of classifier values into NIfTI masks.
 
-    Orient to NIfTI header and matrix size from a template, then
-    iterate through each row of the classifier importance output
-    and make a mask in template space from the row values.
-
-    Check for data in:
-        <proj-dir>/analyses/classify_fMRI_plsda/classifier_output
-
-    and writes output to:
-        <proj-dir>/analyses/classify_fMRI_plsda/voxel_importance_maps/name-*_task-*_maps
+    Make binary cluster maps in MNI space from emo_* fields of
+    db_emorep.tbl_plsda_binary_gm. Derives NIfTI header and matrix
+    from tpl_path.
 
     Parameters
     ----------
-    proj_dir : path
+    proj_dir : str, os.PathLike
         Location of project directory
     model_name : str
-        [sep | tog]
+        {"sep", "tog"}
         FSL model identifier
     model_level : str
-        [first]
+        {"first"}
         FSL model level
     con_name : str
-        [stim | replay | tog]
+        {"stim", "tog", "replay"}
         Contrast name of extracted coefficients
     task_name : str
-        [movies | scenarios | all]
+        {"movies", "scenarios", "both"}
         Name of stimulus type
-    tpl_path : path
+    tpl_path : str, os.PathLike
         Location and name of template
-
-    Raises
-    ------
-    FileNotFoundError
-        Missing template
-        Missing dataframe, or wrong dataframe name
-    ValueError
-        Unexpected user-specified parameters
-        Unexpected number of emotions/rows in dataframe
 
     """
     # Check user input
@@ -1392,29 +1377,7 @@ def fsl_classify_mask(
     if not os.path.exists(tpl_path):
         raise FileNotFoundError(f"Missing file : {tpl_path}")
 
-    # Identify classifier dataframe
-    data_dir = os.path.join(
-        proj_dir, "analyses/classify_fMRI_plsda/classifier_output"
-    )
-    class_path = os.path.join(
-        data_dir,
-        f"level-{model_level}_name-{model_name}_task-{task_name}_"
-        + f"con-{con_name}Washout_voxel-importance.tsv",
-    )
-    if not os.path.exists(class_path):
-        raise FileNotFoundError(
-            f"Check filename -- failed to find : {class_path}"
-        )
-
-    # Load, check dataframe
-    df_import = pd.read_csv(class_path, sep="\t")
-    emo_list = df_import["emo_id"].tolist()
-    if len(emo_list) != 15:
-        raise ValueError(
-            f"Unexpected number of emotions from df.emo_id : {emo_list}"
-        )
-
-    # Make a mask for each emotion in dataframe
+    # Setup output location
     out_dir = os.path.join(
         proj_dir,
         "analyses/classify_fMRI_plsda/voxel_importance_maps",
@@ -1422,20 +1385,27 @@ def fsl_classify_mask(
     )
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    mk_mask = fsl_group.ImportanceMask()
-    mk_mask.mine_template(tpl_path)
+
+    # Derive MNI header info
+    mk_mask = fsl_group.ImportanceMask(tpl_path)
+
+    # Generate binary mask and cluster for each
+    # db_emorep.tbl_plsda_binary_gm.emo_* field
     mask_list = []
+    emo_list = mk_mask.emo_names()
     for emo_name in emo_list:
         print(f"Making importance mask for : {emo_name}")
-        df_emo = df_import[df_import["emo_id"] == emo_name]
-        df_emo = df_emo.drop("emo_id", axis=1).reset_index(drop=True)
-        mask_path = os.path.join(
-            out_dir,
-            f"level-{model_level}_name-{model_name}_task-{task_name}_"
-            + f"con-{con_name}Washout_emo-{emo_name}_map.nii.gz",
+        mask_list.append(
+            mk_mask.sql_masks(
+                task_name,
+                model_name,
+                con_name,
+                emo_name,
+                "binary",
+                out_dir,
+                cluster=True,
+            )
         )
-        _ = mk_mask.make_mask(df_emo, mask_path, task_name)
-        mask_list.append(mask_path)
 
     # Trigger conjunction analyses
     conj = fsl_group.ConjunctAnalysis(mask_list, out_dir)
