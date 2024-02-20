@@ -568,7 +568,7 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
 
     Example
     -------
-    im_mask = group.ImportanceMask()
+    im_mask = group.ImportanceMask(Path)
     emo_list = im_mask.emo_names()
     for emo in emo_list:
         mask_path = im_mask.sql_masks(*args)
@@ -736,8 +736,8 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         """
         # Validate args
 
-        def print_err(arg_name, arg_value):
-            """Title."""
+        def print_err(arg_name: str, arg_value: str):
+            """Raise error for unsupported args."""
             raise ValueError(f"Unexpected {arg_name} value : {arg_value}")
 
         if task_name not in ["movies", "scenarios", "both"]:
@@ -780,7 +780,7 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         )[0]
 
         # Pull data
-        plsda_table = f"test_plsda_{binary_importance}_gm"
+        plsda_table = f"tbl_plsda_{binary_importance}_gm"
         print(
             f"\tDownloading data from {plsda_table} for emotion : {emo_name}"
         )
