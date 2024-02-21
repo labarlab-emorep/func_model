@@ -550,59 +550,65 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
 
     Inherits general.matrix.NiftiArray, _MapMethods
 
+    Parameters
+    ----------
+    tpl_path : path
+        Location and name of template
+
     Methods
     -------
-    mine_template(tpl_path)
-        Extract relevant information from a template
+    emo_names()
+        Return list of emotion names in db_emorep.ref_emo
     make_mask(df, mask_path)
+        Deprecated.
         Turn dataframe of values into NIfTI mask
+    sql_masks()
+        Pull data from db_emorep.tbl_plsda_* to
+        generate masks
 
     Example
     -------
-    im_obj = group.ImportanceMask()
-    im_obj.mine_template("/path/to/template.nii.gz")
-    im_obj.make_mask(
-        pd.DataFrame, "/path/to/output/mask.nii.gz", "task-movies"
-    )
+    im_mask = group.ImportanceMask(Path)
+    emo_list = im_mask.emo_names()
+    for emo in emo_list:
+        mask_path = im_mask.sql_masks(*args)
 
     """
 
-    def __init__(self):
+    def __init__(self, tpl_path):
         """Initialize."""
         print("Initializing ImportanceMask")
         super().__init__()
+        if not os.path.exists(tpl_path):
+            raise FileNotFoundError(f"Missing file : {tpl_path}")
+        self._tpl_path = tpl_path
+        self._mine_template()
 
-    def mine_template(self, tpl_path):
+    def _mine_template(self):
         """Mine a NIfTI template for information.
 
         Capture the NIfTI header and generate an empty
         np.ndarray of the same size as the template.
 
-        Parameters
-        ----------
-        tpl_path : path
-            Location and name of template
-
         Attributes
         ----------
-        img_header : obj, nibabel.nifti1.Nifti1Header
+        _img_header : obj, nibabel.nifti1.Nifti1Header
             Header data of template
-        empty_matrix : np.ndarray
+        _empty_matrix : np.ndarray
             Matrix containing zeros that is the same size as
             the template.
 
         """
-        if not os.path.exists(tpl_path):
-            raise FileNotFoundError(f"Missing file : {tpl_path}")
-
-        print(f"\tMining domain info from : {tpl_path}")
-        img = self.nifti_to_img(tpl_path)
+        print(f"\tMining domain info from : {self._tpl_path}")
+        img = self.nifti_to_img(self._tpl_path)
         img_data = img.get_fdata()
-        self.img_header = img.header
-        self.empty_matrix = np.zeros(img_data.shape)
+        self._img_header = img.header
+        self._empty_matrix = np.zeros(img_data.shape)
 
     def make_mask(self, df, mask_path, task_name):
         """Convert row values into matrix and save as NIfTI mask.
+
+        Deprecated.
 
         Using the dataframe column names, fill an empty matrix
         with row values and then save the file as a NIfTI mask.
@@ -633,6 +639,8 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
             Improper formatting of dataframe
 
         """
+        return
+
         # Check for required attrs
         if not hasattr(self, "empty_matrix") and not hasattr(
             self, "img_header"
@@ -674,6 +682,142 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         clust_size = 5 if task_name == "scenarios" else 10
         self.cluster(mask_path, size=clust_size, vox_value=1)
         return arr_fill
+
+    def emo_names(self) -> list:
+        """Return list of emotions in db_emorep.ref_emo."""
+        db_con = sql_database.DbConnect()
+        emo_list = list(
+            db_con.fetch_df(
+                "select emo_name from ref_emo", ["emo_name"]
+            ).emo_name
+        )
+        db_con.close_con()
+        return emo_list
+
+    def sql_masks(
+        self,
+        task_name,
+        model_name,
+        con_name,
+        emo_name,
+        binary_importance,
+        out_dir,
+        cluster=False,
+    ):
+        """Generate mask from db_emorep.tbl_plsda_* data.
+
+        Parameters
+        ----------
+        task_name : str
+            {"movies", "scenarios", "both"}
+            Classifier task
+        model_name : str
+            {"sep", "tog", "rest", "lss"}
+            FSL model name
+        con_name : str
+            {"stim", "tog", "replay"}
+            FSL contrast name
+        emo_name : str
+            Emotion name e.g. "awe" or "amusement"
+        binary_importance : str
+            {"binary", "importance"}
+            Used to select tbl_plsda_*
+        out_dir : str, os.PathLike
+            Output directory path
+        cluster : bool, optional
+            Whether to conduct cluster thresholding, for
+            use when binary_importance="binary"
+
+        Returns
+        -------
+        str, os.PathLike
+            Location of generated mask
+
+        """
+        # Validate args
+
+        def print_err(arg_name: str, arg_value: str):
+            """Raise error for unsupported args."""
+            raise ValueError(f"Unexpected {arg_name} value : {arg_value}")
+
+        if task_name not in ["movies", "scenarios", "both"]:
+            print_err("task_name", task_name)
+        if model_name not in ["sep", "tog", "rest", "lss"]:
+            print_err("model_name", model_name)
+        if con_name not in ["stim", "tog", "replay"]:
+            print_err("con_name", con_name)
+        if binary_importance not in ["binary", "importance"]:
+            print_err("binary_importance", binary_importance)
+        if cluster and not binary_importance == "binary":
+            raise ValueError(
+                "Option 'cluster' only available when "
+                + "binary_importance='binary'"
+            )
+
+        emo_list = self.emo_names()
+        if emo_name not in emo_list:
+            print_err("emo_name", emo_name)
+
+        # Check for required attrs
+        if not hasattr(self, "_empty_matrix") and not hasattr(
+            self, "_img_header"
+        ):
+            raise AttributeError(
+                "Attributes _empty_matrix, _img_header "
+                + "required. Try ImportanceMask._mine_template."
+            )
+
+        # Get ID values
+        db_con = sql_database.DbConnect()
+        task_id, _ = db_con.fetch_rows(
+            f"select * from ref_fsl_task where task_name = '{task_name}'"
+        )[0]
+        model_id, _ = db_con.fetch_rows(
+            f"select * from ref_fsl_model where model_name = '{model_name}'"
+        )[0]
+        con_id, _ = db_con.fetch_rows(
+            f"select * from ref_fsl_contrast where con_name = '{con_name}'"
+        )[0]
+
+        # Pull data
+        plsda_table = f"tbl_plsda_{binary_importance}_gm"
+        print(
+            f"\tDownloading data from {plsda_table} for emotion : {emo_name}"
+        )
+        sql_cmd = f"""select distinct
+            b.voxel_name, a.emo_{emo_name}
+            from {plsda_table} a
+            join ref_voxel_gm b on a.voxel_id = b.voxel_id
+            where a.fsl_task_id = {task_id} and a.fsl_model_id = {model_id}
+                and a.fsl_con_id = {con_id}
+        """
+        df_bin = db_con.fetch_df(sql_cmd, ["voxel_name", emo_name])
+        db_con.close_con()
+
+        # Build and write NIfTI file
+        print(
+            f"\tBuilding {binary_importance} map for emotion : {emo_name} ..."
+        )
+        out_file = (
+            f"{binary_importance}_model-{model_name}_task-{task_name}_"
+            + f"con-{con_name}_emo-{emo_name}_map.nii.gz"
+        )
+        out_path = os.path.join(out_dir, out_file)
+        arr_fill = self._empty_matrix.copy()
+        for _, row in df_bin.iterrows():
+            x, y, z = row["voxel_name"].split(".")
+            arr_fill[int(x)][int(y)][int(z)] = row[emo_name]
+        emo_img = nib.Nifti1Image(
+            arr_fill, affine=None, header=self._img_header
+        )
+        nib.save(emo_img, out_path)
+        print(f"\tWrote : {out_path}")
+
+        # Manage clustering
+        if cluster:
+            clust_size = 5 if task_name == "scenarios" else 10
+            self.cluster(out_path, size=clust_size, vox_value=1)
+        return out_path
 
 
 class ConjunctAnalysis(_MapMethods):
@@ -783,3 +927,6 @@ class ConjunctAnalysis(_MapMethods):
             "Med": ["awe", "romance", "joy"],
         }
         self._conj_aro_val(map_aro, "aro")
+
+
+# %%

@@ -9,11 +9,15 @@ DbUpdateBetas : update db_emorep tables
 import os
 import platform
 import pandas as pd
-from typing import Type, Tuple
+from typing import Type
 from contextlib import contextmanager
 
 if "labarserv2" in platform.uname().node:
     import mysql.connector
+elif "dcc" in platform.uname().node:
+    import pymysql
+    import paramiko
+    from sshtunnel import SSHTunnelForwarder
 
 
 # %%
@@ -31,10 +35,10 @@ class DbConnect:
         Close database connection
     exec_many()
         Update mysql db_emorep.tbl_* with multiple values
-    fetch_all()
-        Fetch all records given a query statement
-    fetch_one()
-        Fetch one record given a query statement
+    fetch_df()
+        Return pd.DataFrame from query statement
+    fetch_rows()
+        Return rows from query statement
 
     Notes
     -----
@@ -44,13 +48,13 @@ class DbConnect:
     Example
     -------
     db_con = DbConnect()
-    row = db_con.fetch_one("select * from ref_subj")
+    row = db_con.fetch_rows("select * from ref_subj limit 1")
     db_con.close_con()
 
     """
 
     def __init__(self):
-        """Set db_con attr as mysql connection."""
+        """Set con attr as mysql connection."""
         try:
             os.environ["SQL_PASS"]
         except KeyError as e:
@@ -58,6 +62,13 @@ class DbConnect:
                 "No global variable 'SQL_PASS' defined in user env"
             ) from e
 
+        if "labarserv2" in platform.uname().node:
+            self._connect_ls2()
+        elif "dcc" in platform.uname().node:
+            self._connect_dcc()
+
+    def _connect_ls2(self):
+        """Connect to MySQL server from labarserv2."""
         self.con = mysql.connector.connect(
             host="localhost",
             user=os.environ["USER"],
@@ -65,10 +76,41 @@ class DbConnect:
             database="db_emorep",
         )
 
+    def _connect_dcc(self):
+        """Connect to MySQL server from DCC."""
+        try:
+            os.environ["RSA_LS2"]
+        except KeyError as e:
+            raise Exception(
+                "No global variable 'RSA_LS2' defined in user env"
+            ) from e
+
+        self._connect_ssh()
+        self.con = pymysql.connect(
+            host="127.0.0.1",
+            user=os.environ["USER"],
+            passwd=os.environ["SQL_PASS"],
+            db="db_emorep",
+            port=self._ssh_tunnel.local_bind_port,
+        )
+
+    def _connect_ssh(self):
+        """Start ssh tunnel."""
+        rsa_keoki = paramiko.RSAKey.from_private_key_file(
+            os.environ["RSA_LS2"]
+        )
+        self._ssh_tunnel = SSHTunnelForwarder(
+            ("ccn-labarserv2.vm.duke.edu", 22),
+            ssh_username=os.environ["USER"],
+            ssh_pkey=rsa_keoki,
+            remote_bind_address=("127.0.0.1", 3306),
+        )
+        self._ssh_tunnel.start()
+
     @contextmanager
-    def _con_cursor(self, buf: int = False):
+    def _con_cursor(self):
         """Yield cursor."""
-        cursor = self.con.cursor(buffered=buf)
+        cursor = self.con.cursor()
         try:
             yield cursor
         finally:
@@ -91,7 +133,7 @@ class DbConnect:
             cur.executemany(sql_cmd, value_list)
             self.con.commit()
 
-    def fetch_all(self, sql_cmd: str, col_names: list) -> pd.DataFrame:
+    def fetch_df(self, sql_cmd: str, col_names: list) -> pd.DataFrame:
         """Return dataframe from query output.
 
         Example
@@ -99,28 +141,25 @@ class DbConnect:
         db_con = sql_database.DbConnect()
         sql_cmd = "select * from ref_subj"
         col_names = ["subj_id", "subj_name"]
-        df_subj = db_con.fetch_all(sql_cmd, col_names)
+        df_subj = db_con.fetch_df(sql_cmd, col_names)
 
         """
-        with self._con_cursor() as cur:
-            cur.execute(sql_cmd)
-            df = pd.DataFrame(cur.fetchall(), columns=col_names)
-        return df
+        return pd.DataFrame(self.fetch_rows(sql_cmd), columns=col_names)
 
-    def fetch_one(self, sql_cmd: str) -> Tuple:
-        """Return single row from query output.
+    def fetch_rows(self, sql_cmd: str) -> list:
+        """Return rows from query output.
 
         Example
         -------
         db_con = sql_database.DbConnect()
         sql_cmd = "select * from ref_subj"
-        row = db_con.fetch_all(sql_cmd)
+        rows = db_con.fetch_df(sql_cmd)
 
         """
-        with self._con_cursor(buf=True) as cur:
+        with self._con_cursor() as cur:
             cur.execute(sql_cmd)
-            row = cur.fetchone()
-        return row
+            rows = cur.fetchall()
+        return rows
 
     def close_con(self):
         """Close database connection."""
@@ -139,7 +178,7 @@ class _RefMaps:
     def _load_refs(self):
         """Supply mappings in format {name: id}."""
         # Reference task
-        df_task = self._db_con.fetch_all(
+        df_task = self._db_con.fetch_df(
             "select * from ref_task", ["task_id", "task_name"]
         )
         self.ref_task = {
@@ -147,7 +186,7 @@ class _RefMaps:
         }
 
         # Reference voxels
-        df_vox = self._db_con.fetch_all(
+        df_vox = self._db_con.fetch_df(
             "select * from ref_voxel_gm", ["voxel_id", "voxel_name"]
         )
         self.ref_voxel_gm = {
@@ -197,9 +236,10 @@ class DbUpdateBetas(_RefMaps):
         task_id = self.ref_task[task.split("-")[-1]]
         sql_cmd = (
             f"select * from tbl_betas_{model}_{con}_gm "
-            + f"where task_id = {task_id} and subj_id = {subj_id}"
+            + f"where task_id = {task_id} and subj_id = {subj_id} "
+            + "limit 1"
         )
-        row = self._db_con.fetch_one(sql_cmd)
+        row = self._db_con.fetch_rows(sql_cmd)
         return True if row else False
 
     def update_db(
