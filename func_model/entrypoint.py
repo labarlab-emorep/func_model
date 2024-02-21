@@ -1,4 +1,5 @@
 """Print entrypoint help."""
+
 import func_model._version as ver
 
 
@@ -23,12 +24,17 @@ def main():
 
     Sub-packages written for Duke Compute Cluster (DCC):
 
-        afni_model, fsl_model
+        - afni_model
+        - fsl_model
 
     Sub-packages written for labarserv2:
 
-        afni_extract, afni_univ, afni_mvm
-        fsl_extract, fsl_map, fsl_group
+        - afni_extract
+        - afni_univ
+        - afni_mvm
+        - fsl_extract
+        - fsl_map
+        - fsl_group
 
     """
     )
