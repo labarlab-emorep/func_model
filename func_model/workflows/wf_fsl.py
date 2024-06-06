@@ -1372,7 +1372,7 @@ def fsl_classify_mask(
         raise ValueError(f"Unsupported model level : {model_level}")
     if not fsl_helper.valid_contrast(con_name):
         raise ValueError(f"Unsupported contrast name : {con_name}")
-    if task_name not in ["movies", "scenarios", "all"]:
+    if task_name not in ["movies", "scenarios", "both"]:
         raise ValueError(f"Unexpected value for task : {task_name}")
     if not os.path.exists(tpl_path):
         raise FileNotFoundError(f"Missing file : {tpl_path}")
