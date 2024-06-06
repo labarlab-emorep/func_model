@@ -12,8 +12,7 @@ Writes output to:
 Examples
 --------
 fsl_map -t movies
-fsl_map -t all
-fsl_map -t movies \
+fsl_map -t both \
     --contrast-name tog \
     --model-name tog
 
@@ -89,11 +88,13 @@ def _get_args():
         "-t",
         "--task-name",
         type=str,
-        choices=["movies", "scenarios", "all"],
+        choices=["movies", "scenarios", "both"],
         required=True,
         help=textwrap.dedent(
             """\
-            Name of EmoRep stimulus type, corresponds to BIDS task field
+            Name of EmoRep stimulus type, corresponds to BIDS task field.
+            Used to identify data used for classifier, 'both' = classifier
+            trained on movies + scenarios data.
             (default : %(default)s)
             """
         ),
