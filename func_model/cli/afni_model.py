@@ -13,22 +13,29 @@ Model names:
         beta-coefficient for each event type (-stim_times_AM1)
     - rest = Conduct a resting-state analysis referencing example
         11 of afni_proc.py.
+    - mixed = TODO
 
 Output logs are written to:
     /work/$(whoami)/EmoRep/logs/func-afni_model-<model-name>_<timestamp>
 
+Requires
+--------
+TODO
+
 Examples
 --------
 afni_model -s sub-ER0009
-afni_model --model-name univ -s sub-ER0009 sub-ER0016
-afni_model --model-name rest -s sub-ER0016 sub-ER0024
+afni_model \
+    -s sub-ER0009 sub-ER0016 \
+    --sess ses-day2 \
+    --model-name mixed
 
 """
+
 # %%
 import os
 import sys
 import time
-import glob
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
@@ -46,9 +53,9 @@ def _get_args():
         "--model-name",
         type=str,
         default="univ",
+        choices=["univ", "rest", "mixed"],
         help=textwrap.dedent(
             """\
-            [univ | rest | mixed]
             AFNI model name/type, for triggering different workflows
             (default : %(default)s)
             """
@@ -65,17 +72,27 @@ def _get_args():
             """
         ),
     )
-
-    required_args = parser.add_argument_group("Required Arguments")
-    required_args.add_argument(
-        "-s",
-        "--sub-list",
+    parser.add_argument(
+        "--sess",
         nargs="+",
+        choices=["ses-day2", "ses-day3"],
+        default=["ses-day2", "ses-day3"],
+        type=str,
         help=textwrap.dedent(
             """\
-            List of subject IDs to submit for pre-processing
+            "List of session BIDS IDs"
+            (default : %(default)s)
             """
         ),
+    )
+
+    required_args = parser.add_argument_group("Required Arguments")
+
+    required_args.add_argument(
+        "-s",
+        "--subj",
+        nargs="+",
+        help="List of subject BIDS IDs",
         type=str,
         required=True,
     )
@@ -93,7 +110,8 @@ def main():
 
     # Capture CLI arguments
     args = _get_args().parse_args()
-    subj_list = args.sub_list
+    subj_list = args.subj
+    sess_list = args.sess
     proj_dir = args.proj_dir
     model_name = args.model_name
 
@@ -107,34 +125,23 @@ def main():
     proj_deriv = os.path.join(proj_dir, "derivatives")
     proj_rawdata = os.path.join(proj_dir, "rawdata")
 
-    # Get environmental vars
-    sing_afni = os.environ["SING_AFNI"]
-    user_name = os.environ["USER"]
+    # # Get environmental vars
+    # sing_afni = os.environ["SING_AFNI"]
+    # user_name = os.environ["USER"]
 
     # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", user_name, "EmoRep")
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,
         f"logs/func-afni_model-{model_name}_"
         + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
     )
-    # log_dir = os.path.join(work_deriv, "logs/func_model-afni_test")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
     # Submit jobs for each participant, session
     for subj in subj_list:
-        sess_list = [
-            os.path.basename(x)
-            for x in glob.glob(
-                f"{proj_deriv}/pre_processing/fmriprep/{subj}/ses-*"
-            )
-        ]
-        if not sess_list:
-            print(f"No pre-processed sessions detected for {subj}, skipping")
-            continue
-
         for sess in sess_list:
             _, _ = submit.schedule_afni(
                 subj,

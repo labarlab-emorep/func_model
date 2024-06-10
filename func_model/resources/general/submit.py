@@ -127,7 +127,6 @@ def schedule_afni(
     proj_rawdata,
     proj_deriv,
     work_deriv,
-    sing_afni,
     model_name,
     log_dir,
 ):
@@ -150,10 +149,8 @@ def schedule_afni(
         and fsl_denoise sub-directories
     work_deriv : path
         Parent location for writing pipeline intermediates
-    sing_afni : path
-        Location of AFNI singularity file
     model_name : str
-        [univ | rest | mixed]
+        {"univ", "rest", "mixed"}
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -196,7 +193,6 @@ def schedule_afni(
             "{proj_rawdata}",
             "{proj_deriv}",
             "{work_deriv}",
-            "{sing_afni}",
             "{model_name}",
             "{log_dir}",
         )

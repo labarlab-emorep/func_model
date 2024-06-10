@@ -7,6 +7,7 @@ afni_ttest      : conduct Student's T via ETAC method
 afni_mvm        : conduct ANOVA-style analyses via 3dMVM
 
 """
+
 # %%
 import os
 import glob
@@ -25,7 +26,6 @@ def afni_task(
     proj_rawdata,
     proj_deriv,
     work_deriv,
-    sing_afni,
     model_name,
     log_dir,
 ):
@@ -48,10 +48,8 @@ def afni_task(
         and fsl_denoise sub-directories
     work_deriv : path
         Parent location for writing pipeline intermediates
-    sing_afni : path
-        Location of AFNI singularity file
     model_name : str
-        [univ | mixed]
+        {"univ", "mixed"}
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -82,7 +80,7 @@ def afni_task(
 
     # Extra pre-processing steps
     sess_func, sess_anat = preprocess.extra_preproc(
-        subj, sess, subj_work, proj_deriv, sing_afni
+        subj, sess, subj_work, proj_deriv
     )
 
     # Find events files, get and validate task name
@@ -116,7 +114,6 @@ def afni_task(
         proj_deriv,
         sess_func,
         sess_anat,
-        sing_afni,
     )
     write_decon.build_decon(model_name, sess_tfs=sess_timing)
 
@@ -126,7 +123,6 @@ def afni_task(
         proj_deriv,
         sess_anat,
         sess_func,
-        sing_afni,
         log_dir,
     )
     reml_path = make_reml.generate_reml(
@@ -149,7 +145,6 @@ def afni_rest(
     proj_rawdata,
     proj_deriv,
     work_deriv,
-    sing_afni,
     model_name,
     log_dir,
 ):
@@ -174,8 +169,6 @@ def afni_rest(
         and fsl_denoise sub-directories
     work_deriv : path
         Parent location for writing pipeline intermediates
-    sing_afni : path
-        Location of AFNI singularity file
     model_name : str
         [rest]
         Desired AFNI model, for triggering different workflows
@@ -208,20 +201,19 @@ def afni_rest(
 
     # Extra pre-processing steps, generate deconvolution command
     sess_func, sess_anat = preprocess.extra_preproc(
-        subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
+        subj, sess, subj_work, proj_deriv, do_rest=True
     )
     write_decon = deconvolve.WriteDecon(
         subj_work,
         proj_deriv,
         sess_func,
         sess_anat,
-        sing_afni,
     )
     write_decon.build_decon(model_name)
 
     # Project regression matrix
     proj_reg = deconvolve.ProjectRest(
-        subj, sess, subj_work, proj_deriv, sing_afni, log_dir
+        subj, sess, subj_work, proj_deriv, log_dir
     )
     proj_reg.gen_xmatrix(write_decon.decon_cmd, write_decon.decon_name)
     proj_reg.anaticor(

@@ -1,4 +1,5 @@
 """Methods for additional preprocessing."""
+
 import os
 import glob
 import fnmatch
@@ -11,7 +12,6 @@ def _smooth_epi(
     subj_work,
     proj_deriv,
     func_preproc,
-    sing_afni,
     blur_size=3,
 ):
     """Spatially smooth EPI files.
@@ -25,8 +25,6 @@ def _smooth_epi(
         and fsl_denoise sub-directories
     func_preproc : list
         Locations of preprocessed EPI files
-    sing_afni : path
-        Location of AFNI singularity file
     blur_size : int, optional
         Size (mm) of smoothing kernel
 
@@ -69,9 +67,7 @@ def _smooth_epi(
             f"-prefix {out_path}",
             epi_path,
         ]
-        sing_prep = afni_helper.prepend_afni_sing(
-            proj_deriv, subj_work, sing_afni
-        )
+        sing_prep = afni_helper.prepend_afni_sing(proj_deriv, subj_work)
         bash_cmd = " ".join(sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
 
@@ -83,7 +79,7 @@ def _smooth_epi(
     return func_smooth
 
 
-def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
+def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc):
     """Scale EPI timeseries.
 
     Parameters
@@ -98,8 +94,6 @@ def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
         afni.MakeMasks.minimum
     func_preproc : list
         Locations of preprocessed EPI files
-    sing_afni : path
-        Location of AFNI singularity file
 
     Returns
     -------
@@ -138,9 +132,7 @@ def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
             f"-prefix {out_tstat}",
             epi_path,
         ]
-        sing_prep = afni_helper.prepend_afni_sing(
-            proj_deriv, subj_work, sing_afni
-        )
+        sing_prep = afni_helper.prepend_afni_sing(proj_deriv, subj_work)
         bash_cmd = " ".join(sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
 
@@ -164,7 +156,7 @@ def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc, sing_afni):
     return func_scaled
 
 
-def extra_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
+def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
     """Conduct extra preprocessing for AFNI.
 
     Identify required files from fMRIPrep and FSL, then conduct
@@ -189,8 +181,6 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     proj_deriv : path
         Location of project derivatives, containing fmriprep
         and fsl_denoise sub-directories
-    sing_afni : path
-        Location of AFNI singularity file
     do_rest : bool
         Whether to work with resting state or task EPI data
 
@@ -289,9 +279,7 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     func_dict["func-preproc"] = run_files
 
     # Make required masks
-    make_masks = masks.MakeMasks(
-        subj_work, proj_deriv, anat_dict, func_dict, sing_afni
-    )
+    make_masks = masks.MakeMasks(subj_work, proj_deriv, anat_dict, func_dict)
     anat_dict["mask-int"] = make_masks.intersect()
     tiss_masks = make_masks.tissue()
     anat_dict["mask-WMe"] = tiss_masks["WM"]
@@ -299,20 +287,17 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, sing_afni, do_rest=False):
     anat_dict["mask-min"] = make_masks.minimum()
 
     # Smooth and scale EPI data
-    smooth_epi = _smooth_epi(
-        subj_work, proj_deriv, func_dict["func-preproc"], sing_afni
-    )
+    smooth_epi = _smooth_epi(subj_work, proj_deriv, func_dict["func-preproc"])
     func_dict["func-scaled"] = _scale_epi(
         subj_work,
         proj_deriv,
         anat_dict["mask-min"],
         smooth_epi,
-        sing_afni,
     )
 
     # Make AFNI-style motion and censor files
     make_motion = deconvolve.MotionCensor(
-        subj_work, proj_deriv, func_dict["func-motion"], sing_afni
+        subj_work, proj_deriv, func_dict["func-motion"]
     )
     func_dict["mot-mean"] = make_motion.mean_motion()
     func_dict["mot-deriv"] = make_motion.deriv_motion()

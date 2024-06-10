@@ -1,4 +1,5 @@
 """Resources for preparing, writing, and running AFNI-style GLMs."""
+
 import os
 import json
 import time
@@ -20,6 +21,14 @@ class TimingFiles:
 
     Timing files are written to:
         <subj_work>/timing_files
+
+    Parameters
+    ----------
+    subj_work : path
+        Location of working directory for intermediates
+    sess_events : list
+        Paths to subject, session BIDS events files sorted
+        by run number
 
     Methods
     -------
@@ -55,31 +64,6 @@ class TimingFiles:
         Setup attributes, make timing file directory, and combine all
         events files into a single dataframe.
 
-        Parameters
-        ----------
-        subj_work : path
-            Location of working directory for intermediates
-        sess_events : list
-            Paths to subject, session BIDS events files sorted
-            by run number
-
-        Attributes
-        ----------
-        _emo_switch : dict
-            Switch for matching emotion names to AFNI length
-        _sess_events : list
-            Paths to subject, session BIDS events files sorted
-            by run number
-        _subj_tf_dir : path
-            Output location for writing subject, session
-            timing files
-
-        Raises
-        ------
-        ValueError
-            Unexpected task name
-            Insufficient number of sess_events
-
         """
         print("\nInitializing TimingFiles")
 
@@ -98,21 +82,7 @@ class TimingFiles:
         self._event_dataframe()
 
     def _event_dataframe(self):
-        """Combine data from events files into dataframe.
-
-        Attributes
-        ----------
-        _df_events : pd.DataFrame
-            Column names == events files, run column added
-        _events_run : list
-            Run identifier extracted from event file name
-
-        Raises
-        ------
-        ValueError
-            The number of events files and number of runs are unequal
-
-        """
+        """Combine data from events files into dataframe."""
         # Read-in events files, construct list of dataframes. Determine
         # run info from file name.
         events_data = [pd.read_table(x) for x in self._sess_events]
@@ -645,6 +615,17 @@ class MotionCensor:
     Mine fMRIPrep timeseries.tsv files for required information,
     and generate files in a format AFNI can use in 3dDeconvolve.
 
+    Parameters
+    ----------
+    subj_work : path
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    func_motion : list
+        Locations of timeseries.tsv files produced by fMRIPrep,
+        file names must follow BIDS convention
+
     Methods
     -------
     mean_motion()
@@ -666,24 +647,11 @@ class MotionCensor:
 
     """
 
-    def __init__(self, subj_work, proj_deriv, func_motion, sing_afni):
+    def __init__(self, subj_work, proj_deriv, func_motion):
         """Setup for making motion, censor files.
 
         Set attributes, make output directory, setup basic
         output file name.
-
-        Parameters
-        ----------
-        subj_work : path
-            Location of working directory for intermediates
-        proj_deriv : path
-            Location of project derivatives, containing fmriprep
-            and fsl_denoise sub-directories
-        func_motion : list
-            Locations of timeseries.tsv files produced by fMRIPrep,
-            file names must follow BIDS convention
-        sing_afni : path
-            Location of AFNI singularity file
 
         Attributes
         ----------
@@ -721,9 +689,8 @@ class MotionCensor:
         self._proj_deriv = proj_deriv
         self._func_motion = func_motion
         self._subj_work = subj_work
-        self._sing_afni = sing_afni
         self._sing_prep = afni_helper.prepend_afni_sing(
-            self._proj_deriv, self._subj_work, self._sing_afni
+            self._proj_deriv, self._subj_work
         )
         self._out_dir = os.path.join(subj_work, "motion_files")
         if not os.path.exists(self._out_dir):
@@ -944,6 +911,29 @@ class WriteDecon:
     Write 3dDeconvolve command supporting different basis functions
     and data types (task, resting-state).
 
+    Parameters
+    ----------
+    subj_work : path
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories.
+    sess_func : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed functional files.
+        Required keys:
+        -   [func-scaled] = list of scaled EPI file paths
+        -   [mot-mean] = path to mean motion regressor
+        -   [mot-deriv] = path to derivative motion regressor
+        -   [mot-cens] = path to censor vector
+    sess_anat : dict
+        Contains reference names (key) and paths (value) to
+        preprocessed anatomical files.
+        Required keys:
+        -   [mask-int] = path to intersection mask
+        -   [mask-min] = path to minimum value mask
+        -   [mask-CSe] = path to eroded CSF mask
+
     Attributes
     ----------
     decon_cmd : str
@@ -972,46 +962,8 @@ class WriteDecon:
         proj_deriv,
         sess_func,
         sess_anat,
-        sing_afni,
     ):
-        """Initialize object.
-
-        Parameters
-        ----------
-        subj_work : path
-            Location of working directory for intermediates
-        proj_deriv : path
-            Location of project derivatives, containing fmriprep
-            and fsl_denoise sub-directories.
-        sess_func : dict
-            Contains reference names (key) and paths (value) to
-            preprocessed functional files.
-            Required keys:
-            -   [func-scaled] = list of scaled EPI file paths
-            -   [mot-mean] = path to mean motion regressor
-            -   [mot-deriv] = path to derivative motion regressor
-            -   [mot-cens] = path to censor vector
-        sess_anat : dict
-            Contains reference names (key) and paths (value) to
-            preprocessed anatomical files.
-            Required keys:
-            -   [mask-int] = path to intersection mask
-            -   [mask-min] = path to minimum value mask
-            -   [mask-CSe] = path to eroded CSF mask
-        sing_afni : path
-            Location of AFNI singularity file
-
-        Attributes
-        ----------
-        _afni_prep : list
-            First part of subprocess call for AFNI singularity
-
-        Raises
-        ------
-        KeyError
-            Missing required keys in sess_func or sess_anat
-
-        """
+        """Initialize object."""
         # Validate dict keys
         for _key in ["func-scaled", "mot-mean", "mot-deriv", "mot-cens"]:
             if _key not in sess_func:
@@ -1027,9 +979,8 @@ class WriteDecon:
         self._subj_work = subj_work
         self._func_dict = sess_func
         self._anat_dict = sess_anat
-        self._sing_afni = sing_afni
         self._afni_prep = afni_helper.prepend_afni_sing(
-            self._proj_deriv, self._subj_work, self._sing_afni
+            self._proj_deriv, self._subj_work
         )
 
     def build_decon(self, model_name, sess_tfs=None):
@@ -1484,7 +1435,6 @@ class RunReml:
         proj_deriv,
         sess_anat,
         sess_func,
-        sing_afni,
         log_dir,
     ):
         """Initialize object.
@@ -1506,8 +1456,6 @@ class RunReml:
             preprocessed functional files.
             Required keys:
             -   [func-scaled] = list of scaled EPI paths
-        sing_afni : path
-            Location of AFNI singularity file
         log_dir : path
             Output location for log files and scripts
 
@@ -1533,11 +1481,8 @@ class RunReml:
         self._subj_work = subj_work
         self._sess_anat = sess_anat
         self._sess_func = sess_func
-        self._sing_afni = sing_afni
         self._log_dir = log_dir
-        self._afni_prep = afni_helper.prepend_afni_sing(
-            proj_deriv, subj_work, sing_afni
-        )
+        self._afni_prep = afni_helper.prepend_afni_sing(proj_deriv, subj_work)
 
     def generate_reml(self, subj, sess, decon_cmd, decon_name):
         """Generate matrices and 3dREMLfit command.
@@ -1752,6 +1697,17 @@ class ProjectRest:
     project correlation matrix accounting for WM and CSF nuissance,
     and conduct a seed-based correlation analysis.
 
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    subj_work : path
+        Location of working directory for intermediates
+    log_dir : path
+        Output location for log files and scripts
+
     Methods
     -------
     gen_matrix(decon_cmd, decon_name)
@@ -1763,33 +1719,15 @@ class ProjectRest:
 
     """
 
-    def __init__(self, subj, sess, subj_work, proj_deriv, sing_afni, log_dir):
-        """Initialize object.
-
-        Parameters
-        ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        subj_work : path
-            Location of working directory for intermediates
-        log_dir : path
-            Output location for log files and scripts
-
-        Attributes
-        ----------
-        _afni_prep : list
-            First part of subprocess call for AFNI singularity
-
-        """
+    def __init__(self, subj, sess, subj_work, proj_deriv, log_dir):
+        """Initialize object."""
         print("\nInitializing ProjectRest")
         self._subj = subj
         self._sess = sess
         self._subj_work = subj_work
         self._log_dir = log_dir
         self._afni_prep = afni_helper.prepend_afni_sing(
-            proj_deriv, self._subj_work, sing_afni
+            proj_deriv, self._subj_work
         )
 
     def gen_xmatrix(self, decon_cmd, decon_name):

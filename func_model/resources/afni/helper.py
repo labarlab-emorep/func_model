@@ -1,11 +1,12 @@
 """Helper methods for AFNI-based pipelines."""
+
 import os
 import glob
 import shutil
 import subprocess
 
 
-def prepend_afni_sing(proj_deriv, subj_work, sing_afni) -> list:
+def prepend_afni_sing(proj_deriv, subj_work) -> list:
     """Supply singularity call for AFNI.
 
     Setup singularity call for AFNI in DCC EmoRep environment, used
@@ -18,10 +19,14 @@ def prepend_afni_sing(proj_deriv, subj_work, sing_afni) -> list:
         and fsl_denoise sub-directories
     subj_work : path
         Location of working directory for intermediates
-    sing_afni : path
-        Location of AFNI singularity file
 
     """
+    try:
+        sing_afni = os.environ["SING_AFNI"]
+    except KeyError as e:
+        print("Missing required variable SING_AFNI")
+        raise e
+
     return [
         "singularity run",
         "--cleanenv",

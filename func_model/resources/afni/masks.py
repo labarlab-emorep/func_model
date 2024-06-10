@@ -1,4 +1,5 @@
 """Methods for mask construction."""
+
 import os
 import glob
 from func_model.resources.afni import helper as afni_helper
@@ -29,7 +30,6 @@ class MakeMasks:
         proj_deriv,
         anat_dict,
         func_dict,
-        sing_afni,
     ):
         """Initialize object.
 
@@ -52,8 +52,6 @@ class MakeMasks:
             preprocessed functional files.
             Required keys:
             -   [func-preproc] = list of fmriprep preprocessed EPI paths
-        sing_afni : path
-            Location of AFNI singularity file
 
         Attributes
         ----------
@@ -82,9 +80,8 @@ class MakeMasks:
         self._proj_deriv = proj_deriv
         self._anat_dict = anat_dict
         self._func_dict = func_dict
-        self._sing_afni = sing_afni
         self._sing_prep = afni_helper.prepend_afni_sing(
-            self._proj_deriv, self._subj_work, self._sing_afni
+            self._proj_deriv, self._subj_work
         )
 
         try:
