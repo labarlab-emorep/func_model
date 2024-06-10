@@ -125,10 +125,6 @@ def main():
     proj_deriv = os.path.join(proj_dir, "derivatives")
     proj_rawdata = os.path.join(proj_dir, "rawdata")
 
-    # # Get environmental vars
-    # sing_afni = os.environ["SING_AFNI"]
-    # user_name = os.environ["USER"]
-
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
     now_time = datetime.now()
@@ -149,7 +145,6 @@ def main():
                 proj_rawdata,
                 proj_deriv,
                 work_deriv,
-                sing_afni,
                 model_name,
                 log_dir,
             )

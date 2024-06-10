@@ -8,7 +8,6 @@ afni_mvm        : conduct ANOVA-style analyses via 3dMVM
 
 """
 
-# %%
 import os
 import glob
 from pathlib import Path
@@ -19,7 +18,10 @@ from func_model.resources.afni import helper as afni_helper
 from func_model.resources.afni import group as afni_group
 
 
-# %%
+class _GetData:
+    pass
+
+
 def afni_task(
     subj,
     sess,
@@ -41,17 +43,17 @@ def afni_task(
         BIDS subject identifier
     sess : str
         BIDS session identifier
-    proj_rawdata : path
+    proj_rawdata : str, os.PathLike
         Location of BIDS-organized project rawdata
-    proj_deriv : path
+    proj_deriv : str, os.PathLike
         Location of project derivatives, containing fmriprep
         and fsl_denoise sub-directories
-    work_deriv : path
+    work_deriv : str, os.PathLike
         Parent location for writing pipeline intermediates
     model_name : str
         {"univ", "mixed"}
         Desired AFNI model, for triggering different workflows
-    log_dir : path
+    log_dir : str, os.PathLike
         Output location for log files and scripts
 
     Returns
@@ -67,9 +69,12 @@ def afni_task(
         Model name/type not supported
 
     """
-    # Validate, check session, and setup
     if model_name not in ["univ", "mixed"]:
         raise ValueError(f"Unsupported model name : {model_name}")
+
+    # TODO download required files
+
+    # Check for data, setup
     subj_sess_raw = os.path.join(proj_rawdata, subj, sess)
     if not os.path.exists(subj_sess_raw):
         print(f"Directory not detected : {subj_sess_raw}\n\tSkipping.")
@@ -231,7 +236,6 @@ def afni_rest(
     return (corr_dict, sess_anat, sess_func)
 
 
-# %%
 def afni_extract(
     proj_dir, subj_list, model_name, group_mask="template", comb_all=True
 ):
@@ -320,7 +324,6 @@ def afni_extract(
         )
 
 
-# %%
 def afni_ttest(task, model_name, emo_name, proj_dir):
     """Conduct T-tests in AFNI using the ETAC method.
 
@@ -422,7 +425,6 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
     _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
 
 
-# %%
 def afni_mvm(proj_dir, model_name, emo_name):
     """Conduct ANOVA-style tests in AFNI via 3dMVM.
 
