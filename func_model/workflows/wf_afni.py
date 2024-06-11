@@ -11,15 +11,84 @@ afni_mvm        : conduct ANOVA-style analyses via 3dMVM
 import os
 import glob
 from pathlib import Path
+from typing import Union
 from func_model.resources.afni import preprocess
 from func_model.resources.afni import deconvolve
 from func_model.resources.afni import masks
 from func_model.resources.afni import helper as afni_helper
 from func_model.resources.afni import group as afni_group
+from func_model.workflows import wf_fsl
 
 
-class _GetData:
-    pass
+class _GetData(wf_fsl._SupportFsl):
+    """Title."""
+
+    def __init__(self, subj, sess, work_deriv):
+        """Title."""
+        self._subj = subj
+        self._sess = sess
+        self._work_deriv = work_deriv
+        self._keoki_path = (
+            "/mnt/keoki/experiments2/EmoRep/"
+            + "Exp2_Compute_Emotion/data_scanner_BIDS"
+        )
+        super().__init__(self._keoki_path)
+
+    def setup(self) -> Union[str, os.PathLike]:
+        """Setup working directories, return path for AFNI output."""
+        self._work_fp = os.path.join(
+            self._work_deriv, "pre_processing/fmriprep", self._subj
+        )
+        self._work_raw = os.path.join(
+            self._work_deriv, "rawdata", self._subj, self._sess, "func"
+        )
+        work_afni = os.path.join(
+            self._work_deriv, "model_afni", self._subj, self._sess, "func"
+        )
+        for _dir in [self._work_fp, self._work_raw, work_afni]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+        return self._work_afni
+
+    def get_fmriprep(self):
+        """Download fMRIPrep for subj, sess."""
+        if not hasattr(self, "_work_fp"):
+            self.setup()
+
+        # Get fMRIPrep - anat, motion confs, func
+        source_fp = os.path.join(
+            self._keoki_path,
+            "derivatives",
+            "pre_processing",
+            "fmriprep",
+            self._subj,
+            self._sess,
+        )
+        _, _ = self._submit_rsync(source_fp, self._work_fp)
+
+    def get_events(self) -> list:
+        """Download and return list of rawdata events files for subj, sess."""
+        if not hasattr(self, "_work_raw"):
+            self.setup()
+
+        # Get rawdata events
+        source_raw = os.path.join(
+            self._keoki_path,
+            "rawdata",
+            self._subj,
+            self._sess,
+            "func",
+            "*events.tsv",
+        )
+        _, _ = self._submit_rsync(source_raw, self._work_raw)
+
+        #
+        event_list = sorted(glob.glob(f"{self._work_raw}/*events.tsv"))
+        if not event_list:
+            raise ValueError(
+                f"Rsync failure, missing events files at : {self._work_raw}"
+            )
+        return event_list
 
 
 def afni_task(
@@ -72,40 +141,42 @@ def afni_task(
     if model_name not in ["univ", "mixed"]:
         raise ValueError(f"Unsupported model name : {model_name}")
 
-    # TODO download required files
+    # TODO setup, download required files
+    get_data = _GetData(subj, sess, work_deriv)
+    subj_work = get_data.setup()
+    get_data.get_fmriprep()
+    sess_events = get_data.get_events()
 
-    # Check for data, setup
-    subj_sess_raw = os.path.join(proj_rawdata, subj, sess)
-    if not os.path.exists(subj_sess_raw):
-        print(f"Directory not detected : {subj_sess_raw}\n\tSkipping.")
-        return
-    subj_work = os.path.join(work_deriv, "model_afni-task", subj, sess, "func")
-    if not os.path.exists(subj_work):
-        os.makedirs(subj_work)
+    # Get and validate task name
+    task = (
+        "task-"
+        + os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
+    )
+    if not afni_helper.valid_task(task):
+        raise ValueError(f"Expected task name : {task}")
 
     # Extra pre-processing steps
     sess_func, sess_anat = preprocess.extra_preproc(
         subj, sess, subj_work, proj_deriv
     )
 
-    # Find events files, get and validate task name
-    sess_events = sorted(glob.glob(f"{subj_sess_raw}/func/*events.tsv"))
-    if not sess_events:
-        raise FileNotFoundError(
-            f"Expected BIDs events files in {subj_sess_raw}"
-        )
-    task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
-    if not afni_helper.valid_task(f"task-{task}"):
-        raise ValueError(f"Expected task names movies|scenarios, found {task}")
+    # Make AFNI-style motion and censor files
+    make_motion = deconvolve.MotionCensor(
+        subj_work, proj_deriv, sess_func["func-motion"]
+    )
+    sess_func["mot-mean"] = make_motion.mean_motion()
+    sess_func["mot-deriv"] = make_motion.deriv_motion()
+    sess_func["mot-cens"] = make_motion.censor_volumes()
+    _ = make_motion.count_motion()
 
     # Generate, organize timing files
-    make_tf = deconvolve.TimingFiles(subj_work, sess_events)
-    tf_com = make_tf.common_events(subj, sess, task)
-    tf_sess = make_tf.session_events(subj, sess, task)
-    tf_sel = make_tf.select_events(subj, sess, task)
+    make_tf = deconvolve.TimingFiles(subj, sess, task, subj_work, sess_events)
+    tf_com = make_tf.common_events()
+    tf_sess = make_tf.session_events()
+    tf_sel = make_tf.select_events()
     tf_all = tf_com + tf_sess + tf_sel
     if model_name == "mixed":
-        tf_blk = make_tf.session_blocks(subj, sess, task)
+        tf_blk = make_tf.session_blocks()
         tf_all = tf_com + tf_sess + tf_sel + tf_blk
 
     sess_timing = {}
@@ -155,6 +226,8 @@ def afni_rest(
 ):
     """Conduct AFNI-styled resting state analysis for sanity checking.
 
+    Deprecated.
+
     Based on example 11 of afni_proc.py and s17.proc.FT.rest.11
     of afni_data6. Use 3ddeconvolve to generate a no-censor matrix,
     then project correlation matrix accounting for WM and CSF
@@ -193,6 +266,8 @@ def afni_rest(
         Model name/type not supported
 
     """
+    return
+
     # Validate and check session, setup
     if model_name != "rest":
         raise ValueError(f"Unsupported model name : {model_name}")
@@ -241,6 +316,8 @@ def afni_extract(
 ):
     """Extract sub-brick betas and generate dataframe.
 
+    Deprecated.
+
     Split AFNI deconvolved files by sub-brick and then extract the
     beta-coefficient for each behavior of interest from each voxel
     and generate a dataframe.
@@ -275,6 +352,8 @@ def afni_extract(
         Unexpected group_mask value
 
     """
+    return
+
     # Validate and setup
     if model_name != "univ":
         raise ValueError("Unexpected model_name")

@@ -9,10 +9,10 @@ A workflow is submitted for each session found in subject's fmriprep
 directory.
 
 Model names:
-    - univ = A standard univariate model yielding a single averaged
-        beta-coefficient for each event type (-stim_times_AM1)
-    - rest = Conduct a resting-state analysis referencing example
-        11 of afni_proc.py.
+    - univ = Deprecated. A standard univariate model yielding a single
+        averaged beta-coefficient for each event type (-stim_times_AM1)
+    - rest = Deprecated. Conduct a resting-state analysis referencing
+        example 11 of afni_proc.py.
     - mixed = TODO
 
 Output logs are written to:
@@ -115,6 +115,10 @@ def main():
     proj_dir = args.proj_dir
     model_name = args.model_name
 
+    #
+    if model_name != "mixed":
+        raise ValueError(f"Unsupported model: {model_name}")
+
     # Check model_name
     model_valid = helper.valid_models(model_name)
     if not model_valid:
@@ -160,3 +164,5 @@ if __name__ == "__main__":
         print("\tHint: $labar_env emorep\n")
         sys.exit(1)
     main()
+
+# %%

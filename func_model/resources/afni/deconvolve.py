@@ -24,7 +24,13 @@ class TimingFiles:
 
     Parameters
     ----------
-    subj_work : path
+    subj : str
+        BIDs subject identifier
+    sess : str
+        BIDs session identifier
+    task : str
+        BIDS task identifier
+    subj_work : str, os.PathLike
         Location of working directory for intermediates
     sess_events : list
         Paths to subject, session BIDS events files sorted
@@ -32,15 +38,15 @@ class TimingFiles:
 
     Methods
     -------
-    common_events(subj, sess, task)
+    common_events()
         Generate and return timing files for common events
         (replay, judge, and wash)
-    select_events(subj, sess, task)
+    select_events()
         Generate and return timing files for selection trials
         (emotion, intensity)
-    session_events(subj, sess, task)
+    session_events()
         Generate and return timing files for movie or scenario emotions
-    session_blocks(subj, sess, task)
+    session_blocks()
         Generate and return timing files for movie/scenario emotion blocks
 
     Notes
@@ -58,7 +64,7 @@ class TimingFiles:
 
     """
 
-    def __init__(self, subj_work, sess_events):
+    def __init__(self, subj, sess, task, subj_work, sess_events):
         """Initialize object.
 
         Setup attributes, make timing file directory, and combine all
@@ -70,8 +76,13 @@ class TimingFiles:
         # Check arguments
         if len(sess_events) < 1:
             raise ValueError("Cannot make timing files from 0 events.tsv")
+        if not afni_helper.valid_task(task):
+            raise ValueError(f"Expected task name : {task}")
 
         # Set attributes, make output location
+        self._subj = subj
+        self._sess = sess
+        self._task = task
         self._sess_events = sess_events
         self._subj_tf_dir = os.path.join(subj_work, "timing_files")
         self._emo_switch = afni_helper.emo_switch()
@@ -157,7 +168,7 @@ class TimingFiles:
         else:
             return [str(x) for x in onset]
 
-    def common_events(self, subj, sess, task, marry=True, common_name=None):
+    def common_events(self, marry=True, common_name=None):
         """Generate timing files for common events across both sessions.
 
         Make timing files for replay, judge, and wash events. Ouput timing
@@ -170,18 +181,11 @@ class TimingFiles:
 
         Parameters
         ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        task : str
-            [movies | scenarios]
-            Name of task
         marry : bool, optional
             Whether to generate timing file with AFNI-styled married
             onset:duration or just onset times.
         common_name : None or str, optional
-            [replay | judge | wash]
+            {"replay", "judge", "wash"}
             Generate a timing file for a specific event
 
         Returns
@@ -197,7 +201,6 @@ class TimingFiles:
             Parameter for marry is not bool
         ValueError
             Parameter for common_name is not found in common_dict
-            Incorrect task name
 
         Notes
         -----
@@ -219,22 +222,13 @@ class TimingFiles:
             "wash": "comWas",
         }
 
-        # Validate task name
-        valid_task = ["movies", "scenarios"]
-        if task not in valid_task:
-            raise ValueError(f"Inappropriate task name specified : {task}")
-
         # Validate user input and generate new common_dict
         if common_name:
-            valid_list = [x for x in common_dict.keys()]
-            if common_name not in valid_list:
+            if common_name not in list(common_dict.keys()):
                 raise ValueError(
                     f"Inappropriate event supplied : {common_name}"
                 )
-            h_dict = {}
-            h_dict[common_name] = common_dict[common_name]
-            del common_dict
-            common_dict = h_dict
+            common_dict = {common_name: common_dict[common_name]}
 
         # Generate timing files for all events in common_dict
         out_list = []
@@ -242,7 +236,8 @@ class TimingFiles:
             # Make an empty file
             tf_path = os.path.join(
                 self._subj_tf_dir,
-                f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
+                f"{self._subj}_{self._sess}_{self._task}_"
+                + f"desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
@@ -267,7 +262,7 @@ class TimingFiles:
                 out_list.append(tf_path)
         return out_list
 
-    def select_events(self, subj, sess, task, marry=True, select_name=None):
+    def select_events(self, marry=True, select_name=None):
         """Generate timing files for selection trials.
 
         Make timing files for trials where participant selects emotion
@@ -284,18 +279,11 @@ class TimingFiles:
 
         Parameters
         ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        task : str
-            [movies | scenarios]
-            Name of task
         marry : bool, optional
             Whether to generate timing file with AFNI-styled married
             onset:duration or just onset times.
         select_name : None or str, optional
-            [emotion | intensity]
+            {"emotion", "intensity"}
             Generate a timing file for a specific event
 
         Returns
@@ -331,22 +319,13 @@ class TimingFiles:
             "intensity": "selInt",
         }
 
-        # Validate task name
-        valid_task = ["movies", "scenarios"]
-        if task not in valid_task:
-            raise ValueError(f"Inappropriate task name specified : {task}")
-
         # Validate user input and generate new select_dict
         if select_name:
-            valid_list = [x for x in select_dict.keys()]
-            if select_name not in valid_list:
+            if select_name not in list(select_dict.keys()):
                 raise ValueError(
                     f"Inappropriate event supplied : {select_name}"
                 )
-            h_dict = {}
-            h_dict[select_name] = select_dict[select_name]
-            del select_dict
-            select_dict = h_dict
+            select_dict = {select_name: select_dict[select_name]}
 
         # Generate timing files for all events in select_dict
         out_list = []
@@ -354,7 +333,8 @@ class TimingFiles:
             # Make an empty file
             tf_path = os.path.join(
                 self._subj_tf_dir,
-                f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
+                f"{self._subj}_{self._sess}_{self._task}_"
+                + f"desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
@@ -381,9 +361,6 @@ class TimingFiles:
 
     def session_events(
         self,
-        subj,
-        sess,
-        task,
         marry=True,
         emotion_name=None,
         emo_query=False,
@@ -399,13 +376,6 @@ class TimingFiles:
 
         Parameters
         ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        task : str
-            [movies | scenarios]
-            Name of task
         marry : bool, optional
             Whether to generate timing file with AFNI-styled married
             onset:duration or just onset times.
@@ -435,26 +405,21 @@ class TimingFiles:
         if not isinstance(marry, bool):
             raise TypeError("Argument 'marry' is bool")
 
-        # Validate task name
-        valid_task = ["movies", "scenarios"]
-        if task not in valid_task:
-            raise ValueError(f"Inappropriate task name specified : {task}")
-
         # Provide emotions in sess_dict
         if emo_query:
             return [x for x in self._emo_switch.keys()]
 
         # Validate user input, generate emo_list
+        task_id = self._task.split("-")[1]
         if emotion_name:
-            valid_list = [x for x in self._emo_switch.keys()]
-            if emotion_name not in valid_list:
+            if emotion_name not in list(self._emo_switch.keys()):
                 raise ValueError(
                     f"Inappropriate emotion supplied : {emotion_name}"
                 )
             emo_list = [emotion_name]
         else:
             # Identify unique emotions in dataframe
-            trial_type_value = task[:-1]
+            trial_type_value = task_id[:-1]
             idx_sess = self._df_events.index[
                 self._df_events["trial_type"] == trial_type_value
             ].tolist()
@@ -469,10 +434,11 @@ class TimingFiles:
                 raise ValueError(f"Unexpected emotion encountered : {emo}")
 
             # Determine timing file name, make an empty file
-            tf_name = task[:3] + self._emo_switch[emo]
+            tf_name = task_id[:3] + self._emo_switch[emo]
             tf_path = os.path.join(
                 self._subj_tf_dir,
-                f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
+                f"{self._subj}_{self._sess}_{self._task}_"
+                + f"desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
@@ -502,29 +468,14 @@ class TimingFiles:
                 out_list.append(tf_path)
         return out_list
 
-    def session_blocks(
-        self,
-        subj,
-        sess,
-        task,
-    ):
+    def session_blocks(self):
         """Generate timing files for session-specific stimulus blocks.
 
-        Ouput timing file will use the 1D extension, use a BIDs-ish naming
-        convention (sub-*_sess-*_task-*_desc-*_events.1D), and write the BIDS
-        description field with in a blk[Mov|Sce]Emotion format, using 3
+        Ouput timing file will use the 1D extension, a BIDs-ish naming
+        convention (sub-*_sess-*_task-*_desc-*_events.1D), write the BIDS
+        description field with a blk[Mov|Sce]Emotion format, using 3
         characters to identify the emotion. For example, blkMovFea = movie
         block with fear stimuli, blkSceCal = scenario with calmness stimuli.
-
-        Parameters
-        ----------
-        subj : str
-            BIDS subject identifier
-        sess : str
-            BIDS session identifier
-        task : str
-            [movies | scenarios]
-            Name of task
 
         Returns
         -------
@@ -536,13 +487,9 @@ class TimingFiles:
         Timing files written to self._subj_tf_dir
 
         """
-        # Validate task name
-        valid_task = ["movies", "scenarios"]
-        if task not in valid_task:
-            raise ValueError(f"Inappropriate task name specified : {task}")
-
         # Identify unique emotions in dataframe
-        trial_type_value = task[:-1]
+        task_id = self._task.split("-")[1]
+        trial_type_value = task_id[:-1]
         idx_sess = self._df_events.index[
             self._df_events["trial_type"] == trial_type_value
         ].tolist()
@@ -553,21 +500,24 @@ class TimingFiles:
         out_list = []
         block_dict = {}
         for emo in emo_list:
+
             # Check that emo is found in planned dictionary
             if emo not in self._emo_switch.keys():
                 raise ValueError(f"Unexpected emotion encountered : {emo}")
 
             # Determine timing file name, make an empty file
-            tf_name = "blk" + task.capitalize()[0] + self._emo_switch[emo]
+            tf_name = "blk" + task_id.capitalize()[0] + self._emo_switch[emo]
             tf_path = os.path.join(
                 self._subj_tf_dir,
-                f"{subj}_{sess}_task-{task}_desc-{tf_name}_events.1D",
+                f"{self._subj}_{self._sess}_{self._task}_"
+                + f"desc-{tf_name}_events.1D",
             )
             open(tf_path, "w").close()
 
             # Get emo info for each run
             dur_list = []
             for run in self._events_run:
+
                 # Identify index of emotions, account for emotion
                 # not occurring in current run, make appropriate
                 # AFNI line for event.
@@ -913,9 +863,9 @@ class WriteDecon:
 
     Parameters
     ----------
-    subj_work : path
+    subj_work : str, os.PathLike
         Location of working directory for intermediates
-    proj_deriv : path
+    proj_deriv : str, os.PathLike
         Location of project derivatives, containing fmriprep
         and fsl_denoise sub-directories.
     sess_func : dict
@@ -940,12 +890,12 @@ class WriteDecon:
         Generated 3dDeconvolve command
     decon_name : str
         Prefix for output deconvolve files
-    epi_masked : path
+    epi_masked : str, os.PathLike
         Location of masked EPI data
 
     Methods
     -------
-    build_decon(model_name)
+    build_decon()
         Trigger the appropriate method for the current pipeline, e.g.
         build_decon(model_name="univ") causes the method "write_univ"
         to be executed.
@@ -986,31 +936,18 @@ class WriteDecon:
     def build_decon(self, model_name, sess_tfs=None):
         """Trigger deconvolution method.
 
-        Use model_name to trigger the method the writes the
-        relevant 3dDeconvolve command for the current pipeline.
+        Use model_name to trigger the method that writes the
+        relevant 3dDeconvolve command.
 
         Parameters
         ----------
         model_name : str
-            [univ | rest | mixed]
-            Desired AFNI model, triggers right methods
+            {"univ", "rest", "mixed"}
+            Desired AFNI model, triggers corresponding methods
         sess_tfs : None, dict, optional
             Required by model_name = univ|indiv.
             Contains reference names (key) and paths (value) to
             session AFNI-style timing files.
-
-        Attributes
-        ----------
-        _tf_dict : dict, optional
-            When model_name = univ | mixed
-            Contains reference names (key) and paths (value) to
-            session AFNI-style timing files.
-
-        Raises
-        ------
-        ValueError
-            Unsupported model name
-            sess_tfs not supplied with univ, indiv model names
 
         """
         # Validate model name
@@ -1019,8 +956,7 @@ class WriteDecon:
             raise ValueError(f"Unsupported model name : {model_name}")
 
         # Require timing files for task decons
-        req_tfs = ["univ", "mixed"]
-        if model_name in req_tfs:
+        if model_name in ["univ", "mixed"]:
             if not sess_tfs:
                 raise ValueError(
                     f"Argument sess_tfs required with model_name={model_name}"
@@ -1031,7 +967,7 @@ class WriteDecon:
         write_meth = getattr(self, f"write_{model_name}")
         write_meth()
 
-    def _build_behavior(self, count_beh, basis_func):
+    def _build_behavior(self, basis_func):
         """Build a behavior regressor argument.
 
         Build a 3dDeconvolve behavior regressor accounting
@@ -1040,50 +976,39 @@ class WriteDecon:
 
         Parameters
         ----------
-        count_beh : int
-            On-going count to fill 3dDeconvolve -num_stimts
         basis_func : str
-            [dur_mod | ind_mod]
+            {"dur_mod", "ind_mod"}
             Desired basis function for behaviors in 3dDeconvolve
 
         Returns
         -------
-        tuple
-            [0] = behavior regressor for 3dDeconvolve
-            [1] = count
-
-        Raises
-        ------
-        ValueError
-            Unsupported basis function
+        str
+            Behavior regressor for 3dDeconvolve
 
         """
         # Validate
-        if basis_func == "two_gam":
-            return ValueError("Basis function two_gam not currently supported")
-
-        # Set inner functions for building different basis functions,
-        # two_gam and tent are planned, ind_mod needs testing.
-        def _beh_dur_mod(count_beh, tf_path):
-            return f"-stim_times_AM1 {count_beh} {tf_path} 'dmBLOCK(1)'"
-
-        def _beh_ind_mod(count_beh, tf_path):
-            return f"-stim_times_IM {count_beh} {tf_path} 'dmBLOCK(1)'"
-
-        # Map basis_func value to inner functions
-        model_meth = {"dur_mod": _beh_dur_mod, "ind_mod": _beh_ind_mod}
+        if basis_func not in ["dur_mod", "ind_mod"]:
+            raise ValueError(f"Unsupported basis_func: {basis_func}")
 
         # Build regressor for each behavior
         print("\t\tBuilding behavior regressors ...")
         model_beh = []
         for tf_name, tf_path in self._tf_dict.items():
-            count_beh += 1
-            model_beh.append(model_meth[basis_func](count_beh, tf_path))
-            model_beh.append(f"-stim_label {count_beh} {tf_name}")
+            self._count_beh += 1
+
+            #
+            if basis_func == "dur_mod":
+                model_beh.append(
+                    f"-stim_times_AM1 {self._count_bet} {tf_path} 'dmBLOCK(1)'"
+                )
+            elif basis_func == "ind_mod":
+                model_beh.append(
+                    f"-stim_times_IM {self._count_beh} {tf_path} 'dmBLOCK(1)'"
+                )
+            model_beh.append(f"-stim_label {self._count_beh} {tf_name}")
 
         # Combine into string for 3dDeconvolve parameter
-        reg_events = " ".join(model_beh)
-        return (reg_events, count_beh)
+        return " ".join(model_beh)
 
     def write_univ(self, basis_func="dur_mod", decon_name="decon_univ"):
         """Write an AFNI 3dDeconvolve command for univariate checking.
@@ -1094,7 +1019,7 @@ class WriteDecon:
         Parameters
         ----------
         basis_func : str, optional
-            [dur_mod | ind_mod]
+            {"dur_mod", "ind_mod"}
             Desired basis function for behaviors in 3dDeconvolve
         decon_name : str, optional
             Prefix for output deconvolve files
@@ -1105,11 +1030,6 @@ class WriteDecon:
             Generated 3dDeconvolve command
         decon_name : str
             Prefix for output deconvolve files
-
-        Raises
-        ------
-        ValueError
-            Unsupported basis_func value
 
         """
         # Validate
@@ -1124,10 +1044,11 @@ class WriteDecon:
         motion_censor = self._func_dict["mot-cens"]
         mask_int = self._anat_dict["mask-int"]
 
-        # Build behavior regressors, get stimts count
-        reg_events, count_beh = self._build_behavior(0, basis_func)
+        # Build behavior regressors
+        self._count_beh = 0
+        reg_events = self._build_behavior(basis_func)
 
-        # write decon command
+        # Build decon command
         decon_list = [
             "3dDeconvolve",
             "-x1D_stop",
@@ -1140,7 +1061,7 @@ class WriteDecon:
             "-polort A",
             "-float",
             "-local_times",
-            f"-num_stimts {count_beh}",
+            f"-num_stimts {self._count_beh}",
             reg_events,
             "-jobs 1",
             f"-x1D {self._subj_work}/X.{decon_name}.xmat.1D",
@@ -1150,13 +1071,12 @@ class WriteDecon:
             f"-cbucket {self._subj_work}/{decon_name}_cbucket",
             f"-errts {self._subj_work}/{decon_name}_errts",
         ]
-        decon_cmd = " ".join(self._afni_prep + decon_list)
+        self.decon_cmd = " ".join(self._afni_prep + decon_list)
 
         # Write script for review, records
         decon_script = os.path.join(self._subj_work, f"{decon_name}.sh")
         with open(decon_script, "w") as script:
-            script.write(decon_cmd)
-        self.decon_cmd = decon_cmd
+            script.write(self.decon_cmd)
         self.decon_name = decon_name
 
     def write_indiv(self):
@@ -1171,13 +1091,54 @@ class WriteDecon:
         """
         self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
 
-    def write_mixed(self):
+    def write_mixed(self, decon_name="decon_mixed"):
         """Write an AFNI 3dDeconvolve command for mixed modelling.
 
         Regressors include event and block designs.
 
         """
-        pass
+        # Determine input variables for 3dDeconvolve
+        print("\tBuilding 3dDeconvolve command ...")
+        epi_preproc = " ".join(self._func_dict["func-scaled"])
+        reg_motion_mean = self._func_dict["mot-mean"]
+        reg_motion_deriv = self._func_dict["mot-deriv"]
+        motion_censor = self._func_dict["mot-cens"]
+        mask_int = self._anat_dict["mask-int"]
+
+        # Build behavior regressors
+        self._count_beh = 0
+        reg_events = self._build_behavior("dur_mod")
+
+        # Build decon command
+        decon_list = [
+            "3dDeconvolve",
+            "-x1D_stop",
+            "-GOFORIT",
+            f"-mask {mask_int}",
+            f"-input {epi_preproc}",
+            f"-censor {motion_censor}",
+            f"-ortvec {reg_motion_mean} mot_mean",
+            f"-ortvec {reg_motion_deriv} mot_deriv",
+            "-polort A",
+            "-float",
+            "-local_times",
+            f"-num_stimts {self._count_beh}",
+            reg_events,
+            "-jobs 1",
+            f"-x1D {self._subj_work}/X.{decon_name}.xmat.1D",
+            f"-xjpeg {self._subj_work}/X.{decon_name}.jpg",
+            f"-x1D_uncensored {self._subj_work}/X.{decon_name}.jpg",
+            f"-bucket {self._subj_work}/{decon_name}_stats",
+            f"-cbucket {self._subj_work}/{decon_name}_cbucket",
+            f"-errts {self._subj_work}/{decon_name}_errts",
+        ]
+        self.decon_cmd = " ".join(self._afni_prep + decon_list)
+
+        # Write script for review, records
+        decon_script = os.path.join(self._subj_work, f"{decon_name}.sh")
+        with open(decon_script, "w") as script:
+            script.write(self.decon_cmd)
+        self.decon_name = decon_name
 
     def write_rest(self, decon_name="decon_rest"):
         """Write an AFNI 3dDeconvolve command for resting state checking.

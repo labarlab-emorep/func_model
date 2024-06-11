@@ -60,7 +60,12 @@ class _SupportFsl:
 
     def _quick_sp(self, bash_cmd: str) -> Tuple:
         """Spawn quick subprocess."""
-        h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+        h_sp = subprocess.Popen(
+            bash_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         h_out, h_err = h_sp.communicate()
         h_sp.wait()
         return (h_out, h_err)

@@ -3,8 +3,9 @@
 import os
 import glob
 import fnmatch
+from typing import Union
 from func_model.resources.afni import helper as afni_helper
-from func_mode.resources.afni import deconvolve, masks
+from func_mode.resources.afni import masks
 from func_model.resources.general import submit
 
 
@@ -156,54 +157,14 @@ def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc):
     return func_scaled
 
 
-def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
-    """Conduct extra preprocessing for AFNI.
-
-    Identify required files from fMRIPrep and FSL, then conduct
-    extra preprocessing to ready for AFNI deconvolution. The
-    pipeline steps are:
-        -   Make intersection mask
-        -   Make eroded CSF, WM masks
-        -   Make minimum-value mask
-        -   Spatially smooth EPI
-        -   Scale EPI timeseries
-        -   Make mean, derivative motion files
-        -   Make censor, inverted censor files
-
-    Parameters
-    ----------
-    subj : str
-        BIDS subject identifier
-    sess : str
-        BIDS session identifier
-    subj_work : path
-        Location of working directory for intermediates
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    do_rest : bool
-        Whether to work with resting state or task EPI data
-
-    Returns
-    -------
-    tuple
-        [0] = dictionary of functional files
-        [1] = dictionary of anatomical files
-
-    Raises
-    ------
-    FileNotFoundError
-        Missing anatomical or functional fMRIPrep output
-        Missing functional FSL output
-    ValueError
-        Each preprocessed EPI file is not paired with an
-        fMRIPrep timeseries.tsv
-
-    """
-    # Set search dictionary used to make anat_dict
-    #   key = identifier of file in anat_dict
+def _get_fmriprep(
+    subj: str, sess: str, proj_deriv: Union[str, os.PathLike], do_rest: bool
+):
+    """Title."""
+    # Set search dictionary used to make sess_anat
+    #   key = identifier of file in sess_anat
     #   value = searchable string by glob
-    get_anat_dict = {
+    get_sess_anat = {
         "anat-preproc": "desc-preproc_T1w",
         "mask-brain": "desc-brain_mask",
         "mask-probCS": "label-CSF_probseg",
@@ -212,9 +173,9 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
     }
 
     # Start dictionary of anatomical files
-    anat_dict = {}
+    sess_anat = {}
     subj_deriv_fp = os.path.join(proj_deriv, f"pre_processing/fmriprep/{subj}")
-    for key, search in get_anat_dict.items():
+    for key, search in get_sess_anat.items():
         file_path = sorted(
             glob.glob(
                 f"{subj_deriv_fp}/**/anat/{subj}_*space-*_{search}.nii.gz",
@@ -222,7 +183,7 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
             )
         )
         if file_path:
-            anat_dict[key] = file_path[0]
+            sess_anat[key] = file_path[0]
         else:
             raise FileNotFoundError(
                 f"Expected to find fmriprep file anat/*_{search}.nii.gz"
@@ -273,35 +234,66 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
         """
         )
 
+    return (mot_files, run_files, sess_anat)
+
+
+def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
+    """Conduct extra preprocessing for AFNI.
+
+    Identify required files from fMRIPrep and FSL, then conduct
+    extra preprocessing to ready for AFNI deconvolution. The
+    pipeline steps are:
+        -   Make intersection mask
+        -   Make eroded CSF, WM masks
+        -   Make minimum-value mask
+        -   Spatially smooth EPI
+        -   Scale EPI timeseries
+        -   Make mean, derivative motion files
+        -   Make censor, inverted censor files
+
+    Parameters
+    ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    subj_work : path
+        Location of working directory for intermediates
+    proj_deriv : path
+        Location of project derivatives, containing fmriprep
+        and fsl_denoise sub-directories
+    do_rest : bool
+        Whether to work with resting state or task EPI data
+
+    Returns
+    -------
+    tuple
+        [0] = dictionary of functional files
+        [1] = dictionary of anatomical files
+
+    """
+    # Find required files
+    mot_files, run_files, sess_anat = _get_fmriprep(subj, sess, proj_deriv)
+
     # Start dictionary of EPI files
-    func_dict = {}
-    func_dict["func-motion"] = mot_files
-    func_dict["func-preproc"] = run_files
+    sess_func = {}
+    sess_func["func-motion"] = mot_files
+    sess_func["func-preproc"] = run_files
 
     # Make required masks
-    make_masks = masks.MakeMasks(subj_work, proj_deriv, anat_dict, func_dict)
-    anat_dict["mask-int"] = make_masks.intersect()
+    make_masks = masks.MakeMasks(subj_work, proj_deriv, sess_anat, sess_func)
+    sess_anat["mask-int"] = make_masks.intersect()
     tiss_masks = make_masks.tissue()
-    anat_dict["mask-WMe"] = tiss_masks["WM"]
-    anat_dict["mask-CSe"] = tiss_masks["CS"]
-    anat_dict["mask-min"] = make_masks.minimum()
+    sess_anat["mask-WMe"] = tiss_masks["WM"]
+    sess_anat["mask-CSe"] = tiss_masks["CS"]
+    sess_anat["mask-min"] = make_masks.minimum()
 
     # Smooth and scale EPI data
-    smooth_epi = _smooth_epi(subj_work, proj_deriv, func_dict["func-preproc"])
-    func_dict["func-scaled"] = _scale_epi(
+    smooth_epi = _smooth_epi(subj_work, proj_deriv, sess_func["func-preproc"])
+    sess_func["func-scaled"] = _scale_epi(
         subj_work,
         proj_deriv,
-        anat_dict["mask-min"],
+        sess_anat["mask-min"],
         smooth_epi,
     )
-
-    # Make AFNI-style motion and censor files
-    make_motion = deconvolve.MotionCensor(
-        subj_work, proj_deriv, func_dict["func-motion"]
-    )
-    func_dict["mot-mean"] = make_motion.mean_motion()
-    func_dict["mot-deriv"] = make_motion.deriv_motion()
-    func_dict["mot-cens"] = make_motion.censor_volumes()
-    _ = make_motion.count_motion()
-
-    return (func_dict, anat_dict)
+    return (sess_func, sess_anat)
