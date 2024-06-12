@@ -25,9 +25,9 @@ TODO
 Examples
 --------
 afni_model -s sub-ER0009
-afni_model \
-    -s sub-ER0009 sub-ER0016 \
-    --sess ses-day2 \
+afni_model \\
+    -s sub-ER0009 sub-ER0016 \\
+    --sess ses-day2 \\
     --model-name mixed
 
 """
@@ -137,6 +137,7 @@ def main():
         f"logs/func-afni_model-{model_name}_"
         + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
     )
+    log_dir = os.path.join(work_deriv, "logs/test_afni_model")  # TODO remove
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 

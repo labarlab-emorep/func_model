@@ -5,41 +5,17 @@ import glob
 import fnmatch
 from typing import Union
 from func_model.resources.afni import helper as afni_helper
-from func_mode.resources.afni import masks
+from func_model.resources.afni import masks
 from func_model.resources.general import submit
 
 
 def _smooth_epi(
-    subj_work,
-    proj_deriv,
-    func_preproc,
-    blur_size=3,
+    subj_work: Union[str, os.PathLike],
+    work_deriv: Union[str, os.PathLike],
+    func_preproc: list,
+    blur_size: int = 3,
 ):
-    """Spatially smooth EPI files.
-
-    Parameters
-    ----------
-    subj_work : path
-        Location of working directory for intermediates
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    func_preproc : list
-        Locations of preprocessed EPI files
-    blur_size : int, optional
-        Size (mm) of smoothing kernel
-
-    Returns
-    -------
-    list
-        Paths to smoothed EPI files
-
-    Raises
-    ------
-    TypeError
-        Improper parameter types
-
-    """
+    """Spatially smooth EPI files."""
     # Check arguments
     if not isinstance(blur_size, int):
         raise TypeError("Optional blur_size requires int")
@@ -68,7 +44,7 @@ def _smooth_epi(
             f"-prefix {out_path}",
             epi_path,
         ]
-        sing_prep = afni_helper.prepend_afni_sing(proj_deriv, subj_work)
+        sing_prep = afni_helper.prepend_afni_sing(work_deriv, subj_work)
         bash_cmd = " ".join(sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
 
@@ -80,33 +56,13 @@ def _smooth_epi(
     return func_smooth
 
 
-def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc):
-    """Scale EPI timeseries.
-
-    Parameters
-    ----------
-    subj_work : path
-        Location of working directory for intermediates
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    mask_min : path
-        Location of minimum-value mask, output of
-        afni.MakeMasks.minimum
-    func_preproc : list
-        Locations of preprocessed EPI files
-
-    Returns
-    -------
-    list
-        Paths to scaled EPI files
-
-    Raises
-    ------
-    TypeError
-        Improper parameter types
-
-    """
+def _scale_epi(
+    subj_work: Union[str, os.PathLike],
+    work_deriv: Union[str, os.PathLike],
+    mask_min: Union[str, os.PathLike],
+    func_preproc: list,
+) -> list:
+    """Scale EPI timeseries."""
     # Check arguments
     if not isinstance(func_preproc, list):
         raise TypeError("Argument func_preproc requires list")
@@ -133,7 +89,7 @@ def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc):
             f"-prefix {out_tstat}",
             epi_path,
         ]
-        sing_prep = afni_helper.prepend_afni_sing(proj_deriv, subj_work)
+        sing_prep = afni_helper.prepend_afni_sing(work_deriv, subj_work)
         bash_cmd = " ".join(sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
 
@@ -158,7 +114,7 @@ def _scale_epi(subj_work, proj_deriv, mask_min, func_preproc):
 
 
 def _get_fmriprep(
-    subj: str, sess: str, proj_deriv: Union[str, os.PathLike], do_rest: bool
+    subj: str, sess: str, work_deriv: Union[str, os.PathLike], do_rest: bool
 ):
     """Title."""
     # Set search dictionary used to make sess_anat
@@ -174,7 +130,7 @@ def _get_fmriprep(
 
     # Start dictionary of anatomical files
     sess_anat = {}
-    subj_deriv_fp = os.path.join(proj_deriv, f"pre_processing/fmriprep/{subj}")
+    subj_deriv_fp = os.path.join(work_deriv, f"pre_processing/fmriprep/{subj}")
     for key, search in get_sess_anat.items():
         file_path = sorted(
             glob.glob(
@@ -237,7 +193,7 @@ def _get_fmriprep(
     return (mot_files, run_files, sess_anat)
 
 
-def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
+def extra_preproc(subj, sess, subj_work, work_deriv, do_rest=False):
     """Conduct extra preprocessing for AFNI.
 
     Identify required files from fMRIPrep and FSL, then conduct
@@ -257,11 +213,10 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
         BIDS subject identifier
     sess : str
         BIDS session identifier
-    subj_work : path
+    subj_work : str, os.PathLike
         Location of working directory for intermediates
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
+    work_deriv : str, os.PathLike
+        Location of intermediate derivatives
     do_rest : bool
         Whether to work with resting state or task EPI data
 
@@ -273,7 +228,9 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
 
     """
     # Find required files
-    mot_files, run_files, sess_anat = _get_fmriprep(subj, sess, proj_deriv)
+    mot_files, run_files, sess_anat = _get_fmriprep(
+        subj, sess, work_deriv, do_rest
+    )
 
     # Start dictionary of EPI files
     sess_func = {}
@@ -281,7 +238,7 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
     sess_func["func-preproc"] = run_files
 
     # Make required masks
-    make_masks = masks.MakeMasks(subj_work, proj_deriv, sess_anat, sess_func)
+    make_masks = masks.MakeMasks(subj_work, work_deriv, sess_anat, sess_func)
     sess_anat["mask-int"] = make_masks.intersect()
     tiss_masks = make_masks.tissue()
     sess_anat["mask-WMe"] = tiss_masks["WM"]
@@ -289,10 +246,10 @@ def extra_preproc(subj, sess, subj_work, proj_deriv, do_rest=False):
     sess_anat["mask-min"] = make_masks.minimum()
 
     # Smooth and scale EPI data
-    smooth_epi = _smooth_epi(subj_work, proj_deriv, sess_func["func-preproc"])
+    smooth_epi = _smooth_epi(subj_work, work_deriv, sess_func["func-preproc"])
     sess_func["func-scaled"] = _scale_epi(
         subj_work,
-        proj_deriv,
+        work_deriv,
         sess_anat["mask-min"],
         smooth_epi,
     )

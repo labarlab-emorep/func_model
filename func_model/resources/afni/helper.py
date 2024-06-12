@@ -4,23 +4,13 @@ import os
 import glob
 import shutil
 import subprocess
+from typing import Union
 
 
-def prepend_afni_sing(proj_deriv, subj_work) -> list:
-    """Supply singularity call for AFNI.
-
-    Setup singularity call for AFNI in DCC EmoRep environment, used
-    for prepending AFNI subprocess calls.
-
-    Parameters
-    ----------
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    subj_work : path
-        Location of working directory for intermediates
-
-    """
+def prepend_afni_sing(
+    work_deriv: Union[str, os.PathLike], subj_work: Union[str, os.PathLike]
+) -> list:
+    """Supply singularity call for AFNI."""
     try:
         sing_afni = os.environ["SING_AFNI"]
     except KeyError as e:
@@ -30,7 +20,7 @@ def prepend_afni_sing(proj_deriv, subj_work) -> list:
     return [
         "singularity run",
         "--cleanenv",
-        f"--bind {proj_deriv}:{proj_deriv}",
+        f"--bind {work_deriv}:{work_deriv}",
         f"--bind {subj_work}:{subj_work}",
         f"--bind {subj_work}:/opt/home",
         sing_afni,

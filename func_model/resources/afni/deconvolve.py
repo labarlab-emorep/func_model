@@ -4,7 +4,6 @@ import os
 import json
 import time
 import math
-import statistics
 import subprocess
 import pandas as pd
 import numpy as np
@@ -444,6 +443,7 @@ class TimingFiles:
 
             # Get emo info for each run
             for run in self._events_run:
+
                 # Identify index of emotions, account for emotion
                 # not occurring in current run, make appropriate
                 # AFNI line for event.
@@ -498,7 +498,6 @@ class TimingFiles:
 
         # Generate timing files for all events in emo_list
         out_list = []
-        block_dict = {}
         for emo in emo_list:
 
             # Check that emo is found in planned dictionary
@@ -515,7 +514,7 @@ class TimingFiles:
             open(tf_path, "w").close()
 
             # Get emo info for each run
-            dur_list = []
+            # dur_list = []
             for run in self._events_run:
 
                 # Identify index of emotions, account for emotion
@@ -529,33 +528,28 @@ class TimingFiles:
                 if not idx_emo:
                     line_content = "*"
                 else:
+
+                    # Find onsets and durations
                     onset = self._df_events.loc[idx_emo, "onset"].tolist()
                     duration = self._df_events.loc[
                         idx_emo, "duration"
                     ].tolist()
 
+                    # Calculate block length, make married line
                     block_onset = onset[0]
-                    line_content = onset[0]
                     block_end = onset[-1] + duration[-1]
-                    dur_list.append(block_end - block_onset)
+                    block_dur = round(block_end - block_onset, 2)
+                    line_content = f"{block_onset}:{block_dur}"
 
                 # Append line to timing file
                 with open(tf_path, "a") as tf:
                     tf.writelines(f"{line_content}\n")
 
-            # Add extra time for HRF duration
-            block_dict[tf_name] = math.ceil(statistics.mean(dur_list)) + 14
-
             # Check for content in timing file
             if os.stat(tf_path).st_size == 0:
-                raise RuntimeError(f"Empty file detected : {tf_path}")
+                raise ValueError(f"Empty file detected : {tf_path}")
             else:
                 out_list.append(tf_path)
-
-        # Write block_dict out to json
-        out_json = os.path.join(self._subj_tf_dir, "block_durations.json")
-        with open(out_json, "w") as jf:
-            json.dump(block_dict, jf)
         return out_list
 
 

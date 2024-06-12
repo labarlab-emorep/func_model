@@ -27,7 +27,7 @@ class MakeMasks:
     def __init__(
         self,
         subj_work,
-        proj_deriv,
+        work_deriv,
         anat_dict,
         func_dict,
     ):
@@ -35,11 +35,10 @@ class MakeMasks:
 
         Parameters
         ----------
-        subj_work : path
+        subj_work : str, os.PathLike
             Location of working directory for intermediates
-        proj_deriv : path
-            Location of project derivatives, containing fmriprep
-            and fsl_denoise sub-directories
+        work_deriv : str, os.PathLike
+            Location of intermediate derivatives
         anat_dict : dict
             Contains reference names (key) and paths (value) to
             preprocessed anatomical files.
@@ -77,11 +76,10 @@ class MakeMasks:
 
         # Set attributes
         self._subj_work = subj_work
-        self._proj_deriv = proj_deriv
         self._anat_dict = anat_dict
         self._func_dict = func_dict
         self._sing_prep = afni_helper.prepend_afni_sing(
-            self._proj_deriv, self._subj_work
+            work_deriv, self._subj_work
         )
 
         try:
@@ -107,21 +105,14 @@ class MakeMasks:
 
         Parameters
         ----------
-        c_fract : float, optional
+        c_frac : float, optional
             Clip level fraction for AFNI's 3dAutomask
         nbr_type : str, optional
-            [NN1 | NN2 | NN3]
+            {"NN1", "NN2", "NN3"}
             Nearest-neighbor type for AFNI's 3dAautomask
         nbr_num : int, optional
             Number of neibhors needed to avoid eroding in
             AFNI's 3dAutomask.
-
-        Raises
-        ------
-        TypeError
-            Invalid types for optional args
-        ValueError
-            Invalid parameters for optional args
 
         Returns
         -------

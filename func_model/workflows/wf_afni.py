@@ -48,12 +48,27 @@ class _GetData(wf_fsl._SupportFsl):
         for _dir in [self._work_fp, self._work_raw, work_afni]:
             if not os.path.exists(_dir):
                 os.makedirs(_dir)
-        return self._work_afni
+        return work_afni
+
+    @property
+    def _ls2_addr(self) -> str:
+        """Return user@labarserv2."""
+        return os.environ["USER"] + "@" + self._ls2_ip
 
     def get_fmriprep(self):
         """Download fMRIPrep for subj, sess."""
         if not hasattr(self, "_work_fp"):
             self.setup()
+
+        # Check for fmriprep output
+        chk_file = os.path.join(
+            self._work_fp,
+            self._sess,
+            "anat",
+            f"{self._subj}_{self._sess}_desc-preproc_T1w.nii.gz",
+        )
+        if os.path.exists(chk_file):
+            return
 
         # Get fMRIPrep - anat, motion confs, func
         source_fp = os.path.join(
@@ -64,12 +79,25 @@ class _GetData(wf_fsl._SupportFsl):
             self._subj,
             self._sess,
         )
-        _, _ = self._submit_rsync(source_fp, self._work_fp)
+        _, _ = self._submit_rsync(
+            f"{self._ls2_addr}:{source_fp}", self._work_fp
+        )
+
+        # Verify download
+        if not os.path.exists(chk_file):
+            raise FileNotFoundError(
+                f"fMRIPrep download failed for {self._subj}, {self._sess}"
+            )
 
     def get_events(self) -> list:
         """Download and return list of rawdata events files for subj, sess."""
         if not hasattr(self, "_work_raw"):
             self.setup()
+
+        # Check for existing events files
+        event_list = sorted(glob.glob(f"{self._work_raw}/*events.tsv"))
+        if event_list:
+            return event_list
 
         # Get rawdata events
         source_raw = os.path.join(
@@ -80,9 +108,11 @@ class _GetData(wf_fsl._SupportFsl):
             "func",
             "*events.tsv",
         )
-        _, _ = self._submit_rsync(source_raw, self._work_raw)
+        _, _ = self._submit_rsync(
+            f"{self._ls2_addr}:{source_raw}", self._work_raw
+        )
 
-        #
+        # Verify download
         event_list = sorted(glob.glob(f"{self._work_raw}/*events.tsv"))
         if not event_list:
             raise ValueError(
@@ -157,7 +187,7 @@ def afni_task(
 
     # Extra pre-processing steps
     sess_func, sess_anat = preprocess.extra_preproc(
-        subj, sess, subj_work, proj_deriv
+        subj, sess, subj_work, work_deriv
     )
 
     # Make AFNI-style motion and censor files
