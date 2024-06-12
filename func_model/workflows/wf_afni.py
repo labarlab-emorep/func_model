@@ -199,16 +199,16 @@ def afni_task(
     sess_func["mot-cens"] = make_motion.censor_volumes()
     _ = make_motion.count_motion()
 
-    # Generate, organize timing files
+    # Generate and compile timing files
     make_tf = deconvolve.TimingFiles(subj, sess, task, subj_work, sess_events)
     tf_com = make_tf.common_events()
     tf_sess = make_tf.session_events()
     tf_sel = make_tf.select_events()
     tf_all = tf_com + tf_sess + tf_sel
     if model_name == "mixed":
-        tf_blk = make_tf.session_blocks()
-        tf_all = tf_com + tf_sess + tf_sel + tf_blk
+        tf_all += make_tf.session_blocks()
 
+    # Organize timing files by description
     sess_timing = {}
     for tf_path in tf_all:
         h_key = os.path.basename(tf_path).split("desc-")[1].split("_")[0]
@@ -237,6 +237,8 @@ def afni_task(
     sess_func["func-decon"] = make_reml.exec_reml(
         subj, sess, reml_path, write_decon.decon_name
     )
+
+    return  # TODO remove
 
     # Clean
     afni_helper.MoveFinal(

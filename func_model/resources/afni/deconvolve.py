@@ -990,10 +990,10 @@ class WriteDecon:
         for tf_name, tf_path in self._tf_dict.items():
             self._count_beh += 1
 
-            #
+            # Make stim line based on basis_func
             if basis_func == "dur_mod":
                 model_beh.append(
-                    f"-stim_times_AM1 {self._count_bet} {tf_path} 'dmBLOCK(1)'"
+                    f"-stim_times_AM1 {self._count_beh} {tf_path} 'dmBLOCK(1)'"
                 )
             elif basis_func == "ind_mod":
                 model_beh.append(
@@ -1478,12 +1478,12 @@ class RunReml:
         # Execute decon_cmd, wait for singularity to close
         _, _ = submit.submit_sbatch(
             decon_cmd,
-            f"dcn{subj[6:]}s{sess[-1]}",
+            f"dcn{subj[-4:]}s{sess[-1]}",
             self._log_dir,
             mem_gig=10,
         )
         if not os.path.exists(out_path):
-            time.sleep(300)
+            time.sleep(30)
 
         # Check generated file length, account for 0 vs 1 indexing
         with open(out_path, "r") as rf:
@@ -1575,11 +1575,6 @@ class RunReml:
         -------
         path
             Location of deconvolved HEAD file
-
-        Raises
-        ------
-        ValueError
-            Converting reml_path content to list failed
 
         """
         # Set final path name (anticipate AFNI output)
