@@ -1,8 +1,12 @@
 """Helper methods for FSL-based pipelines.
 
+prepend_afni_sing : setup singularity call for afni
+valid_task : check task name
+valid_models : check model name
+valid_univ_test : check univariate test type
+valid_mvm_test : check multivariate test type
 valid_name : check for valid model name
 valid_level : check for valid model level
-valid_task : check for valid task name
 valid_contrast : check for valid contrast
 valid_preproc : check for valid preproc type
 load_reference : return reference file content
@@ -10,6 +14,7 @@ count_vol : get number of volumes
 get_tr : get TR length
 load_tsv : read tsv as pd.DataFrame
 clean_up : delete unneeded files and copy to group
+emo_switch : supply emotion names
 
 """
 
@@ -22,6 +27,41 @@ import pandas as pd
 import nibabel as nib
 import importlib.resources as pkg_resources
 from func_model import reference_files
+
+
+def prepend_afni_sing(
+    work_deriv: Union[str, os.PathLike], subj_work: Union[str, os.PathLike]
+) -> list:
+    """Supply singularity call for AFNI."""
+    try:
+        sing_afni = os.environ["SING_AFNI"]
+    except KeyError as e:
+        print("Missing required variable SING_AFNI")
+        raise e
+
+    return [
+        "singularity run",
+        "--cleanenv",
+        f"--bind {work_deriv}:{work_deriv}",
+        f"--bind {subj_work}:{subj_work}",
+        f"--bind {subj_work}:/opt/home",
+        sing_afni,
+    ]
+
+
+def valid_models(model_name: str) -> bool:
+    """Return bool of whether model_name is supported."""
+    return model_name in ["univ", "rest", "mixed"]
+
+
+def valid_univ_test(test_name: str) -> bool:
+    """Return bool of whether test_name is supported."""
+    return test_name in ["student", "paired"]
+
+
+def valid_mvm_test(test_name: str) -> bool:
+    """Return bool of whether test_name is supported."""
+    return test_name in ["rm"]
 
 
 def valid_name(model_name: str) -> bool:
@@ -75,6 +115,27 @@ def get_tr(in_epi: Union[str, os.PathLike]) -> float:
 def load_csv(csv_path: Union[str, os.PathLike]) -> pd.DataFrame:
     print(f"\t\tLoading {csv_path} ...")
     return pd.read_csv(csv_path)
+
+
+def emo_switch() -> dict:
+    """Return events-AFNI emotion mappings."""
+    return {
+        "amusement": "Amu",
+        "anger": "Ang",
+        "anxiety": "Anx",
+        "awe": "Awe",
+        "calmness": "Cal",
+        "craving": "Cra",
+        "disgust": "Dis",
+        "excitement": "Exc",
+        "fear": "Fea",
+        "horror": "Hor",
+        "joy": "Joy",
+        "neutral": "Neu",
+        "romance": "Rom",
+        "sadness": "Sad",
+        "surprise": "Sur",
+    }
 
 
 def clean_up(subj_work, subj_final, model_name):
