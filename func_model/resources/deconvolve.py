@@ -14,8 +14,8 @@ import math
 import subprocess
 import pandas as pd
 import numpy as np
-from func_model.resources.afni import helper as afni_helper
-from func_model.resources.general import submit
+from func_model.resources import helper
+from func_model.resources import submit
 
 
 class TimingFiles:
@@ -82,7 +82,7 @@ class TimingFiles:
         # Check arguments
         if len(sess_events) < 1:
             raise ValueError("Cannot make timing files from 0 events.tsv")
-        if not afni_helper.valid_task(task):
+        if not helper.valid_task(task):
             raise ValueError(f"Expected task name : {task}")
 
         # Set attributes, make output location
@@ -91,7 +91,7 @@ class TimingFiles:
         self._task = task
         self._sess_events = sess_events
         self._subj_tf_dir = os.path.join(subj_work, "timing_files")
-        self._emo_switch = afni_helper.emo_switch()
+        self._emo_switch = helper.emo_switch()
         if not os.path.exists(self._subj_tf_dir):
             os.makedirs(self._subj_tf_dir)
 
@@ -640,7 +640,7 @@ class MotionCensor:
         self._proj_deriv = proj_deriv
         self._func_motion = func_motion
         self._subj_work = subj_work
-        self._sing_prep = afni_helper.prepend_afni_sing(
+        self._sing_prep = helper.prepend_afni_sing(
             self._proj_deriv, self._subj_work
         )
         self._out_dir = os.path.join(subj_work, "motion_files")
@@ -930,7 +930,7 @@ class _WriteDecon:
         self._subj_work = subj_work
         self._sess_func = sess_func
         self._sess_anat = sess_anat
-        self._afni_prep = afni_helper.prepend_afni_sing(
+        self._afni_prep = helper.prepend_afni_sing(
             self._proj_deriv, self._subj_work
         )
 
@@ -952,7 +952,7 @@ class _WriteDecon:
 
         """
         # Validate model name
-        model_valid = afni_helper.valid_models(model_name)
+        model_valid = helper.valid_models(model_name)
         if not model_valid:
             raise ValueError(f"Unsupported model name : {model_name}")
 
@@ -1448,7 +1448,7 @@ class RunReml(_WriteDecon):
         self._sess_anat = sess_anat
         self._sess_func = sess_func
         self._log_dir = log_dir
-        self._afni_prep = afni_helper.prepend_afni_sing(proj_deriv, subj_work)
+        self._afni_prep = helper.prepend_afni_sing(proj_deriv, subj_work)
         super().__init__(subj_work, proj_deriv, sess_func, sess_anat)
 
     def generate_reml(self):
@@ -1662,9 +1662,7 @@ class ProjectRest:
         self._sess = sess
         self._subj_work = subj_work
         self._log_dir = log_dir
-        self._afni_prep = afni_helper.prepend_afni_sing(
-            proj_deriv, self._subj_work
-        )
+        self._afni_prep = helper.prepend_afni_sing(proj_deriv, self._subj_work)
 
     def gen_xmatrix(self, decon_cmd, decon_name):
         """Execute generated 3dDeconvolve command to make x-files.

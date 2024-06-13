@@ -43,8 +43,8 @@ import platform
 import textwrap
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model.resources.general import submit
-from func_model.resources.fsl import helper as fsl_helper
+from func_model.resources import submit
+from func_model.resources import helper
 
 
 # %%
@@ -149,10 +149,10 @@ def main():
     preproc_type = args.preproc_type
 
     # Check model_name, model_level
-    if not fsl_helper.valid_name(model_name):
+    if not helper.valid_name(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
-    if not fsl_helper.valid_level(model_level):
+    if not helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
     if (
@@ -160,7 +160,7 @@ def main():
     ) and model_level != "first":
         print("Second level not supported for models lss, rest")
         sys.exit(1)
-    if not fsl_helper.valid_preproc(preproc_type):
+    if not helper.valid_preproc(preproc_type):
         raise ValueError(f"Unspported preproc type : {preproc_type}")
 
     # Setup group project directory, paths
