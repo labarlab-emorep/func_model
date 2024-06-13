@@ -37,6 +37,7 @@ import os
 import sys
 import time
 import textwrap
+import platform
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.resources.general import submit
@@ -52,8 +53,8 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="univ",
-        choices=["univ", "rest", "mixed"],
+        default="mixed",
+        choices=["mixed"],
         help=textwrap.dedent(
             """\
             AFNI model name/type, for triggering different workflows
@@ -106,7 +107,11 @@ def _get_args():
 
 # %%
 def main():
-    """Setup working environment."""
+    """Schedule jobs for each subject, session."""
+    # Check env
+    if "dcc" not in platform.uname().node:
+        print("Workflow 'afni_model' is required to run on DCC.")
+        sys.exit(1)
 
     # Capture CLI arguments
     args = _get_args().parse_args()
@@ -137,7 +142,6 @@ def main():
         f"logs/func-afni_model-{model_name}_"
         + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
     )
-    log_dir = os.path.join(work_deriv, "logs/test_afni_model")  # TODO remove
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 

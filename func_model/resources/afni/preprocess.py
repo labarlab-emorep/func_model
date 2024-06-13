@@ -116,7 +116,7 @@ def _scale_epi(
 def _get_fmriprep(
     subj: str, sess: str, work_deriv: Union[str, os.PathLike], do_rest: bool
 ):
-    """Title."""
+    """Find required fMRIPrep output."""
     # Set search dictionary used to make sess_anat
     #   key = identifier of file in sess_anat
     #   value = searchable string by glob
@@ -130,23 +130,19 @@ def _get_fmriprep(
 
     # Start dictionary of anatomical files
     sess_anat = {}
-    subj_deriv_fp = os.path.join(work_deriv, f"pre_processing/fmriprep/{subj}")
+    subj_deriv_fp = os.path.join(work_deriv, "fmriprep", subj, sess)
     for key, search in get_sess_anat.items():
         file_path = sorted(
             glob.glob(
-                f"{subj_deriv_fp}/**/anat/{subj}_*space-*_{search}.nii.gz",
-                recursive=True,
+                f"{subj_deriv_fp}/anat/{subj}_*space-*_{search}.nii.gz",
             )
         )
-        if file_path:
-            sess_anat[key] = file_path[0]
-        else:
-            raise FileNotFoundError(
-                f"Expected to find fmriprep file anat/*_{search}.nii.gz"
-            )
+        if not file_path:
+            raise FileNotFoundError("Missing expected fMRIPrep anat output")
+        sess_anat[key] = file_path[0]
 
     # Find task or rest motion files from fMRIPrep
-    subj_func_fp = os.path.join(subj_deriv_fp, sess, "func")
+    subj_func_fp = os.path.join(subj_deriv_fp, "func")
     if do_rest:
         mot_files = glob.glob(f"{subj_func_fp}/*task-rest*timeseries.tsv")
     else:
@@ -155,11 +151,11 @@ def _get_fmriprep(
             for x in glob.glob(f"{subj_func_fp}/*timeseries.tsv")
             if not fnmatch.fnmatch(x, "*task-rest*")
         ]
-    mot_files.sort()
     if not mot_files:
         raise FileNotFoundError(
             "Expected to find fmriprep files func/*timeseries.tsv"
         )
+    mot_files.sort()
 
     # Find preprocessed EPI files, task or resting
     if do_rest:
@@ -174,11 +170,11 @@ def _get_fmriprep(
             )
             if not fnmatch.fnmatch(x, "*task-rest*")
         ]
-    run_files.sort()
     if not run_files:
         raise FileNotFoundError(
             "Expected to find fmriprep files *res-2_desc-preproc_bold.nii.gz"
         )
+    run_files.sort()
 
     # Check that each preprocessed file has a motion file
     if len(run_files) != len(mot_files):

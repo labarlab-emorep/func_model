@@ -1,8 +1,8 @@
 """Pipelines supporting AFNI and FSL.
 
 afni_task       : GLM task data via AFNI
-afni_rest       : GLM rest data via AFNI
-afni_extract    : extract task beta-coefficients from AFNI GLM
+afni_rest       : deprecated, GLM rest data via AFNI
+afni_extract    : deprecated, extract task beta-coefficients from AFNI GLM
 afni_ttest      : conduct Student's T via ETAC method
 afni_mvm        : conduct ANOVA-style analyses via 3dMVM
 
@@ -11,7 +11,6 @@ afni_mvm        : conduct ANOVA-style analyses via 3dMVM
 import os
 import glob
 from pathlib import Path
-from typing import Union
 import shutil
 from func_model.resources.afni import preprocess
 from func_model.resources.afni import deconvolve
@@ -35,21 +34,41 @@ class _SyncData(wf_fsl._SupportFsl):
         )
         super().__init__(self._keoki_path)
 
-    def setup(self) -> Union[str, os.PathLike]:
-        """Setup working directories, return path for AFNI output."""
-        self._work_fp = os.path.join(
-            self._work_deriv, "pre_processing/fmriprep", self._subj
-        )
+    def setup(self):
+        """Setup working directories.
+
+        Returns
+        -------
+        tuple
+            - [0] = work_deriv/model_afni/subj/sess/func
+            - [1] = work_deriv/fmriprep/subj/sess
+            - [2] = work_deriv/rawdata/subj/sess
+
+        """
+        # Make fmriprep dir, manage conflict between sessions
+        self._work_fp = os.path.join(self._work_deriv, "fmriprep", self._subj)
+        try:
+            os.makedirs(self._work_fp)
+        except FileExistsError:
+            pass
+
+        # make rawdata, work dir
         self._work_raw = os.path.join(
             self._work_deriv, "rawdata", self._subj, self._sess, "func"
         )
         self._subj_work = os.path.join(
             self._work_deriv, "model_afni", self._subj, self._sess, "func"
         )
-        for _dir in [self._work_fp, self._work_raw, self._subj_work]:
+        for _dir in [self._work_raw, self._subj_work]:
             if not os.path.exists(_dir):
                 os.makedirs(_dir)
-        return self._subj_work
+
+        # Return afni, fmriprep, rawdata dir paths
+        return (
+            self._subj_work,
+            os.path.join(self._work_fp, self._sess),
+            os.path.dirname(self._work_raw),
+        )
 
     @property
     def _ls2_addr(self) -> str:
@@ -204,11 +223,12 @@ def afni_task(
     model_name,
     log_dir,
 ):
-    """Conduct AFNI-based deconvolution for sanity checking.
+    """Conduct AFNI-based deconvolution.
 
-    Sanity check - model processing during movie|scenario presenation.
-    Supplies high-level steps, coordinates actual work in afni_pipelines
-    and afni modules.
+    Download data from Keoki, generate timing files from
+    rawdata events, motion files and preprocessed files
+    from fMRIPrep, then generate deconvultion files,
+    nuissance files, and execute 3dREMLfit.
 
     Parameters
     ----------
@@ -229,19 +249,13 @@ def afni_task(
     log_dir : str, os.PathLike
         Output location for log files and scripts
 
-
-    Raises
-    ------
-    ValueError
-        Model name/type not supported
-
     """
     if model_name not in ["univ", "mixed"]:
         raise ValueError(f"Unsupported model name : {model_name}")
 
     # Setup, download required files
     sync_data = _SyncData(subj, sess, work_deriv)
-    subj_work = sync_data.setup()
+    subj_work, subj_fp, subj_raw = sync_data.setup()
     sync_data.get_fmriprep()
     sess_events = sync_data.get_events()
 
@@ -269,46 +283,38 @@ def afni_task(
 
     # Generate and compile timing files
     make_tf = deconvolve.TimingFiles(subj, sess, task, subj_work, sess_events)
-    tf_com = make_tf.common_events()
-    tf_sess = make_tf.session_events()
-    tf_sel = make_tf.select_events()
-    tf_all = tf_com + tf_sess + tf_sel
+    tf_list = make_tf.common_events()
+    tf_list += make_tf.session_events()
+    tf_list += make_tf.select_events()
     if model_name == "mixed":
-        tf_all += make_tf.session_blocks()
+        tf_list += make_tf.session_blocks()
 
     # Organize timing files by description
     sess_timing = {}
-    for tf_path in tf_all:
+    for tf_path in tf_list:
         h_key = os.path.basename(tf_path).split("desc-")[1].split("_")[0]
         sess_timing[h_key] = tf_path
 
     # Generate deconvolution command
-    write_decon = deconvolve.WriteDecon(
-        subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-    )
-    write_decon.build_decon(model_name, sess_tfs=sess_timing)
-
-    # Use decon command to make REMl command, execute REML
-    make_reml = deconvolve.RunReml(
+    run_reml = deconvolve.RunReml(
         subj_work,
         proj_deriv,
         sess_anat,
         sess_func,
         log_dir,
     )
-    reml_path = make_reml.generate_reml(
-        subj, sess, write_decon.decon_cmd, write_decon.decon_name
-    )
-    _ = make_reml.exec_reml(subj, sess, reml_path, write_decon.decon_name)
+    run_reml.build_decon(model_name, sess_tfs=sess_timing)
+
+    # Use decon command to make REMl command, execute REML
+    run_reml.generate_reml()
+    _ = run_reml.exec_reml()
 
     # Send data to Keoki, clean
     sync_data.clean_deriv(model_name, sess_anat)
     sync_data.send_decon()
-    return  # TODO remove
-    shutil.rmtree(os.path.join(work_deriv, subj, sess))
+    shutil.rmtree(os.path.dirname(subj_work))
+    shutil.rmtree(subj_fp)
+    shutil.rmtree(subj_raw)
 
 
 def afni_rest(

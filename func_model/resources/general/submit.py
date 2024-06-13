@@ -163,24 +163,18 @@ def schedule_afni(
 
     """
     # Setup software derivatives dirs, for working
-    pipe_name = "rest" if model_name == "rest" else "task"
-    work_afni = os.path.join(work_deriv, f"model_afni-{pipe_name}")
+    work_afni = os.path.join(work_deriv, "model_afni")
     if not os.path.exists(work_afni):
         os.makedirs(work_afni)
 
-    # Setup software derivatives dirs, for storage
-    proj_afni = os.path.join(proj_deriv, "model_afni")
-    if not os.path.exists(proj_afni):
-        os.makedirs(proj_afni)
-
     # Write parent python script
-    wall_time = 20
+    pipe_name = "rest" if model_name == "rest" else "task"
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
 
         #SBATCH --job-name=p{subj[6:]}s{sess[-1]}
         #SBATCH --output={log_dir}/par{subj[6:]}s{sess[-1]}.txt
-        #SBATCH --time={wall_time}:00:00
+        #SBATCH --time=45:00:00
         #SBATCH --mem=8G
 
         import os
@@ -208,6 +202,7 @@ def schedule_afni(
         f"sbatch {py_script}",
         shell=True,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")
