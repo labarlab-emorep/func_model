@@ -12,6 +12,7 @@ import os
 import glob
 from pathlib import Path
 from typing import Union
+import shutil
 from func_model.resources.afni import preprocess
 from func_model.resources.afni import deconvolve
 from func_model.resources.afni import masks
@@ -20,8 +21,8 @@ from func_model.resources.afni import group as afni_group
 from func_model.workflows import wf_fsl
 
 
-class _GetData(wf_fsl._SupportFsl):
-    """Title."""
+class _SyncData(wf_fsl._SupportFsl):
+    """Coordinate setup, data download, output upload."""
 
     def __init__(self, subj, sess, work_deriv):
         """Title."""
@@ -42,13 +43,13 @@ class _GetData(wf_fsl._SupportFsl):
         self._work_raw = os.path.join(
             self._work_deriv, "rawdata", self._subj, self._sess, "func"
         )
-        work_afni = os.path.join(
+        self._subj_work = os.path.join(
             self._work_deriv, "model_afni", self._subj, self._sess, "func"
         )
-        for _dir in [self._work_fp, self._work_raw, work_afni]:
+        for _dir in [self._work_fp, self._work_raw, self._subj_work]:
             if not os.path.exists(_dir):
                 os.makedirs(_dir)
-        return work_afni
+        return self._subj_work
 
     @property
     def _ls2_addr(self) -> str:
@@ -120,6 +121,79 @@ class _GetData(wf_fsl._SupportFsl):
             )
         return event_list
 
+    def clean_deriv(self, model_name: str, sess_anat: dict):
+        """Remove unneeded files from model_afni."""
+        self._model_name = model_name
+        self._sess_anat = sess_anat
+        if not hasattr(self, "_subj_work"):
+            self.setup()
+
+        # Identify files to save, remove all others
+        save_list = (
+            self._save_rest() if model_name == "rest" else self._save_task()
+        )
+        for file_name in os.listdir(self._subj_work):
+            file_path = os.path.join(self._subj_work, file_name)
+            if file_path not in save_list:
+                os.remove(file_path)
+
+    def _save_task(self) -> list:
+        """Return list of important task decon files."""
+        # Check for pipeline output
+        chk_file = os.path.join(
+            self._subj_work, f"decon_{self._model_name}_stats_REML+tlrc.HEAD"
+        )
+        if not os.path.exists(chk_file):
+            raise FileNotFoundError(
+                f"Missing expected output file : {chk_file}"
+            )
+
+        # Build return list
+        save_list = glob.glob(f"{self._subj_work}/*decon_{self._model_name}*")
+        save_list.append(self._sess_anat["mask-WMe"])
+        save_list.append(self._sess_anat["mask-int"])
+        save_list.append(os.path.join(self._subj_work, "motion_files"))
+        save_list.append(os.path.join(self._subj_work, "timing_files"))
+        return save_list
+
+    def _save_rest(self):
+        """Return list of important rest decon files."""
+        stat_list = glob.glob(f"{self._subj_work}/decon_rest_anaticor*+tlrc.*")
+        if not stat_list:
+            raise FileNotFoundError(
+                f"Missing decon_rest files in {self._subj_work}"
+            )
+
+        # Make return lists
+        seed_list = glob.glob(f"{self._subj_work}/seed_*")
+        x_list = glob.glob(f"{self._subj_work}/X.decon_rest.*")
+        save_list = stat_list + seed_list + x_list
+        save_list.append(self._sess_anat["mask-int"])
+        save_list.append(f"{self._subj_work}/decon_rest.sh")
+        return save_list
+
+    def send_decon(self):
+        """Send decon output to Keoki."""
+        if not hasattr(self, "_subj_work"):
+            self.setup()
+
+        # Make output destination
+        keoki_dst = os.path.join(
+            self._keoki_path, "derivatives/model_afni", self._subj, self._sess
+        )
+        make_dst = f"""\
+            ssh \
+                -i {self._rsa_key} \
+                {self._ls2_addr} \
+                " command ; bash -c 'mkdir -p {keoki_dst}'"
+        """
+        _, _ = self._quick_sp(make_dst)
+
+        # Send output directory to Keoki
+        _, _ = self._submit_rsync(
+            self._subj_work, f"{self._ls2_addr}:{keoki_dst}"
+        )
+
 
 def afni_task(
     subj,
@@ -155,12 +229,6 @@ def afni_task(
     log_dir : str, os.PathLike
         Output location for log files and scripts
 
-    Returns
-    -------
-    triple
-        [0] = dictionary of timing files
-        [1] = dictionary of anat files
-        [2] = dictionary of func files
 
     Raises
     ------
@@ -171,11 +239,11 @@ def afni_task(
     if model_name not in ["univ", "mixed"]:
         raise ValueError(f"Unsupported model name : {model_name}")
 
-    # TODO setup, download required files
-    get_data = _GetData(subj, sess, work_deriv)
-    subj_work = get_data.setup()
-    get_data.get_fmriprep()
-    sess_events = get_data.get_events()
+    # Setup, download required files
+    sync_data = _SyncData(subj, sess, work_deriv)
+    subj_work = sync_data.setup()
+    sync_data.get_fmriprep()
+    sess_events = sync_data.get_events()
 
     # Get and validate task name
     task = (
@@ -234,17 +302,13 @@ def afni_task(
     reml_path = make_reml.generate_reml(
         subj, sess, write_decon.decon_cmd, write_decon.decon_name
     )
-    sess_func["func-decon"] = make_reml.exec_reml(
-        subj, sess, reml_path, write_decon.decon_name
-    )
+    _ = make_reml.exec_reml(subj, sess, reml_path, write_decon.decon_name)
 
+    # Send data to Keoki, clean
+    sync_data.clean_deriv(model_name, sess_anat)
+    sync_data.send_decon()
     return  # TODO remove
-
-    # Clean
-    afni_helper.MoveFinal(
-        subj, sess, proj_deriv, subj_work, sess_anat, model_name
-    )
-    return (sess_timing, sess_anat, sess_func)
+    shutil.rmtree(os.path.join(work_deriv, subj, sess))
 
 
 def afni_rest(

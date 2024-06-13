@@ -1626,14 +1626,14 @@ class RunReml:
         with open(reml_script, "w") as script:
             script.write(bash_cmd)
 
-        wall_time = 38 if decon_name == "decon_indiv" else 18
+        wall_time = 18 if decon_name == "decon_rest" else 38
         _, _ = submit.submit_sbatch(
             bash_cmd,
             f"rml{subj[6:]}s{sess[-1]}",
             self._log_dir,
             num_hours=wall_time,
             num_cpus=6,
-            mem_gig=12,
+            mem_gig=24,
         )
         if not os.path.exists(out_path):
             raise FileNotFoundError(f"Expected to find {out_path}")

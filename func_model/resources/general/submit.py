@@ -187,7 +187,7 @@ def schedule_afni(
         import sys
         from func_model.workflows import wf_afni
 
-        _, _, _ = wf_afni.afni_{pipe_name}(
+        wf_afni.afni_{pipe_name}(
             "{subj}",
             "{sess}",
             "{proj_rawdata}",
