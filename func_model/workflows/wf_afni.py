@@ -297,6 +297,8 @@ def afni_task(
 
     # Generate deconvolution command
     run_reml = deconvolve.RunReml(
+        subj,
+        sess,
         subj_work,
         proj_deriv,
         sess_anat,
@@ -465,7 +467,7 @@ def afni_extract(
         os.makedirs(out_dir)
 
     # Initialize beta extraction
-    get_betas = group.ExtractTaskBetas(proj_dir)
+    get_betas = group.AfniExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
     if group_mask == "template":

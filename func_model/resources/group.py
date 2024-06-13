@@ -1,9 +1,9 @@
 """Methods for group-level analyses.
 
-AfniExtractBetas : mine AFNI betas
+AfniExtractBetas : mine AFNI deconvolve output for betas estimates
 EtacTest : conduct AFNI group-level test via 3dttest++
 MvmTest : conduct AFNI group-level test via 3dMVM
-ExtractTaskBetas : mine nii to generate dataframes of beta estimates
+ExtractTaskBetas : mine FSL first-level output for beta estimates
 ImportanceMask : generate mask in template space from classifier output
 ConjunctAnalysis : generate conjunction maps from ImportanceMask output
 

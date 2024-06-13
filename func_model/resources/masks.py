@@ -1,4 +1,10 @@
-"""Methods for mask construction."""
+"""Methods for mask construction.
+
+MakeMasks : Generate masks for AFNI-based analyses
+group_mask : Generate a group intersection mask
+tpl_gm : Generate gray matter mask from template priors
+
+"""
 
 import os
 import glob

@@ -1,4 +1,8 @@
-"""Methods for additional preprocessing."""
+"""Methods for additional preprocessing.
+
+extra_preproc : Conduct extra preprocessing to prep for AFNI deconvolution
+
+"""
 
 import os
 import glob

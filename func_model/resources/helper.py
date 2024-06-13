@@ -1,4 +1,4 @@
-"""Helper methods for FSL-based pipelines.
+"""Various helper methods.
 
 prepend_afni_sing : setup singularity call for afni
 valid_task : check task name
