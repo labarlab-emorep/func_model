@@ -18,11 +18,10 @@ import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 import nibabel as nib
-from func_model.resources.fsl import helper as fsl_helper
-from func_model.resources.general import matrix
-from func_model.resources.general import submit
-from func_model.resources.general import sql_database
-from func_model.resources.afni import helper as afni_helper
+from func_model.resources import helper
+from func_model.resources import matrix
+from func_model.resources import submit
+from func_model.resources import sql_database
 
 
 class AfniExtractTaskBetas(matrix.NiftiArray):
@@ -197,7 +196,7 @@ class AfniExtractTaskBetas(matrix.NiftiArray):
 
         """
         # Invert emo_switch to unpack sub-bricks
-        _emo_switch = afni_helper.emo_switch()
+        _emo_switch = helper.emo_switch()
         emo_switch = {j: i for i, j in _emo_switch.items()}
 
         # Extract desired sub-bricks from deconvolve file by label name
@@ -270,7 +269,7 @@ class AfniExtractTaskBetas(matrix.NiftiArray):
 
         """
         # Check input, set attributes and output location
-        if not afni_helper.valid_task(task):
+        if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
 
         print(f"\tGetting betas from {subj}, {sess}")
@@ -497,7 +496,7 @@ class EtacTest(_SetupTest):
             raise ValueError("Improper format of sub_label")
 
         # Check model name
-        if not afni_helper.valid_univ_test(self._model_name):
+        if not helper.valid_univ_test(self._model_name):
             raise ValueError("Improper model name specified")
 
     def _etac_opts(
@@ -712,14 +711,14 @@ class MvmTest(_SetupTest):
 
         """
         # Validate
-        if not afni_helper.valid_mvm_test(model_name):
+        if not helper.valid_mvm_test(model_name):
             raise ValueError(f"Unexpected model_name : {model_name}")
         first_keys = list(group_dict.keys())
         if not any("sub-ER" in x for x in first_keys):
             raise KeyError("First-level key not matching format : sub-ER*")
         second_keys = list(group_dict[first_keys[0]].keys())
         for task in second_keys:
-            if not afni_helper.valid_task(task):
+            if not helper.valid_task(task):
                 raise KeyError(f"Unexpected second-level key : {task}")
         third_keys = list(group_dict[first_keys[0]][second_keys[0]].keys())
         valid_keys = ["sess", "decon_path", "emo_label", "wash_label"]
@@ -953,7 +952,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         """
         # Validate args and setup
-        if not fsl_helper.valid_task(task):
+        if not helper.valid_task(task):
             raise ValueError(f"Unexpected value for task : {task}")
         if model_name not in ["sep", "lss"]:
             raise ValueError(

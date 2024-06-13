@@ -11,7 +11,7 @@ import os
 import sys
 import subprocess
 import textwrap
-from func_model.resources.fsl import helper as fsl_helper
+from func_model.resources import helper
 
 
 def submit_subprocess(bash_cmd, chk_path, job_name, force_cont=False):
@@ -262,9 +262,9 @@ def schedule_fsl(
         Unexpected argument parameters
 
     """
-    if not fsl_helper.valid_name(model_name):
+    if not helper.valid_name(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
-    if not fsl_helper.valid_level(model_level):
+    if not helper.valid_level(model_level):
         raise ValueError(f"Unexpected model level : {model_level}")
 
     def _sbatch_head() -> str:

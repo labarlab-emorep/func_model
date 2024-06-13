@@ -2,8 +2,9 @@
 
 import os
 import glob
-from func_model.resources.afni import helper as afni_helper
-from func_model.resources.general import submit, matrix
+from func_model.resources import helper
+from func_model.resources import submit
+from func_model.resources import matrix
 
 
 class MakeMasks:
@@ -78,9 +79,7 @@ class MakeMasks:
         self._subj_work = subj_work
         self._anat_dict = anat_dict
         self._func_dict = func_dict
-        self._sing_prep = afni_helper.prepend_afni_sing(
-            work_deriv, self._subj_work
-        )
+        self._sing_prep = helper.prepend_afni_sing(work_deriv, self._subj_work)
 
         try:
             _file_name = os.path.basename(func_dict["func-preproc"][0])

@@ -17,12 +17,13 @@ afni_univ -n student
 afni_univ -n paired --task-name movies
 
 """
+
 # %%
 import sys
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_afni
-from func_model.resources.afni import helper as afni_helper
+from func_model.resources import helper
 
 
 # %%
@@ -86,12 +87,12 @@ def main():
     task_name = args.task_name
 
     # Check model_name
-    if not afni_helper.valid_univ_test(model_name):
+    if not helper.valid_univ_test(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
     # Setup
-    emo_dict = afni_helper.emo_switch()
+    emo_dict = helper.emo_switch()
     task_list = ["task-movies", "task-scenarios"]
     if task_name:
         chk_task = f"task-{task_name}"

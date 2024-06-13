@@ -12,11 +12,11 @@ import os
 import glob
 from pathlib import Path
 import shutil
-from func_model.resources.afni import preprocess
-from func_model.resources.afni import deconvolve
-from func_model.resources.afni import masks
-from func_model.resources.afni import helper as afni_helper
-from func_model.resources.afni import group as afni_group
+from func_model.resources import preprocess
+from func_model.resources import deconvolve
+from func_model.resources import masks
+from func_model.resources import helper
+from func_model.resources import group
 from func_model.workflows import wf_fsl
 
 
@@ -264,7 +264,7 @@ def afni_task(
         "task-"
         + os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
     )
-    if not afni_helper.valid_task(task):
+    if not helper.valid_task(task):
         raise ValueError(f"Expected task name : {task}")
 
     # Extra pre-processing steps
@@ -407,9 +407,7 @@ def afni_rest(
 
     # Seed (sanity check) and clean
     corr_dict = proj_reg.seed_corr(sess_anat)
-    afni_helper.MoveFinal(
-        subj, sess, proj_deriv, subj_work, sess_anat, model_name
-    )
+    helper.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
     return (corr_dict, sess_anat, sess_func)
 
 
@@ -467,7 +465,7 @@ def afni_extract(
         os.makedirs(out_dir)
 
     # Initialize beta extraction
-    get_betas = afni_group.ExtractTaskBetas(proj_dir)
+    get_betas = group.ExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
     if group_mask == "template":
@@ -500,9 +498,7 @@ def afni_extract(
 
     # Combine all participant dataframes
     if comb_all:
-        _ = afni_group.comb_matrices(
-            subj_list, model_name, proj_deriv, out_dir
-        )
+        _ = group.comb_matrices(subj_list, model_name, proj_deriv, out_dir)
 
 
 def afni_ttest(task, model_name, emo_name, proj_dir):
@@ -547,11 +543,11 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
         raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
 
     # Validate strings
-    if not afni_helper.valid_task(task):
+    if not helper.valid_task(task):
         raise ValueError(f"Unexpected task value : {task}")
-    if not afni_helper.valid_univ_test(model_name):
+    if not helper.valid_univ_test(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
-    emo_switch = afni_helper.emo_switch()
+    emo_switch = helper.emo_switch()
     if emo_name not in emo_switch.keys():
         raise ValueError(f"Unexpected emotion name : {emo_name}")
 
@@ -602,7 +598,7 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
     sub_label = task_short + emo_short + "#0_Coef"
 
     # Generate, execute ETAC command
-    run_etac = afni_group.EtacTest(proj_dir, out_dir, mask_path)
+    run_etac = group.EtacTest(proj_dir, out_dir, mask_path)
     _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
 
 
@@ -652,9 +648,9 @@ def afni_mvm(proj_dir, model_name, emo_name):
         raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
 
     # Validate strings
-    if not afni_helper.valid_mvm_test(model_name):
+    if not helper.valid_mvm_test(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
-    emo_switch = afni_helper.emo_switch()
+    emo_switch = helper.emo_switch()
     if emo_name not in emo_switch.keys():
         raise ValueError(f"Unexpected emotion name : {emo_name}")
 
@@ -721,6 +717,6 @@ def afni_mvm(proj_dir, model_name, emo_name):
     mask_path = masks.tpl_gm(group_dir)
 
     # Generate, execute ETAC command
-    run_mvm = afni_group.MvmTest(proj_dir, out_dir, mask_path)
+    run_mvm = group.MvmTest(proj_dir, out_dir, mask_path)
     run_mvm.clustsim()
     _ = run_mvm.write_exec(group_dict, model_name, emo_short)

@@ -40,8 +40,8 @@ import textwrap
 import platform
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model.resources.general import submit
-from func_model.resources.afni import helper
+from func_model.resources import submit
+from func_model.resources import helper
 
 
 # %%

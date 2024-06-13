@@ -4,11 +4,12 @@ NiftiArray : manage converting nii voxel values to arrays
 C3dMethods : useful methods using c3d for nii manipulation
 
 """
+
 import os
 import numpy as np
 import pandas as pd
 import nibabel as nib
-from func_model.resources.general import submit
+from func_model.resources import submit
 
 
 class NiftiArray:

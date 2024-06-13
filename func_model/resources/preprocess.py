@@ -4,9 +4,9 @@ import os
 import glob
 import fnmatch
 from typing import Union
-from func_model.resources.afni import helper as afni_helper
-from func_model.resources.afni import masks
-from func_model.resources.general import submit
+from func_model.resources import helper
+from func_model.resources import masks
+from func_model.resources import submit
 
 
 def _smooth_epi(
@@ -44,7 +44,7 @@ def _smooth_epi(
             f"-prefix {out_path}",
             epi_path,
         ]
-        sing_prep = afni_helper.prepend_afni_sing(work_deriv, subj_work)
+        sing_prep = helper.prepend_afni_sing(work_deriv, subj_work)
         bash_cmd = " ".join(sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_path, "Smooth run")
 
@@ -89,7 +89,7 @@ def _scale_epi(
             f"-prefix {out_tstat}",
             epi_path,
         ]
-        sing_prep = afni_helper.prepend_afni_sing(work_deriv, subj_work)
+        sing_prep = helper.prepend_afni_sing(work_deriv, subj_work)
         bash_cmd = " ".join(sing_prep + bash_list)
         _ = submit.submit_subprocess(bash_cmd, out_tstat, "Tstat run")
 

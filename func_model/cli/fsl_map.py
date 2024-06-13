@@ -25,7 +25,7 @@ import textwrap
 import platform
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_fsl
-from func_model.resources.fsl import helper as fsl_helper
+from func_model.resources import helper
 
 
 # %%
@@ -124,10 +124,10 @@ def main():
     task_name = args.task_name
 
     # Check user input
-    if not fsl_helper.valid_level(model_level):
+    if not helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
-    if not fsl_helper.valid_contrast(con_name):
+    if not helper.valid_contrast(con_name):
         print(f"Unsupported contrast name : {con_name}")
         sys.exit(1)
 
