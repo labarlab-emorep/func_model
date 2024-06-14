@@ -124,8 +124,6 @@ def submit_sbatch(
 def schedule_afni(
     subj,
     sess,
-    proj_rawdata,
-    proj_deriv,
     work_deriv,
     model_name,
     log_dir,
@@ -142,11 +140,6 @@ def schedule_afni(
         BIDS subject identifier
     sess : str
         BIDS session identifier
-    proj_rawdata : path
-        Location of BIDS-organized project rawdata
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
     work_deriv : path
         Parent location for writing pipeline intermediates
     model_name : str
@@ -184,8 +177,6 @@ def schedule_afni(
         wf_afni.afni_{pipe_name}(
             "{subj}",
             "{sess}",
-            "{proj_rawdata}",
-            "{proj_deriv}",
             "{work_deriv}",
             "{model_name}",
             "{log_dir}",

@@ -217,8 +217,6 @@ class _SyncData(wf_fsl._SupportFsl):
 def afni_task(
     subj,
     sess,
-    proj_rawdata,
-    proj_deriv,
     work_deriv,
     model_name,
     log_dir,
@@ -236,11 +234,6 @@ def afni_task(
         BIDS subject identifier
     sess : str
         BIDS session identifier
-    proj_rawdata : str, os.PathLike
-        Location of BIDS-organized project rawdata
-    proj_deriv : str, os.PathLike
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
     work_deriv : str, os.PathLike
         Parent location for writing pipeline intermediates
     model_name : str
@@ -274,7 +267,7 @@ def afni_task(
 
     # Make AFNI-style motion and censor files
     make_motion = deconvolve.MotionCensor(
-        subj_work, proj_deriv, sess_func["func-motion"]
+        subj_work, work_deriv, sess_func["func-motion"]
     )
     sess_func["mot-mean"] = make_motion.mean_motion()
     sess_func["mot-deriv"] = make_motion.deriv_motion()
@@ -300,7 +293,7 @@ def afni_task(
         subj,
         sess,
         subj_work,
-        proj_deriv,
+        work_deriv,
         sess_anat,
         sess_func,
         log_dir,

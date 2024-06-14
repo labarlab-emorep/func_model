@@ -570,9 +570,8 @@ class MotionCensor:
     ----------
     subj_work : path
         Location of working directory for intermediates
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
+    work_deriv : str, os.PathLike
+        Parent location for writing pipeline intermediates
     func_motion : list
         Locations of timeseries.tsv files produced by fMRIPrep,
         file names must follow BIDS convention
@@ -590,35 +589,19 @@ class MotionCensor:
 
     Notes
     -----
-    -   As runs do not have an equal number of volumes, motion/censor files
-        for each run are concatenated into a single file rather than
-        managing zero padding.
+    -   As runs do not have an equal number of volumes,
+        motion/censor files for each run are concatenated
+        into a single file rather than managing zero padding.
     -   Output formats use 1D extension since AFNI assumes TSVs
         contain a header.
 
     """
 
-    def __init__(self, subj_work, proj_deriv, func_motion):
+    def __init__(self, subj_work, work_deriv, func_motion):
         """Setup for making motion, censor files.
 
         Set attributes, make output directory, setup basic
         output file name.
-
-        Attributes
-        ----------
-        _out_dir : path
-            Output directory for motion, censor files
-        _out_str : str
-            Basic output file name
-        _sing_prep : list
-            First part of subprocess call for AFNI singularity
-
-        Raises
-        ------
-        TypeError
-            Improper parameter types
-        ValueError
-            Improper naming convention of motion timeseries file
 
         """
         # Validate args and setup
@@ -637,12 +620,9 @@ class MotionCensor:
                 + "BIDS fields are required by afni.MotionCensor."
             )
         self._out_str = f"{subj}_{sess}_{task}_{desc}_timeseries.1D"
-        self._proj_deriv = proj_deriv
         self._func_motion = func_motion
         self._subj_work = subj_work
-        self._sing_prep = helper.prepend_afni_sing(
-            self._proj_deriv, self._subj_work
-        )
+        self._sing_prep = helper.prepend_afni_sing(work_deriv, self._subj_work)
         self._out_dir = os.path.join(subj_work, "motion_files")
         if not os.path.exists(self._out_dir):
             os.makedirs(self._out_dir)
@@ -866,9 +846,8 @@ class _WriteDecon:
     ----------
     subj_work : str, os.PathLike
         Location of working directory for intermediates
-    proj_deriv : str, os.PathLike
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories.
+    work_deriv : str, os.PathLike
+        Parent location for writing pipeline intermediates
     sess_func : dict
         Contains reference names (key) and paths (value) to
         preprocessed functional files.
@@ -910,7 +889,7 @@ class _WriteDecon:
     def __init__(
         self,
         subj_work,
-        proj_deriv,
+        work_deriv,
         sess_func,
         sess_anat,
     ):
@@ -926,13 +905,10 @@ class _WriteDecon:
             raise ValueError("Expected list of paths to scaled EPI files.")
 
         print("\nInitializing WriteDecon")
-        self._proj_deriv = proj_deriv
         self._subj_work = subj_work
         self._sess_func = sess_func
         self._sess_anat = sess_anat
-        self._afni_prep = helper.prepend_afni_sing(
-            self._proj_deriv, self._subj_work
-        )
+        self._afni_prep = helper.prepend_afni_sing(work_deriv, self._subj_work)
 
     def build_decon(self, model_name, sess_tfs=None):
         """Trigger deconvolution method.
@@ -1392,9 +1368,8 @@ class RunReml(_WriteDecon):
         BIDS session identifier
     subj_work : str, os.PathLike
         Location of working directory for intermediates
-    proj_deriv : str, os.PathLike
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories.
+    work_deriv : str, os.PathLike
+        Parent location for writing pipeline intermediates
     sess_anat : dict
         Contains reference names (key) and paths (value) to
         preprocessed anatomical files.
@@ -1429,7 +1404,7 @@ class RunReml(_WriteDecon):
         subj,
         sess,
         subj_work,
-        proj_deriv,
+        work_deriv,
         sess_anat,
         sess_func,
         log_dir,
@@ -1448,8 +1423,8 @@ class RunReml(_WriteDecon):
         self._sess_anat = sess_anat
         self._sess_func = sess_func
         self._log_dir = log_dir
-        self._afni_prep = helper.prepend_afni_sing(proj_deriv, subj_work)
-        super().__init__(subj_work, proj_deriv, sess_func, sess_anat)
+        self._afni_prep = helper.prepend_afni_sing(work_deriv, subj_work)
+        super().__init__(subj_work, work_deriv, sess_func, sess_anat)
 
     def generate_reml(self):
         """Generate matrices and 3dREMLfit command.

@@ -63,17 +63,6 @@ def _get_args():
         ),
     )
     parser.add_argument(
-        "--proj-dir",
-        type=str,
-        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
-        help=textwrap.dedent(
-            """\
-            Path to BIDS-formatted project directory
-            (default : %(default)s)
-            """
-        ),
-    )
-    parser.add_argument(
         "--sess",
         nargs="+",
         choices=["ses-day2", "ses-day3"],
@@ -117,7 +106,6 @@ def main():
     args = _get_args().parse_args()
     subj_list = args.subj
     sess_list = args.sess
-    proj_dir = args.proj_dir
     model_name = args.model_name
 
     #
@@ -129,10 +117,6 @@ def main():
     if not model_valid:
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
-
-    # Setup group project directory, paths
-    proj_deriv = os.path.join(proj_dir, "derivatives")
-    proj_rawdata = os.path.join(proj_dir, "rawdata")
 
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
@@ -151,8 +135,6 @@ def main():
             _, _ = submit.schedule_afni(
                 subj,
                 sess,
-                proj_rawdata,
-                proj_deriv,
                 work_deriv,
                 model_name,
                 log_dir,
