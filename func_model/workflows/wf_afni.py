@@ -496,7 +496,7 @@ def afni_extract(
         _ = group.comb_matrices(subj_list, model_name, proj_deriv, out_dir)
 
 
-def afni_ttest(task, model_name, emo_name, proj_dir):
+def afni_ttest(task, model_name, stat, emo_name, proj_dir, blk_coef=False):
     """Conduct T-tests in AFNI using the ETAC method.
 
     Conduct stimulus-specific (movies, scenarios) t-tests comparing
@@ -507,23 +507,21 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
     Parameters
     ----------
     task : str
-        [task-movies | task-scenarios]
+        {"task-movies", "task-scenarios"}
         BIDS task identifier
     model_name : str
-        [student | paired]
+        {"univ", "mixed"}
+        Type of AFNI deconvolution
+    stat : str
+        {"student", "paired"}
         Type of T-test to conduct
     emo_name : str, key of afni.helper.emo_switch
         Lower case emotion name
-    proj_dir : path
-        Project directory location, should contain
-        data_scanner_BIDS/derivatives/model_afni
-
-    Raises
-    ------
-    FileNotFoundError
-        Missing required directory
-    ValueError
-        Unexpected argument parameter
+    proj_dir : str, os.PathLike
+        Project directory location
+    blk_coef : bool, optional
+        Use block (blk) coefficients rather than event, only
+        available when model_name=mixed.
 
     """
     # Validate paths
@@ -532,26 +530,28 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
             f"Missing expected project directory : {proj_dir}"
         )
     afni_deriv = os.path.join(
-        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
+        proj_dir, "data_scanner_BIDS", "derivatives", "model_afni"
     )
     if not os.path.exists(afni_deriv):
         raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
 
-    # Validate strings
+    # Validate other options
     if not helper.valid_task(task):
         raise ValueError(f"Unexpected task value : {task}")
-    if not helper.valid_univ_test(model_name):
-        raise ValueError(f"Unexpected model name : {model_name}")
+    if not helper.valid_univ_test(stat):
+        raise ValueError(f"Unexpected stat test name : {stat}")
     emo_switch = helper.emo_switch()
     if emo_name not in emo_switch.keys():
         raise ValueError(f"Unexpected emotion name : {emo_name}")
+    if blk_coef and model_name != "mixed":
+        raise ValueError(
+            "Option blk_coef=True only available for model_name=mixed"
+        )
 
     # Setup
-    print(f"\nConducting {model_name} ETAC for {emo_name}")
-    group_dir = os.path.join(proj_dir, "analyses/model_afni")
-    out_dir = os.path.join(
-        group_dir, f"ttest_{model_name}", f"{task}_{emo_name}"
-    )
+    print(f"\nConducting {stat} ETAC for {emo_name}")
+    group_dir = os.path.join(proj_dir, "analyses", "model_afni_group")
+    out_dir = os.path.join(group_dir, f"ttest_{stat}", f"{task}_{emo_name}")
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
@@ -566,35 +566,44 @@ def afni_ttest(task, model_name, emo_name, proj_dir):
         raise ValueError("Failed to detect desc-comWas timing files.")
 
     # Build dict needed by group.EtacTest.write_exec
-    group_dict = {}
+    decon_dict = {}
     for file_path in task_subj:
+
+        # Find the decon file
         decon_path = os.path.join(
-            Path(file_path).parents[1], "decon_univ_stats_REML+tlrc.HEAD"
+            os.path.dirname(file_path),
+            f"decon_{model_name}_stats_REML+tlrc.HEAD",
         )
-        if os.path.exists(decon_path):
-            subj, sess, _task, _desc, _suff = os.path.basename(
-                file_path
-            ).split("_")
-            group_dict[subj] = {
-                "sess": sess,
-                "decon_path": decon_path,
-            }
+        if not os.path.exists(decon_path):
+            raise FileNotFoundError(f"Expected decon file : {decon_path}")
+
+        # Identify subj, sess info
+        subj, sess, _task, _desc, _suff = os.path.basename(file_path).split(
+            "_"
+        )
+        decon_dict[subj] = decon_path
 
     # Make, get mask
     mask_path = masks.tpl_gm(group_dir)
 
     # Build coefficient name to match sub-brick, recreate name
-    # specified by afni.deconvolve.TimingFiles.session_events,
+    # specified by resources.deconvolve.TimingFiles.session_events,
     # and append AFNI coefficient title.
     task_short = task.split("-")[1][:3]
     if task_short not in ["mov", "sce"]:
         raise ValueError("Problem splitting task name")
     emo_short = emo_switch[emo_name]
-    sub_label = task_short + emo_short + "#0_Coef"
+    sub_label = (
+        f"blk{task_short.title()[1]}{emo_short}#0_Coef"
+        if blk_coef
+        else f"{task_short}{emo_short}#0_Coef"
+    )
 
     # Generate, execute ETAC command
     run_etac = group.EtacTest(proj_dir, out_dir, mask_path)
-    _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
+    _ = run_etac.write_exec(
+        model_name, emo_short, decon_dict, sub_label, blk_coef
+    )
 
 
 def afni_mvm(proj_dir, model_name, emo_name):
@@ -667,7 +676,7 @@ def afni_mvm(proj_dir, model_name, emo_name):
     subj_all = [
         os.path.basename(x) for x in sorted(glob.glob(f"{afni_deriv}/sub-*"))
     ]
-    group_dict = {}
+    decon_dict = {}
     for subj in subj_all:
         # Only include participants with deconvolved data from both sessions
         decon_list = sorted(
@@ -682,7 +691,7 @@ def afni_mvm(proj_dir, model_name, emo_name):
                 + f"{subj} from group-level model"
             )
             continue
-        group_dict[subj] = {}
+        decon_dict[subj] = {}
 
         # Identify the task name from washout timing file
         for decon_path in decon_list:
@@ -700,7 +709,7 @@ def afni_mvm(proj_dir, model_name, emo_name):
             emo_label = task_short + emo_short + "#0_Coef"
 
             # Fill dictionary with required structure, items
-            group_dict[subj][task] = {
+            decon_dict[subj][task] = {
                 "sess": sess,
                 "decon_path": decon_path,
                 "emo_label": emo_label,
@@ -714,4 +723,4 @@ def afni_mvm(proj_dir, model_name, emo_name):
     # Generate, execute ETAC command
     run_mvm = group.MvmTest(proj_dir, out_dir, mask_path)
     run_mvm.clustsim()
-    _ = run_mvm.write_exec(group_dict, model_name, emo_short)
+    _ = run_mvm.write_exec(decon_dict, model_name, emo_short)
