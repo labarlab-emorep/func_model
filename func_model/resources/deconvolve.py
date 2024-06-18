@@ -1454,7 +1454,7 @@ class RunReml(_WriteDecon):
             mem_gig=10,
         )
         if not os.path.exists(self._reml_path):
-            time.sleep(30)
+            time.sleep(120)
 
         # Check generated file length, account for 0 vs 1 indexing
         with open(self._reml_path, "r") as rf:
