@@ -13,14 +13,14 @@ Model names:
 
 Examples
 --------
-afni_univ -n student
-afni_univ -n paired --task-name movies
+afni_univ -s student -t movies
 
 """
 
 # %%
 import sys
 import textwrap
+import platform
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_afni
 from func_model.resources import helper
@@ -33,6 +33,23 @@ def _get_args():
         description=__doc__, formatter_class=RawTextHelpFormatter
     )
     parser.add_argument(
+        "--block-coef",
+        action="store_true",
+        help="Test block coefficients instead of event for mixed models",
+    )
+    parser.add_argument(
+        "--model-name",
+        choices=["mixed", "univ"],
+        type=str,
+        default="mixed",
+        help=textwrap.dedent(
+            """\
+            AFNI deconv name
+            (default : %(default)s)
+            """
+        ),
+    )
+    parser.add_argument(
         "--proj-dir",
         type=str,
         default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
@@ -43,31 +60,22 @@ def _get_args():
             """
         ),
     )
-    parser.add_argument(
-        "--task-name",
-        type=str,
-        default=None,
-        help=textwrap.dedent(
-            """\
-            [movies | scenarios]
-            If specified, conduct model-name for only specified task.
-            (default : %(default)s)
-            """
-        ),
-    )
 
     required_args = parser.add_argument_group("Required Arguments")
     required_args.add_argument(
-        "-n",
-        "--model-name",
-        help=textwrap.dedent(
-            """\
-            [student | paired]
-            Name of model, for organizing output and triggering
-            differing workflows.
-            """
-        ),
+        "-s",
+        "--stat",
+        help="T-test type",
+        choices=["student", "paired"],
         type=str,
+        required=True,
+    )
+    required_args.add_argument(
+        "-t",
+        "--task",
+        type=str,
+        choices=["movies", "scenarios"],
+        help="Task name",
         required=True,
     )
 
@@ -81,29 +89,33 @@ def _get_args():
 # %%
 def main():
     """Setup working environment."""
+    # Validate env
+    if "ccn-labarserv2" not in platform.uname().node:
+        raise EnvironmentError(
+            "afni_univ is written for execution on labarserv2"
+        )
+
     args = _get_args().parse_args()
     proj_dir = args.proj_dir
     model_name = args.model_name
-    task_name = args.task_name
+    stat = args.stat
+    task = "task-" + args.task
+    blk_coef = args.block_coef
 
-    # Check model_name
-    if not helper.valid_univ_test(model_name):
-        print(f"Unsupported model name : {model_name}")
-        sys.exit(1)
-
-    # Setup
-    emo_dict = helper.emo_switch()
-    task_list = ["task-movies", "task-scenarios"]
-    if task_name:
-        chk_task = f"task-{task_name}"
-        if chk_task not in task_list:
-            raise ValueError(f"Unexpected task name : {task_name}")
-        task_list = [chk_task]
+    # Validate args
+    if not helper.valid_univ_test(stat):
+        raise ValueError(f"Unsupported stat name : {model_name}")
+    if task not in ["task-movies", "task-scenarios"]:
+        raise ValueError(f"Unexpected task name : {task}")
+    if blk_coef and stat != "mixed":
+        raise ValueError("--block-coef only available when model-name=mixed")
 
     # Run model for each task, emotion
-    for task in task_list:
-        for emo_name in emo_dict.keys():
-            wf_afni.afni_ttest(task, model_name, emo_name, proj_dir)
+    emo_dict = helper.emo_switch()
+    for emo_name in emo_dict.keys():
+        wf_afni.afni_ttest(
+            task, model_name, stat, emo_name, proj_dir, blk_coef=blk_coef
+        )
 
 
 if __name__ == "__main__":
