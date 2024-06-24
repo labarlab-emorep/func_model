@@ -13,16 +13,21 @@ Model names:
 
 Examples
 --------
-afni_univ -s student -t movies
+afni_univ --run-setup
+afni_univ --stat student --task scenarios
+afni_univ --stat paired --task movies --block-coef
 
 """
 
 # %%
+import os
 import sys
+import time
 import textwrap
 import platform
+from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model.workflows import wf_afni
+from func_model.resources import submit
 from func_model.resources import helper
 
 
@@ -50,33 +55,21 @@ def _get_args():
         ),
     )
     parser.add_argument(
-        "--proj-dir",
-        type=str,
-        default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
-        help=textwrap.dedent(
-            """\
-            Path to experiment-specific project directory
-            (default : %(default)s)
-            """
-        ),
+        "--run-setup",
+        action="store_true",
+        help="Download model_afni data and make template mask",
     )
-
-    required_args = parser.add_argument_group("Required Arguments")
-    required_args.add_argument(
-        "-s",
+    parser.add_argument(
         "--stat",
         help="T-test type",
         choices=["student", "paired"],
         type=str,
-        required=True,
     )
-    required_args.add_argument(
-        "-t",
+    parser.add_argument(
         "--task",
         type=str,
         choices=["movies", "scenarios"],
         help="Task name",
-        required=True,
     )
 
     if len(sys.argv) == 1:
@@ -90,32 +83,53 @@ def _get_args():
 def main():
     """Setup working environment."""
     # Validate env
-    if "ccn-labarserv2" not in platform.uname().node:
-        raise EnvironmentError(
-            "afni_univ is written for execution on labarserv2"
-        )
+    if "dcc" not in platform.uname().node:
+        raise EnvironmentError("afni_univ is written for execution on DCC")
 
+    # Catch args
     args = _get_args().parse_args()
-    proj_dir = args.proj_dir
     model_name = args.model_name
+    blk_coef = args.block_coef
     stat = args.stat
     task = "task-" + args.task
-    blk_coef = args.block_coef
+
+    # Setup work directory, for intermediates
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    now_time = datetime.now()
+    log_name = (
+        "func-afni_setup"
+        if args.run_setup
+        else f"func-afni_stat-{stat}_{task}_model-{model_name}"
+    )
+    log_dir = os.path.join(
+        work_deriv,
+        "logs",
+        f"{log_name}_{now_time.strftime('%Y-%m-%d_%H:%M')}",
+    )
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    # Get data
+    if args.run_setup:
+        submit.schedule_afni_group_setup(work_deriv, log_dir)
+        return
 
     # Validate args
     if not helper.valid_univ_test(stat):
         raise ValueError(f"Unsupported stat name : {model_name}")
     if task not in ["task-movies", "task-scenarios"]:
         raise ValueError(f"Unexpected task name : {task}")
-    if blk_coef and stat != "mixed":
+    if blk_coef and model_name != "mixed":
         raise ValueError("--block-coef only available when model-name=mixed")
 
-    # Run model for each task, emotion
-    emo_dict = helper.emo_switch()
-    for emo_name in emo_dict.keys():
-        wf_afni.afni_ttest(
-            task, model_name, stat, emo_name, proj_dir, blk_coef=blk_coef
+    # Schedule model for each task, emotion
+    # emo_dict = helper.emo_switch()
+    # for emo_name in emo_dict.keys():
+    for emo_name in ["disgust"]:
+        submit.schedule_afni_group_univ(
+            task, model_name, stat, emo_name, work_deriv, log_dir, blk_coef
         )
+        time.sleep(3)
 
 
 if __name__ == "__main__":

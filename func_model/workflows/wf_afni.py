@@ -10,8 +10,8 @@ afni_mvm        : conduct ANOVA-style analyses via 3dMVM
 
 import os
 import glob
-from pathlib import Path
 import shutil
+from typing import Union
 from func_model.resources import preprocess
 from func_model.resources import deconvolve
 from func_model.resources import masks
@@ -23,8 +23,10 @@ from func_model.workflows import wf_fsl
 class _SyncData(wf_fsl._SupportFsl):
     """Coordinate setup, data download, output upload."""
 
-    def __init__(self, subj, sess, work_deriv):
-        """Title."""
+    def __init__(
+        self, subj: str, sess: str, work_deriv: Union[str, os.PathLike]
+    ):
+        """Initialize."""
         self._subj = subj
         self._sess = sess
         self._work_deriv = work_deriv
@@ -34,8 +36,8 @@ class _SyncData(wf_fsl._SupportFsl):
         )
         super().__init__(self._keoki_path)
 
-    def setup(self):
-        """Setup working directories.
+    def setup_indiv(self) -> tuple:
+        """Setup working directories for individual models.
 
         Returns
         -------
@@ -78,7 +80,7 @@ class _SyncData(wf_fsl._SupportFsl):
     def get_fmriprep(self):
         """Download fMRIPrep for subj, sess."""
         if not hasattr(self, "_work_fp"):
-            self.setup()
+            self.setup_indiv()
 
         # Check for fmriprep output
         chk_file = os.path.join(
@@ -112,7 +114,7 @@ class _SyncData(wf_fsl._SupportFsl):
     def get_events(self) -> list:
         """Download and return list of rawdata events files for subj, sess."""
         if not hasattr(self, "_work_raw"):
-            self.setup()
+            self.setup_indiv()
 
         # Check for existing events files
         event_list = sorted(glob.glob(f"{self._work_raw}/*events.tsv"))
@@ -145,16 +147,16 @@ class _SyncData(wf_fsl._SupportFsl):
         self._model_name = model_name
         self._sess_anat = sess_anat
         if not hasattr(self, "_subj_work"):
-            self.setup()
+            self.setup_indiv()
 
         # Identify files to save, remove all others
         save_list = (
             self._save_rest() if model_name == "rest" else self._save_task()
         )
         for file_name in os.listdir(self._subj_work):
-            file_path = os.path.join(self._subj_work, file_name)
-            if file_path not in save_list:
-                os.remove(file_path)
+            wash_path = os.path.join(self._subj_work, file_name)
+            if wash_path not in save_list:
+                os.remove(wash_path)
 
     def _save_task(self) -> list:
         """Return list of important task decon files."""
@@ -194,7 +196,7 @@ class _SyncData(wf_fsl._SupportFsl):
     def send_decon(self):
         """Send decon output to Keoki."""
         if not hasattr(self, "_subj_work"):
-            self.setup()
+            self.setup_indiv()
 
         # Make output destination
         keoki_dst = os.path.join(
@@ -248,7 +250,7 @@ def afni_task(
 
     # Setup, download required files
     sync_data = _SyncData(subj, sess, work_deriv)
-    subj_work, subj_fp, subj_raw = sync_data.setup()
+    subj_work, subj_fp, subj_raw = sync_data.setup_indiv()
     sync_data.get_fmriprep()
     sess_events = sync_data.get_events()
 
@@ -496,13 +498,13 @@ def afni_extract(
         _ = group.comb_matrices(subj_list, model_name, proj_deriv, out_dir)
 
 
-def afni_ttest(task, model_name, stat, emo_name, proj_dir, blk_coef=False):
+def afni_ttest(
+    task, model_name, stat, emo_name, work_deriv, log_dir, blk_coef=False
+):
     """Conduct T-tests in AFNI using the ETAC method.
 
     Conduct stimulus-specific (movies, scenarios) t-tests comparing
-    emotion against zero (student) or washout (paired). Output
-    scripts and files are written to:
-        <proj_dir>/analyses/model_afni/ttest_<model_name>/<task>_<emo_name>
+    emotion against zero (student) or washout (paired).
 
     Parameters
     ----------
@@ -517,25 +519,16 @@ def afni_ttest(task, model_name, stat, emo_name, proj_dir, blk_coef=False):
         Type of T-test to conduct
     emo_name : str, key of afni.helper.emo_switch
         Lower case emotion name
-    proj_dir : str, os.PathLike
-        Project directory location
+    work_deriv : str, os.PathLike
+        Parent location for writing pipeline intermediates
+    log_dir : str, os.PathLike
+        Location of logging files
     blk_coef : bool, optional
         Use block (blk) coefficients rather than event, only
         available when model_name=mixed.
 
     """
-    # Validate paths
-    if not os.path.exists(proj_dir):
-        raise FileNotFoundError(
-            f"Missing expected project directory : {proj_dir}"
-        )
-    afni_deriv = os.path.join(
-        proj_dir, "data_scanner_BIDS", "derivatives", "model_afni"
-    )
-    if not os.path.exists(afni_deriv):
-        raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
-
-    # Validate other options
+    # Validate options
     if not helper.valid_task(task):
         raise ValueError(f"Unexpected task value : {task}")
     if not helper.valid_univ_test(stat):
@@ -550,41 +543,39 @@ def afni_ttest(task, model_name, stat, emo_name, proj_dir, blk_coef=False):
 
     # Setup
     print(f"\nConducting {stat} ETAC for {emo_name}")
-    group_dir = os.path.join(proj_dir, "analyses", "model_afni_group")
-    out_dir = os.path.join(group_dir, f"ttest_{stat}", f"{task}_{emo_name}")
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    sync_data = helper.SyncGroup(work_deriv)
+    model_indiv, model_group = sync_data.setup_group()
 
     # Identify participant/sessions with desired task from timing file
-    task_subj = sorted(
-        glob.glob(
-            f"{afni_deriv}/**/*_{task}_desc-comWas_events.1D",
-            recursive=True,
-        )
+    search_path = os.path.join(
+        model_indiv, "sub-*", "ses-*", "func", "timing_files"
     )
-    if not task_subj:
+    wash_list = sorted(
+        glob.glob(f"{search_path}/*_{task}_desc-comWas_events.1D")
+    )
+    if not wash_list:
         raise ValueError("Failed to detect desc-comWas timing files.")
 
     # Build dict needed by group.EtacTest.write_exec
     decon_dict = {}
-    for file_path in task_subj:
+    for wash_path in wash_list:
 
         # Find the decon file
         decon_path = os.path.join(
-            os.path.dirname(file_path),
+            os.path.dirname(os.path.dirname(wash_path)),
             f"decon_{model_name}_stats_REML+tlrc.HEAD",
         )
         if not os.path.exists(decon_path):
             raise FileNotFoundError(f"Expected decon file : {decon_path}")
 
         # Identify subj, sess info
-        subj, sess, _task, _desc, _suff = os.path.basename(file_path).split(
+        subj, _sess, _task, _desc, _suff = os.path.basename(wash_path).split(
             "_"
         )
         decon_dict[subj] = decon_path
 
     # Make, get mask
-    mask_path = masks.tpl_gm(group_dir)
+    mask_path = masks.tpl_gm(model_group)
 
     # Build coefficient name to match sub-brick, recreate name
     # specified by resources.deconvolve.TimingFiles.session_events,
@@ -594,15 +585,22 @@ def afni_ttest(task, model_name, stat, emo_name, proj_dir, blk_coef=False):
         raise ValueError("Problem splitting task name")
     emo_short = emo_switch[emo_name]
     sub_label = (
-        f"blk{task_short.title()[1]}{emo_short}#0_Coef"
+        f"blk{task_short.title()[0]}{emo_short}#0_Coef"
         if blk_coef
         else f"{task_short}{emo_short}#0_Coef"
     )
 
     # Generate, execute ETAC command
-    run_etac = group.EtacTest(proj_dir, out_dir, mask_path)
-    _ = run_etac.write_exec(
-        model_name, emo_short, decon_dict, sub_label, blk_coef
+    run_etac = group.EtacTest(model_group, mask_path)
+    run_etac.write_exec(
+        task,
+        model_name,
+        stat,
+        emo_short,
+        decon_dict,
+        sub_label,
+        log_dir,
+        blk_coef,
     )
 
 

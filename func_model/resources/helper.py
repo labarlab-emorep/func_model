@@ -15,6 +15,7 @@ get_tr : get TR length
 load_tsv : read tsv as pd.DataFrame
 clean_up : delete unneeded files and copy to group
 emo_switch : supply emotion names
+SyncGroup : download all model_afni data
 
 """
 
@@ -27,6 +28,7 @@ import pandas as pd
 import nibabel as nib
 import importlib.resources as pkg_resources
 from func_model import reference_files
+from func_model.workflows import wf_fsl
 
 
 def prepend_afni_sing(
@@ -199,3 +201,56 @@ def clean_up(subj_work, subj_final, model_name):
     if not os.path.exists(chk_save):
         raise FileNotFoundError(f"Expected to find {chk_save}")
     shutil.rmtree(os.path.dirname(subj_work))
+
+
+class SyncGroup(wf_fsl._SupportFsl):
+    """Coordinate setup, data download, output upload."""
+
+    def __init__(self, work_deriv):
+        """Initialize."""
+        self._work_deriv = work_deriv
+        self._keoki_path = (
+            "/mnt/keoki/experiments2/EmoRep/"
+            + "Exp2_Compute_Emotion/data_scanner_BIDS"
+        )
+        super().__init__(self._keoki_path)
+
+    @property
+    def _ls2_addr(self) -> str:
+        """Return user@labarserv2."""
+        return os.environ["USER"] + "@" + self._ls2_ip
+
+    def setup_group(self) -> tuple:
+        """Setup working directories for group models.
+
+        Returns
+        -------
+        tuple
+            - [0] = Path, work_deriv/model_afni
+            - [1] = Path, work_deriv/model_afni_group
+
+        """
+        self._model_indiv = os.path.join(self._work_deriv, "model_afni")
+        self._model_group = os.path.join(self._work_deriv, "model_afni_group")
+        for _dir in [self._model_indiv, self._model_group]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+        return (self._model_indiv, self._model_group)
+
+    def get_model_afni(self):
+        """Download model_afni data."""
+        if not hasattr(self, "_model_indiv"):
+            self.setup_group()
+
+        # Get all subject data
+        source_afni = os.path.join(
+            self._keoki_path, "derivatives", "model_afni", "sub-*"
+        )
+        _, _ = self._submit_rsync(
+            f"{self._ls2_addr}:{source_afni}", self._model_indiv
+        )
+
+        # Verify download
+        chk_subj = os.path.join(self._model_indiv, "sub-ER0009")
+        if not os.path.exists(chk_subj):
+            raise FileNotFoundError("model_afni download failed")

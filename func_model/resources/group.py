@@ -13,16 +13,28 @@ import os
 import re
 import json
 import glob
-import subprocess
 from typing import Union, Tuple
 import numpy as np
 import pandas as pd
+import subprocess
 from multiprocessing import Pool
 import nibabel as nib
 from func_model.resources import helper
 from func_model.resources import matrix
 from func_model.resources import submit
 from func_model.resources import sql_database
+
+
+def _cmd_sub_int(
+    sub_label: str,
+    decon_path: Union[str, os.PathLike],
+    out_txt: Union[str, os.PathLike] = None,
+) -> list:
+    """Return 3dinfo command to get sub-brick label int."""
+    bash_cmd = ["3dinfo", "-label2index", f"'{sub_label}'", decon_path]
+    if out_txt:
+        bash_cmd.append(f"> {out_txt}")
+    return bash_cmd
 
 
 class AfniExtractTaskBetas(matrix.NiftiArray):
@@ -148,14 +160,9 @@ class AfniExtractTaskBetas(matrix.NiftiArray):
         """
         # Determine sub-brick integer value
         out_label = os.path.join(self.subj_out_dir, "tmp_label_int.txt")
-        bash_list = [
-            "3dinfo",
-            "-label2index",
-            sub_label,
-            self.decon_path,
-            f"> {out_label}",
-        ]
-        bash_cmd = " ".join(bash_list)
+        bash_cmd = " ".join(
+            _cmd_sub_int(sub_label, self.decon_path, out_txt=out_label)
+        )
         _ = submit.submit_subprocess(bash_cmd, out_label, "Label int")
 
         # Read label integer and check
@@ -388,26 +395,11 @@ def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
 
 
 class _SetupTest:
-    """Helper class for AFNI group-level tests classes.
+    """Helper class for AFNI group-level tests classes."""
 
-    Parameters
-    ----------
-    proj_dir : str, os.PathLike
-        Location of project directory
-    out_dir : str, os.PathLike
-        Output location for generated files
-    mask_path : str, os.PathLike
-        Location of group mask
-
-    """
-
-    def __init__(self, proj_dir, out_dir, mask_path):
+    def __init__(self, out_dir: Union[str, os.PathLike]):
         """Initialize."""
-        if not os.path.exists(proj_dir):
-            raise FileNotFoundError(f"Missing expected proj_dir : {proj_dir}")
-        self._proj_dir = proj_dir
         self._out_dir = out_dir
-        self._mask_path = mask_path
         if not os.path.exists(self._out_dir):
             os.makedirs(self._out_dir)
 
@@ -432,22 +424,18 @@ class _SetupTest:
 
 
 # %%
-class EtacTest(_SetupTest):
+class EtacTest:
     """Build and execute ETAC tests.
 
     Identify relevant sub-bricks in AFNI's deconvolved files given user
     input, then construct and run ETAC tests. ETAC shell script and
     output files are written to <out_dir>.
 
-    Inherits _SetupTest.
-
     Parameters
     ----------
-    proj_dir : path
-        Location of project directory
-    out_dir : path
+    out_dir : str, os.PathLike
         Output location for generated files
-    mask_path : path
+    mask_path : str, os.PathLike
         Location of group mask
 
     Methods
@@ -462,57 +450,59 @@ class EtacTest(_SetupTest):
 
     """
 
-    def __init__(self, proj_dir, out_dir, mask_path):
+    def __init__(self, out_dir, mask_path):
         """Initialize."""
         print("Initializing EtacTest")
-        super().__init__(proj_dir, out_dir, mask_path)
-
-    def _build_list(self, decon_dict: dict, sub_label: str) -> list:
-        """Build ETAC input list."""
-        set_list = []
-        get_subbrick = ExtractTaskBetas()
-        for subj, decon_path in decon_dict.items():
-
-            # Get label integer
-            label_int = get_subbrick.get_label_int(decon_path, sub_label)
-
-            # Write input line
-            set_list.append(subj)
-            set_list.append(f"{decon_path}'[{label_int}]'")
-        return set_list
-
-    def _validate_etac_input(self, sub_label: str):
-        """Check that user input conforms."""
-        # Check specified sub_label
-        _nam, chk_str = sub_label.split("#")
-        if chk_str != "0_Coef":
-            raise ValueError("Improper format of sub_label")
-
-        # Check model name
-        if not helper.valid_univ_test(self._stat):
-            raise ValueError("Improper model name specified")
+        self._out_dir = out_dir
+        self._mask_path = mask_path
 
     def _etac_opts(
         self,
         final_name: str,
     ) -> list:
-        """Return ETAC options."""
-        etac_head = [f"cd {self._out_dir};", "3dttest++"]
+        """Return 3dttest++ call and ETAC options."""
+        nav_cmd = [f"cd {self._out_dir};"]  # 3dttest requires cwd
+        sing_head = helper.prepend_afni_sing(
+            os.path.dirname(self._out_dir), self._out_dir
+        )
+        etac_head = nav_cmd + sing_head + ["3dttest++"]
         etac_body = [
-            f"-mask {self._mask_path}",
+            f"-mask {os.path.basename(self._mask_path)}",
             f"-prefix {final_name}",
             f"-prefix_clustsim {final_name}_clustsim",
-            "-ETAC",
+            "-ETAC 12",
             "-ETAC_blur 0 2 4",
             "-ETAC_opt",
             "NN=2:sid=2:hpow=0:pthr=0.01,0.005,0.002,0.001:name=etac",
+            "-Clustsim 12",
         ]
         if self._stat == "paired":
             return etac_head + ["-paired"] + etac_body
         else:
             return etac_head + etac_body
 
-    def write_exec(self, stat, emo_short, decon_dict, sub_label, blk_coef):
+    def _setup_output(self, blk_coef: bool) -> tuple:
+        """Setup, return final filename and location."""
+        final_name = (
+            f"FINAL_stat-{self._stat}_{self._task}_"
+            + f"model-{self._model_name}_emo-{self._emo_short}"
+        )
+        if blk_coef:
+            final_name += "_block"
+        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
+        return (final_name, out_path)
+
+    def write_exec(
+        self,
+        task,
+        model_name,
+        stat,
+        emo_short,
+        decon_dict,
+        sub_label,
+        log_dir,
+        blk_coef,
+    ):
         """Write and execute a T-test using AFNI's ETAC method.
 
         Compare coefficient (sub_label) against null for stat=student
@@ -520,43 +510,49 @@ class EtacTest(_SetupTest):
         the ETAC command (3dttest++), writes it to a shell script for review,
         and then executes the command.
 
-        Output files are saved to:
-            <out_dir>/FINAL_<stat>_<emo_short>
-
         Parameters
         ----------
+        task : str
+            {"task-movies", "task-scenarios"}
+            BIDS task identifier
+        model_name : str
+            {"univ", "mixed"}
+            Type of AFNI deconvolution
         stat : str
             {"student", "paired"}
             Type of T-test to conduct
-        emo_short : str
-            Shortened (AFNI) emotion name
+        emo_name : str, key of afni.helper.emo_switch
+            Lower case emotion name
         decon_dict : dict
             Group information in format:
             {"sub-ER0009": "/path/to/decon+tlrc.HEAD"}
         sub_label : str
             Sub-brick label, e.g. movFea#0_Coef
+        log_dir : str, os.PathLike
+            Location of logging files
         blk_coef : bool
             Use block (blk) coefficients rather than event, only
             available when model_name=mixed.
 
-        Returns
-        -------
-        path
-            Location of output directory
-
         """
         # Validate and setup
+        self._task = task
+        self._model_name = model_name
         self._stat = stat
-        self._validate_etac_input(sub_label)
-        final_name, out_path = self._setup_output(stat, emo_short, blk_coef)
+        self._sub_label = sub_label
+        self._decon_dict = decon_dict
+        self._emo_short = emo_short
+        self._validate_etac_input()
+        final_name, out_path = self._setup_output(blk_coef)
         if os.path.exists(out_path):
             return self._out_dir
 
         # Make input list
-        setA_list = self._build_list(decon_dict, sub_label)
+        setA_list = self._build_list()
         etac_set = [f"-setA {emo_short}", " ".join(setA_list)]
         if stat == "paired":
-            setB_list = self._build_list(decon_dict, "comWas#0_Coef")
+            self._sub_label = "comWas#0_Coef"
+            setB_list = self._build_list()
             etac_set = etac_set + ["-setB washout", " ".join(setB_list)]
 
         # Build ETAC command, write to script for review
@@ -565,8 +561,83 @@ class EtacTest(_SetupTest):
         self._write_script(final_name, etac_cmd)
 
         # Execute ETAC command
-        submit.submit_subprocess(etac_cmd, out_path, f"etac{emo_short}")
-        return self._out_dir
+        submit.submit_sbatch(
+            etac_cmd,
+            f"etac{emo_short}",
+            log_dir,
+            num_hours=75,
+            num_cpus=12,
+            mem_gig=32,
+        )
+
+    def _validate_etac_input(self):
+        """Check that user input conforms."""
+        # Check specified sub_label
+        if self._sub_label.split("#")[1] != "0_Coef":
+            raise ValueError("Improper format of sub_label")
+
+        # Check model name
+        if not helper.valid_univ_test(self._stat):
+            raise ValueError("Improper model name specified")
+
+    def _build_list(self) -> list:
+        """Build ETAC input list."""
+        # Iterate through dict and allow updating dict length
+        set_list = []
+        for subj in list(self._decon_dict):
+            self._decon_path = self._decon_dict[subj]
+
+            # Get sub-brick label, remove subj from decon_dict
+            # if missing sub-brick. This allows for a balanced
+            # emo_coef vs washout_coef.
+            label_int = self._get_label_int()
+            if not label_int:
+                self._decon_dict.pop(subj)
+                continue
+
+            # Build input line
+            set_list.append(subj)
+            set_list.append(f"{self._decon_path}'[{label_int}]'")
+        return set_list
+
+    def _get_label_int(self) -> Union[str, None]:
+        """Return sub-brick num given label."""
+        # Write 3dinfo command for dcc, save output to txt
+        subj_work = os.path.dirname(self._decon_path)
+        sing_head = helper.prepend_afni_sing(
+            os.path.dirname(self._out_dir), subj_work
+        )
+        out_txt = os.path.join(
+            subj_work, f"subbrick_{self._sub_label.split('#')[0]}.txt"
+        )
+        sub_cmd = _cmd_sub_int(
+            self._sub_label, self._decon_path, out_txt=out_txt
+        )
+        bash_cmd = " ".join(sing_head + sub_cmd)
+
+        # Execute 3dinfo cmd
+        sub_job = subprocess.Popen(
+            bash_cmd, shell=True, stdout=subprocess.PIPE
+        )
+        _, _ = sub_job.communicate()
+        sub_job.wait()
+
+        # Get last line from out_txt
+        with open(out_txt) as f:
+            for line in f:
+                pass
+            last_line = line.strip()
+
+        # Validate line has content
+        if len(last_line) == 0:
+            return None
+        return last_line
+
+    def _write_script(self, final_name: str, bash_cmd: str):
+        """Write BASH command to shell script."""
+        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
+        with open(etac_script, "w") as script:
+            script.write(bash_cmd)
 
 
 class MvmTest(_SetupTest):
@@ -869,8 +940,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
     Methods
     -------
-    get_label_int(*args)
-        Identify sub-brick integer of AFNI decon file
     make_beta_matrix(*args)
         Identify and align cope.nii files, mine for betas
         and generate dataframe
@@ -887,32 +956,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
         """Initialize."""
         print("Initializing ExtractTaskBetas")
         super().__init__()
-
-    def get_label_int(self, decon_path, sub_label):
-        """Determine sub-brick int given label.
-
-        Parameters
-        ----------
-        decon_path : str, os.PathLike
-            Location of AFNI deconvolved file
-        sub_label : str
-            Name of sub-brick
-
-        Returns
-        -------
-        int, str
-
-        """
-        bash_cmd = f"3dinfo -label2index '{sub_label}' {decon_path}"
-        h_sp = subprocess.Popen(
-            bash_cmd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        h_out, h_err = h_sp.communicate()
-        h_sp.wait()
-        return h_out.decode("utf-8").strip()
 
     def make_beta_matrix(
         self,
