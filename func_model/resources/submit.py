@@ -425,4 +425,7 @@ def schedule_afni_group_univ(
         stderr=subprocess.PIPE,
     )
     h_out, _ = h_sp.communicate()
-    print(h_out.decode("utf-8"))
+
+    # Communicate to user
+    job_num = h_out.decode("utf-8")
+    print(f"{job_num}\tfor emo : {emo_name}")

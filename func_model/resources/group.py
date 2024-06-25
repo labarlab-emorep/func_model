@@ -13,6 +13,7 @@ import os
 import re
 import json
 import glob
+import time
 from typing import Union, Tuple
 import numpy as np
 import pandas as pd
@@ -629,23 +630,32 @@ class EtacTest:
         out_txt = os.path.join(
             subj_work, f"subbrick_{self._sub_label.split('#')[0]}.txt"
         )
-        sub_cmd = _cmd_sub_int(
-            self._sub_label, self._decon_path, out_txt=out_txt
-        )
-        bash_cmd = " ".join(sing_head + sub_cmd)
 
-        # Execute 3dinfo cmd
-        sub_job = subprocess.Popen(
-            bash_cmd, shell=True, stdout=subprocess.PIPE
-        )
-        _, _ = sub_job.communicate()
-        sub_job.wait()
+        # Extract sub-brick label num if needed
+        if not os.path.exists(out_txt) or os.stat(out_txt).st_size == 0:
+            sub_cmd = _cmd_sub_int(
+                self._sub_label, self._decon_path, out_txt=out_txt
+            )
+            bash_cmd = " ".join(sing_head + sub_cmd)
+            sub_job = subprocess.Popen(
+                bash_cmd, shell=True, stdout=subprocess.PIPE
+            )
+            _, _ = sub_job.communicate()
+            sub_job.wait()
+
+        # Wait for singularity to close
+        if not os.path.exists(out_txt):
+            time.sleep(3)
 
         # Get last line from out_txt
         with open(out_txt) as f:
             for line in f:
                 pass
-            last_line = line.strip()
+            try:
+                last_line = line.strip()
+            except UnboundLocalError:
+                print(f"\tFailed on {self._sub_label} for {self._decon_path}")
+                return None
 
         # Validate line has content
         if len(last_line) == 0:

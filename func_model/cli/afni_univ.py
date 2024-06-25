@@ -14,8 +14,10 @@ Model names:
 Examples
 --------
 afni_univ --run-setup
-afni_univ --stat student --task scenarios
-afni_univ --stat paired --task movies --block-coef
+afni_univ \\
+    --stat paired \\
+    --task movies \\
+    --block-coef
 
 """
 
@@ -41,6 +43,12 @@ def _get_args():
         "--block-coef",
         action="store_true",
         help="Test block coefficients instead of event for mixed models",
+    )
+    parser.add_argument(
+        "--emo-name",
+        choices=list(helper.emo_switch().keys()),
+        type=str,
+        help="Run selected test for specified emotion (instead of all)",
     )
     parser.add_argument(
         "--model-name",
@@ -92,6 +100,7 @@ def main():
     blk_coef = args.block_coef
     stat = args.stat
     task = "task-" + args.task
+    emo_name = args.emo_name
 
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
@@ -123,10 +132,10 @@ def main():
         raise ValueError("--block-coef only available when model-name=mixed")
 
     # Schedule model for each task, emotion
-    emo_dict = helper.emo_switch()
-    for emo_name in emo_dict.keys():
+    emo_list = [emo_name] if emo_name else list(helper.emo_switch().keys())
+    for emo in emo_list:
         submit.schedule_afni_group_univ(
-            task, model_name, stat, emo_name, work_deriv, log_dir, blk_coef
+            task, model_name, stat, emo, work_deriv, log_dir, blk_coef
         )
         time.sleep(3)
 
