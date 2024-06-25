@@ -498,114 +498,121 @@ def afni_extract(
         _ = group.comb_matrices(subj_list, model_name, proj_deriv, out_dir)
 
 
-def afni_ttest(
-    task, model_name, stat, emo_name, work_deriv, log_dir, blk_coef=False
-):
-    """Conduct T-tests in AFNI using the ETAC method.
+class AfniTtest:
+    """Title."""
 
-    Conduct stimulus-specific (movies, scenarios) t-tests comparing
-    emotion against zero (student) or washout (paired).
+    def __init__(self, task, model_name, stat, work_deriv, log_dir):
+        """Title."""
+        # Validate options
+        if not helper.valid_task(task):
+            raise ValueError(f"Unexpected task value : {task}")
+        if not helper.valid_univ_test(stat):
+            raise ValueError(f"Unexpected stat test name : {stat}")
 
-    Parameters
-    ----------
-    task : str
-        {"task-movies", "task-scenarios"}
-        BIDS task identifier
-    model_name : str
-        {"univ", "mixed"}
-        Type of AFNI deconvolution
-    stat : str
-        {"student", "paired"}
-        Type of T-test to conduct
-    emo_name : str, key of afni.helper.emo_switch
-        Lower case emotion name
-    work_deriv : str, os.PathLike
-        Parent location for writing pipeline intermediates
-    log_dir : str, os.PathLike
-        Location of logging files
-    blk_coef : bool, optional
-        Use block (blk) coefficients rather than event, only
-        available when model_name=mixed.
+        self._task = task
+        self._model_name = model_name
+        self._stat = stat
+        self._work_deriv = work_deriv
+        self._log_dir = log_dir
 
-    """
-    # Validate options
-    if not helper.valid_task(task):
-        raise ValueError(f"Unexpected task value : {task}")
-    if not helper.valid_univ_test(stat):
-        raise ValueError(f"Unexpected stat test name : {stat}")
-    emo_switch = helper.emo_switch()
-    if emo_name not in emo_switch.keys():
-        raise ValueError(f"Unexpected emotion name : {emo_name}")
-    if blk_coef and model_name != "mixed":
-        raise ValueError(
-            "Option blk_coef=True only available for model_name=mixed"
+    def _setup(self):
+        """Title."""
+        #
+        self._sync_data = helper.SyncGroup(self._work_deriv)
+        self._model_indiv, self._model_group = self._sync_data.setup_group()
+
+    def _find_decons(self):
+        """Title."""
+        if not hasattr(self, "_model_indiv"):
+            self._setup()
+
+        # Identify participant/sessions with desired task from timing file
+        search_path = os.path.join(
+            self._model_indiv, "sub-*", "ses-*", "func", "timing_files"
+        )
+        wash_list = sorted(
+            glob.glob(f"{search_path}/*_{self._task}_desc-comWas_events.1D")
+        )
+        if not wash_list:
+            raise ValueError("Failed to detect desc-comWas timing files.")
+
+        # Build dict needed by group.EtacTest.write_exec
+        self._decon_dict = {}
+        for wash_path in wash_list:
+
+            # Find the decon file
+            decon_path = os.path.join(
+                os.path.dirname(os.path.dirname(wash_path)),
+                f"decon_{self._model_name}_stats_REML+tlrc.HEAD",
+            )
+            if not os.path.exists(decon_path):
+                raise FileNotFoundError(f"Expected decon file : {decon_path}")
+
+            # Identify subj, sess info
+            subj, _sess, _task, _desc, _suff = os.path.basename(
+                wash_path
+            ).split("_")
+            self._decon_dict[subj] = decon_path
+
+    def _make_sub_label(self) -> str:
+        """Title."""
+        # Build coefficient name to match sub-brick, recreate name
+        # specified by resources.deconvolve.TimingFiles.session_events,
+        # and append AFNI coefficient title.
+        task_short = self._task.split("-")[1][:3]
+        if task_short not in ["mov", "sce"]:
+            raise ValueError("Problem splitting task name")
+        emo_short = helper.emo_switch()[self._emo_name]
+        sub_label = (
+            f"blk{task_short.title()[0]}{emo_short}#0_Coef"
+            if self._blk_coef
+            else f"{task_short}{emo_short}#0_Coef"
+        )
+        return sub_label
+
+    def _valid_emo(self, emo_name):
+        """Title."""
+        emo_valid = [x for x in helper.emo_switch().keys()]
+        if emo_name not in emo_valid:
+            raise ValueError(f"Unexpected emo : {emo_name}")
+
+    def find_subbricks(self, emo_list, blk_coef=False):
+        """Title."""
+        for emo_name in emo_list:
+            self._valid_emo(emo_name)
+        self._blk_coef = blk_coef
+        self._find_decons()
+        for _subj, decon_path in self._decon_dict.items():
+            for self._emo_name in emo_list:
+                group.get_subbrick_label(self._make_sub_label(), decon_path)
+            if self._stat == "paired":
+                group.get_subbrick_label("comWas#0_Coef", decon_path)
+
+    def run_etac(self, emo_name, blk_coef=False):
+        """Title."""
+        self._valid_emo(emo_name)
+        self._emo_name = emo_name
+        self._blk_coef = blk_coef
+        self._find_decons()
+
+        # Generate, execute ETAC command
+        mask_path = masks.tpl_gm(self._model_group)
+        run_etac = group.EtacTest(self._model_group, mask_path)
+        out_path = run_etac.write_exec(
+            self._task,
+            self._model_name,
+            self._stat,
+            self._emo_name,
+            self._decon_dict,
+            self._make_sub_label(),
+            self._log_dir,
+            blk_coef,
         )
 
-    # Setup
-    sync_data = helper.SyncGroup(work_deriv)
-    model_indiv, model_group = sync_data.setup_group()
-
-    # Identify participant/sessions with desired task from timing file
-    search_path = os.path.join(
-        model_indiv, "sub-*", "ses-*", "func", "timing_files"
-    )
-    wash_list = sorted(
-        glob.glob(f"{search_path}/*_{task}_desc-comWas_events.1D")
-    )
-    if not wash_list:
-        raise ValueError("Failed to detect desc-comWas timing files.")
-
-    # Build dict needed by group.EtacTest.write_exec
-    decon_dict = {}
-    for wash_path in wash_list:
-
-        # Find the decon file
-        decon_path = os.path.join(
-            os.path.dirname(os.path.dirname(wash_path)),
-            f"decon_{model_name}_stats_REML+tlrc.HEAD",
-        )
-        if not os.path.exists(decon_path):
-            raise FileNotFoundError(f"Expected decon file : {decon_path}")
-
-        # Identify subj, sess info
-        subj, _sess, _task, _desc, _suff = os.path.basename(wash_path).split(
-            "_"
-        )
-        decon_dict[subj] = decon_path
-
-    # Make, get mask
-    mask_path = masks.tpl_gm(model_group)
-
-    # Build coefficient name to match sub-brick, recreate name
-    # specified by resources.deconvolve.TimingFiles.session_events,
-    # and append AFNI coefficient title.
-    task_short = task.split("-")[1][:3]
-    if task_short not in ["mov", "sce"]:
-        raise ValueError("Problem splitting task name")
-    emo_short = emo_switch[emo_name]
-    sub_label = (
-        f"blk{task_short.title()[0]}{emo_short}#0_Coef"
-        if blk_coef
-        else f"{task_short}{emo_short}#0_Coef"
-    )
-
-    # Generate, execute ETAC command
-    run_etac = group.EtacTest(model_group, mask_path)
-    out_path = run_etac.write_exec(
-        task,
-        model_name,
-        stat,
-        emo_name,
-        decon_dict,
-        sub_label,
-        log_dir,
-        blk_coef,
-    )
-
-    # Send output to Keoki, clean
-    out_dir = os.path.dirname(out_path)
-    sync_data.send_etac(out_dir)
-    shutil.rmtree(out_dir)
+        # Send output to Keoki, clean
+        out_dir = os.path.dirname(out_path)
+        self._sync_data.send_etac(out_dir)
+        shutil.rmtree(out_dir)
 
 
 def afni_mvm(proj_dir, model_name, emo_name):

@@ -374,6 +374,59 @@ def schedule_afni_group_setup(
     print(h_out.decode("utf-8"))
 
 
+def schedule_afni_group_subbrick(
+    task: str,
+    model_name: str,
+    stat: str,
+    emo_list: list,
+    work_deriv: Union[str, os.PathLike],
+    log_dir: Union[str, os.PathLike],
+    blk_coef: bool,
+):
+    """Coordinate setup for group-level AFNI modelling."""
+    # Write parent python script
+    sbatch_cmd = f"""\
+        #!/bin/env {sys.executable}
+
+        #SBATCH --job-name=pAfniSubbrick
+        #SBATCH --output={log_dir}/parAfniSubbrick.txt
+        #SBATCH --time=10:00:00
+        #SBATCH --mem=8G
+
+        import os
+        import sys
+        from func_model.workflows import wf_afni
+
+        # Identify decon subbricks
+        afni_ttest = wf_afni.AfniTtest(
+            "{task}",
+            "{model_name}",
+            "{stat}",
+            "{work_deriv}",
+            "{log_dir}",
+        )
+        afni_ttest.find_subbricks(
+            {emo_list},
+            blk_coef={blk_coef},
+        )
+
+    """
+    sbatch_cmd = textwrap.dedent(sbatch_cmd)
+    py_script = f"{log_dir}/run-afni_group-subbrick.py"
+    with open(py_script, "w") as ps:
+        ps.write(sbatch_cmd)
+
+    # Execute script
+    h_sp = subprocess.Popen(
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    h_out, _ = h_sp.communicate()
+    print(h_out.decode("utf-8"))
+
+
 def schedule_afni_group_univ(
     task: str,
     model_name: str,
@@ -398,13 +451,15 @@ def schedule_afni_group_univ(
         from func_model.workflows import wf_afni
 
         # Conduct group-level test
-        wf_afni.afni_ttest(
+        afni_ttest = wf_afni.AfniTtest(
             "{task}",
             "{model_name}",
             "{stat}",
-            "{emo_name}",
             "{work_deriv}",
             "{log_dir}",
+        )
+        afni_ttest.run_etac(
+            "{emo_name}",
             blk_coef={blk_coef},
         )
 

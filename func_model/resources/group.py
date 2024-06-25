@@ -38,6 +38,25 @@ def _cmd_sub_int(
     return bash_cmd
 
 
+def get_subbrick_label(
+    sub_label: str, decon_path: Union[str, os.PathLike], out_txt=None
+):
+    """Title."""
+    subj_work = os.path.dirname(decon_path)
+    sing_head = helper.prepend_afni_sing(subj_work, subj_work)
+    if not out_txt:
+        out_txt = os.path.join(
+            subj_work, f"subbrick_{sub_label.split('#')[0]}.txt"
+        )
+    sub_cmd = _cmd_sub_int(sub_label, decon_path, out_txt=out_txt)
+    bash_cmd = " ".join(sing_head + sub_cmd)
+    sub_job = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+    _, _ = sub_job.communicate()
+    sub_job.wait()
+    if not os.path.exists(out_txt):
+        time.sleep(3)
+
+
 class AfniExtractTaskBetas(matrix.NiftiArray):
     """Generate dataframe of voxel beta-coefficients.
 
@@ -622,33 +641,24 @@ class EtacTest:
 
     def _get_label_int(self) -> Union[str, None]:
         """Return sub-brick num given label."""
-        # Write 3dinfo command for dcc, save output to txt
-        subj_work = os.path.dirname(self._decon_path)
-        sing_head = helper.prepend_afni_sing(
-            os.path.dirname(self._out_dir), subj_work
-        )
-        out_txt = os.path.join(
-            subj_work, f"subbrick_{self._sub_label.split('#')[0]}.txt"
+        subbrick_txt = os.path.join(
+            os.path.dirname(self._decon_path),
+            f"subbrick_{self._sub_label.split('#')[0]}.txt",
         )
 
         # Extract sub-brick label num if needed
-        if not os.path.exists(out_txt) or os.stat(out_txt).st_size == 0:
-            sub_cmd = _cmd_sub_int(
-                self._sub_label, self._decon_path, out_txt=out_txt
+        if (
+            not os.path.exists(subbrick_txt)
+            or os.stat(subbrick_txt).st_size == 0
+        ):
+            get_subbrick_label(
+                self._sub_label, self._decon_path, out_txt=subbrick_txt
             )
-            bash_cmd = " ".join(sing_head + sub_cmd)
-            sub_job = subprocess.Popen(
-                bash_cmd, shell=True, stdout=subprocess.PIPE
-            )
-            _, _ = sub_job.communicate()
-            sub_job.wait()
+        if not os.path.exists(subbrick_txt):
+            return None
 
-        # Wait for singularity to close
-        if not os.path.exists(out_txt):
-            time.sleep(3)
-
-        # Get last line from out_txt
-        with open(out_txt) as f:
+        # Get last line from subbrick_txt
+        with open(subbrick_txt) as f:
             for line in f:
                 pass
             try:

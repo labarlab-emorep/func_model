@@ -14,6 +14,10 @@ Model names:
 Examples
 --------
 afni_univ --run-setup
+afni_univ --get-subbricks \\
+    --stat paired \\
+    --task scenarios \\
+    --block-coef
 afni_univ \\
     --stat paired \\
     --task movies \\
@@ -48,7 +52,12 @@ def _get_args():
         "--emo-name",
         choices=list(helper.emo_switch().keys()),
         type=str,
-        help="Run selected test for specified emotion (instead of all)",
+        help="Use emotion (instead of all) for workflow",
+    )
+    parser.add_argument(
+        "--get-subbricks",
+        action="store_true",
+        help="Identify sub-brick labels for emotions and washout",
     )
     parser.add_argument(
         "--model-name",
@@ -101,6 +110,7 @@ def main():
     stat = args.stat
     task = "task-" + args.task
     emo_name = args.emo_name
+    get_subs = args.get_subbricks
 
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
@@ -125,14 +135,21 @@ def main():
 
     # Validate args
     if not helper.valid_univ_test(stat):
-        raise ValueError(f"Unsupported stat name : {model_name}")
+        raise ValueError(f"Unsupported stat name : {stat}")
     if task not in ["task-movies", "task-scenarios"]:
         raise ValueError(f"Unexpected task name : {task}")
     if blk_coef and model_name != "mixed":
         raise ValueError("--block-coef only available when model-name=mixed")
 
-    # Schedule model for each task, emotion
+    # Get subbricks
     emo_list = [emo_name] if emo_name else list(helper.emo_switch().keys())
+    if get_subs:
+        submit.schedule_afni_group_subbrick(
+            task, model_name, stat, emo_list, work_deriv, log_dir, blk_coef
+        )
+        return
+
+    # Schedule model for each task, emotion
     for emo in emo_list:
         submit.schedule_afni_group_univ(
             task, model_name, stat, emo, work_deriv, log_dir, blk_coef
