@@ -605,7 +605,6 @@ def afni_ttest(
     # Send output to Keoki, clean
     out_dir = os.path.dirname(out_path)
     sync_data.send_etac(out_dir)
-    return
     shutil.rmtree(out_dir)
 
 
