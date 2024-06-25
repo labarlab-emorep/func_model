@@ -452,22 +452,25 @@ class EtacTest:
 
     def __init__(self, out_dir, mask_path):
         """Initialize."""
-        print("Initializing EtacTest")
         self._out_dir = out_dir
         self._mask_path = mask_path
 
     def _etac_opts(
         self,
-        final_name: str,
+        out_path: Union[str, os.PathLike],
     ) -> list:
         """Return 3dttest++ call and ETAC options."""
-        nav_cmd = [f"cd {self._out_dir};"]  # 3dttest requires cwd
-        sing_head = helper.prepend_afni_sing(
-            os.path.dirname(self._out_dir), self._out_dir
+        # Run 3dttest++ from singularity, account for CWD req
+        work_dir = os.path.dirname(out_path)
+        sing_cmd = helper.prepend_afni_sing(
+            os.path.dirname(self._out_dir), work_dir
         )
-        etac_head = nav_cmd + sing_head + ["3dttest++"]
+        etac_head = [f"cd {work_dir};"] + sing_cmd + ["3dttest++"]
+
+        # Build 3dttest++ command, account for paired vs student
+        final_name = os.path.basename(out_path).split("+")[0]
         etac_body = [
-            f"-mask {os.path.basename(self._mask_path)}",
+            f"-mask {self._mask_path}",
             f"-prefix {final_name}",
             f"-prefix_clustsim {final_name}_clustsim",
             "-ETAC 12",
@@ -481,23 +484,30 @@ class EtacTest:
         else:
             return etac_head + etac_body
 
-    def _setup_output(self, blk_coef: bool) -> tuple:
+    def _setup_output(self, blk_coef: bool) -> Union[str, os.PathLike]:
         """Setup, return final filename and location."""
-        final_name = (
-            f"FINAL_stat-{self._stat}_{self._task}_"
-            + f"model-{self._model_name}_emo-{self._emo_short}"
+        # Make identifier string
+        id_str = (
+            f"stat-{self._stat}_{self._task}_"
+            + f"model-{self._model_name}_emo-{self._emo_name}"
         )
         if blk_coef:
-            final_name += "_block"
-        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
-        return (final_name, out_path)
+            id_str += "_block"
+
+        # Setup output directory
+        test_dir = os.path.join(self._out_dir, id_str)
+        if not os.path.exists(test_dir):
+            os.makedirs(test_dir)
+
+        # Setup expected output
+        return os.path.join(test_dir, f"FINAL_{id_str}+tlrc.HEAD")
 
     def write_exec(
         self,
         task,
         model_name,
         stat,
-        emo_short,
+        emo_name,
         decon_dict,
         sub_label,
         log_dir,
@@ -534,6 +544,11 @@ class EtacTest:
             Use block (blk) coefficients rather than event, only
             available when model_name=mixed.
 
+        Returns
+        -------
+        str, os.PathLike
+            Location of final HEAD file
+
         """
         # Validate and setup
         self._task = task
@@ -541,34 +556,38 @@ class EtacTest:
         self._stat = stat
         self._sub_label = sub_label
         self._decon_dict = decon_dict
-        self._emo_short = emo_short
+        self._emo_name = emo_name
         self._validate_etac_input()
-        final_name, out_path = self._setup_output(blk_coef)
+        out_path = self._setup_output(blk_coef)
         if os.path.exists(out_path):
-            return self._out_dir
+            return
 
         # Make input list
-        setA_list = self._build_list()
-        etac_set = [f"-setA {emo_short}", " ".join(setA_list)]
+        etac_set = [f"-setA {self._emo_name}"] + self._build_list()
         if stat == "paired":
             self._sub_label = "comWas#0_Coef"
-            setB_list = self._build_list()
-            etac_set = etac_set + ["-setB washout", " ".join(setB_list)]
+            etac_set = etac_set + ["-setB washout"] + self._build_list()
 
         # Build ETAC command, write to script for review
-        etac_list = self._etac_opts(final_name) + etac_set
+        etac_list = self._etac_opts(out_path) + etac_set
         etac_cmd = " ".join(etac_list)
-        self._write_script(final_name, etac_cmd)
+        with open(out_path.replace("+tlrc.HEAD", ".sh"), "w") as script:
+            script.write(etac_cmd)
 
         # Execute ETAC command
         submit.submit_sbatch(
             etac_cmd,
-            f"etac{emo_short}",
+            f"etac{self._emo_name}",
             log_dir,
             num_hours=75,
             num_cpus=12,
             mem_gig=32,
         )
+
+        # Check for output
+        if not os.path.exists(out_path):
+            raise FileNotFoundError(f"Missing expected file : {out_path}")
+        return out_path
 
     def _validate_etac_input(self):
         """Check that user input conforms."""
@@ -581,7 +600,7 @@ class EtacTest:
             raise ValueError("Improper model name specified")
 
     def _build_list(self) -> list:
-        """Build ETAC input list."""
+        """Build ETAC set inputs of file paths and sub-brick labels."""
         # Iterate through dict and allow updating dict length
         set_list = []
         for subj in list(self._decon_dict):
@@ -632,12 +651,6 @@ class EtacTest:
         if len(last_line) == 0:
             return None
         return last_line
-
-    def _write_script(self, final_name: str, bash_cmd: str):
-        """Write BASH command to shell script."""
-        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
-        with open(etac_script, "w") as script:
-            script.write(bash_cmd)
 
 
 class MvmTest(_SetupTest):

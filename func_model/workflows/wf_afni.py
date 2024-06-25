@@ -542,7 +542,6 @@ def afni_ttest(
         )
 
     # Setup
-    print(f"\nConducting {stat} ETAC for {emo_name}")
     sync_data = helper.SyncGroup(work_deriv)
     model_indiv, model_group = sync_data.setup_group()
 
@@ -592,16 +591,22 @@ def afni_ttest(
 
     # Generate, execute ETAC command
     run_etac = group.EtacTest(model_group, mask_path)
-    run_etac.write_exec(
+    out_path = run_etac.write_exec(
         task,
         model_name,
         stat,
-        emo_short,
+        emo_name,
         decon_dict,
         sub_label,
         log_dir,
         blk_coef,
     )
+
+    # Send output to Keoki, clean
+    out_dir = os.path.dirname(out_path)
+    sync_data.send_etac(out_dir)
+    return
+    shutil.rmtree(out_dir)
 
 
 def afni_mvm(proj_dir, model_name, emo_name):

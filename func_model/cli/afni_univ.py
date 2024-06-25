@@ -123,9 +123,8 @@ def main():
         raise ValueError("--block-coef only available when model-name=mixed")
 
     # Schedule model for each task, emotion
-    # emo_dict = helper.emo_switch()
-    # for emo_name in emo_dict.keys():
-    for emo_name in ["disgust"]:
+    emo_dict = helper.emo_switch()
+    for emo_name in emo_dict.keys():
         submit.schedule_afni_group_univ(
             task, model_name, stat, emo_name, work_deriv, log_dir, blk_coef
         )

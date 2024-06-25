@@ -254,3 +254,17 @@ class SyncGroup(wf_fsl._SupportFsl):
         chk_subj = os.path.join(self._model_indiv, "sub-ER0009")
         if not os.path.exists(chk_subj):
             raise FileNotFoundError("model_afni download failed")
+
+    def send_etac(self, test_dir: Union[str, os.PathLike]):
+        """Send etac output to Keoki."""
+        keoki_dst = os.path.join(
+            os.path.dirname(self._keoki_path), "analyses", "model_afni_group"
+        )
+        make_dst = f"""\
+            ssh \
+                -i {self._rsa_key} \
+                {self._ls2_addr} \
+                " command ; bash -c 'mkdir -p {keoki_dst}'"
+        """
+        _, _ = self._quick_sp(make_dst)
+        _, _ = self._submit_rsync(test_dir, f"{self._ls2_addr}:{keoki_dst}")
