@@ -13,16 +13,28 @@ Model names:
 
 Examples
 --------
-afni_univ -n student
-afni_univ -n paired --task-name movies
+afni_univ --run-setup
+afni_univ --get-subbricks \\
+    --stat paired \\
+    --task scenarios \\
+    --block-coef
+afni_univ \\
+    --stat paired \\
+    --task movies \\
+    --block-coef
 
 """
+
 # %%
+import os
 import sys
+import time
 import textwrap
+import platform
+from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model.workflows import wf_afni
-from func_model.resources.afni import helper as afni_helper
+from func_model.resources import submit
+from func_model.resources import helper
 
 
 # %%
@@ -32,42 +44,49 @@ def _get_args():
         description=__doc__, formatter_class=RawTextHelpFormatter
     )
     parser.add_argument(
-        "--proj-dir",
+        "--block-coef",
+        action="store_true",
+        help="Test block coefficients instead of event for mixed models",
+    )
+    parser.add_argument(
+        "--emo-name",
+        choices=list(helper.emo_switch().keys()),
         type=str,
-        default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
+        help="Use emotion (instead of all) for workflow",
+    )
+    parser.add_argument(
+        "--get-subbricks",
+        action="store_true",
+        help="Identify sub-brick labels for emotions and washout",
+    )
+    parser.add_argument(
+        "--model-name",
+        choices=["mixed", "univ"],
+        type=str,
+        default="mixed",
         help=textwrap.dedent(
             """\
-            Path to experiment-specific project directory
+            AFNI deconv name
             (default : %(default)s)
             """
         ),
     )
     parser.add_argument(
-        "--task-name",
-        type=str,
-        default=None,
-        help=textwrap.dedent(
-            """\
-            [movies | scenarios]
-            If specified, conduct model-name for only specified task.
-            (default : %(default)s)
-            """
-        ),
+        "--run-setup",
+        action="store_true",
+        help="Download model_afni data and make template mask",
     )
-
-    required_args = parser.add_argument_group("Required Arguments")
-    required_args.add_argument(
-        "-n",
-        "--model-name",
-        help=textwrap.dedent(
-            """\
-            [student | paired]
-            Name of model, for organizing output and triggering
-            differing workflows.
-            """
-        ),
+    parser.add_argument(
+        "--stat",
+        help="T-test type",
+        choices=["student", "paired"],
         type=str,
-        required=True,
+    )
+    parser.add_argument(
+        "--task",
+        type=str,
+        choices=["movies", "scenarios"],
+        help="Task name",
     )
 
     if len(sys.argv) == 1:
@@ -80,29 +99,62 @@ def _get_args():
 # %%
 def main():
     """Setup working environment."""
+    # Validate env
+    if "dcc" not in platform.uname().node:
+        raise EnvironmentError("afni_univ is written for execution on DCC")
+
+    # Catch args
     args = _get_args().parse_args()
-    proj_dir = args.proj_dir
     model_name = args.model_name
-    task_name = args.task_name
+    blk_coef = args.block_coef
+    stat = args.stat
+    task = "task-" + args.task
+    emo_name = args.emo_name
+    get_subs = args.get_subbricks
 
-    # Check model_name
-    if not afni_helper.valid_univ_test(model_name):
-        print(f"Unsupported model name : {model_name}")
-        sys.exit(1)
+    # Setup work directory, for intermediates
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    now_time = datetime.now()
+    log_name = (
+        "func-afni_setup"
+        if args.run_setup
+        else f"func-afni_stat-{stat}_{task}_model-{model_name}"
+    )
+    log_dir = os.path.join(
+        work_deriv,
+        "logs",
+        f"{log_name}_{now_time.strftime('%Y-%m-%d_%H:%M')}",
+    )
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-    # Setup
-    emo_dict = afni_helper.emo_switch()
-    task_list = ["task-movies", "task-scenarios"]
-    if task_name:
-        chk_task = f"task-{task_name}"
-        if chk_task not in task_list:
-            raise ValueError(f"Unexpected task name : {task_name}")
-        task_list = [chk_task]
+    # Get data
+    if args.run_setup:
+        submit.schedule_afni_group_setup(work_deriv, log_dir)
+        return
 
-    # Run model for each task, emotion
-    for task in task_list:
-        for emo_name in emo_dict.keys():
-            wf_afni.afni_ttest(task, model_name, emo_name, proj_dir)
+    # Validate args
+    if not helper.valid_univ_test(stat):
+        raise ValueError(f"Unsupported stat name : {stat}")
+    if task not in ["task-movies", "task-scenarios"]:
+        raise ValueError(f"Unexpected task name : {task}")
+    if blk_coef and model_name != "mixed":
+        raise ValueError("--block-coef only available when model-name=mixed")
+
+    # Get subbricks
+    emo_list = [emo_name] if emo_name else list(helper.emo_switch().keys())
+    if get_subs:
+        submit.schedule_afni_group_subbrick(
+            task, model_name, stat, emo_list, work_deriv, log_dir, blk_coef
+        )
+        return
+
+    # Schedule model for each task, emotion
+    for emo in emo_list:
+        submit.schedule_afni_group_univ(
+            task, model_name, stat, emo, work_deriv, log_dir, blk_coef
+        )
+        time.sleep(3)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,8 @@ import os
 import sys
 import subprocess
 import textwrap
-from func_model.resources.fsl import helper as fsl_helper
+from typing import Union
+from func_model.resources import helper
 
 
 def submit_subprocess(bash_cmd, chk_path, job_name, force_cont=False):
@@ -42,7 +43,9 @@ def submit_subprocess(bash_cmd, chk_path, job_name, force_cont=False):
         Expected output file not detected
 
     """
-    h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+    h_sp = subprocess.Popen(
+        bash_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     h_out, h_err = h_sp.communicate()
     h_sp.wait()
     if force_cont:
@@ -124,10 +127,7 @@ def submit_sbatch(
 def schedule_afni(
     subj,
     sess,
-    proj_rawdata,
-    proj_deriv,
     work_deriv,
-    sing_afni,
     model_name,
     log_dir,
 ):
@@ -143,17 +143,10 @@ def schedule_afni(
         BIDS subject identifier
     sess : str
         BIDS session identifier
-    proj_rawdata : path
-        Location of BIDS-organized project rawdata
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
     work_deriv : path
         Parent location for writing pipeline intermediates
-    sing_afni : path
-        Location of AFNI singularity file
     model_name : str
-        [univ | rest | mixed]
+        {"univ", "rest", "mixed"}
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts
@@ -166,37 +159,28 @@ def schedule_afni(
 
     """
     # Setup software derivatives dirs, for working
-    pipe_name = "rest" if model_name == "rest" else "task"
-    work_afni = os.path.join(work_deriv, f"model_afni-{pipe_name}")
+    work_afni = os.path.join(work_deriv, "model_afni")
     if not os.path.exists(work_afni):
         os.makedirs(work_afni)
 
-    # Setup software derivatives dirs, for storage
-    proj_afni = os.path.join(proj_deriv, "model_afni")
-    if not os.path.exists(proj_afni):
-        os.makedirs(proj_afni)
-
     # Write parent python script
-    wall_time = 20
+    pipe_name = "rest" if model_name == "rest" else "task"
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
 
         #SBATCH --job-name=p{subj[6:]}s{sess[-1]}
         #SBATCH --output={log_dir}/par{subj[6:]}s{sess[-1]}.txt
-        #SBATCH --time={wall_time}:00:00
+        #SBATCH --time=45:00:00
         #SBATCH --mem=8G
 
         import os
         import sys
         from func_model.workflows import wf_afni
 
-        _, _, _ = wf_afni.afni_{pipe_name}(
+        wf_afni.afni_{pipe_name}(
             "{subj}",
             "{sess}",
-            "{proj_rawdata}",
-            "{proj_deriv}",
             "{work_deriv}",
-            "{sing_afni}",
             "{model_name}",
             "{log_dir}",
         )
@@ -212,6 +196,7 @@ def schedule_afni(
         f"sbatch {py_script}",
         shell=True,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj} {sess}")
@@ -271,9 +256,9 @@ def schedule_fsl(
         Unexpected argument parameters
 
     """
-    if not fsl_helper.valid_name(model_name):
+    if not helper.valid_name(model_name):
         raise ValueError(f"Unexpected model name : {model_name}")
-    if not fsl_helper.valid_level(model_level):
+    if not helper.valid_level(model_level):
         raise ValueError(f"Unexpected model level : {model_level}")
 
     def _sbatch_head() -> str:
@@ -344,3 +329,158 @@ def schedule_fsl(
     h_out, h_err = h_sp.communicate()
     print(f"{h_out.decode('utf-8')}\tfor {subj}, {sess}")
     return (h_out, h_err)
+
+
+def schedule_afni_group_setup(
+    work_deriv: Union[str, os.PathLike], log_dir: Union[str, os.PathLike]
+):
+    """Coordinate setup for group-level AFNI modelling."""
+    # Write parent python script
+    sbatch_cmd = f"""\
+        #!/bin/env {sys.executable}
+
+        #SBATCH --job-name=pAfniSetup
+        #SBATCH --output={log_dir}/parAfniSetup.txt
+        #SBATCH --time=10:00:00
+        #SBATCH --mem=8G
+
+        import os
+        import sys
+        from func_model.resources import helper
+        from func_model.resources import masks
+
+        # Get modeled data
+        get_data = helper.SyncGroup("{work_deriv}")
+        _, model_group = get_data.setup_group()
+        get_data.get_model_afni()
+
+        # Make template GM mask
+        masks.tpl_gm(model_group)
+
+    """
+    sbatch_cmd = textwrap.dedent(sbatch_cmd)
+    py_script = f"{log_dir}/run-afni_group-setup.py"
+    with open(py_script, "w") as ps:
+        ps.write(sbatch_cmd)
+
+    # Execute script
+    h_sp = subprocess.Popen(
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    h_out, _ = h_sp.communicate()
+    print(h_out.decode("utf-8"))
+
+
+def schedule_afni_group_subbrick(
+    task: str,
+    model_name: str,
+    stat: str,
+    emo_list: list,
+    work_deriv: Union[str, os.PathLike],
+    log_dir: Union[str, os.PathLike],
+    blk_coef: bool,
+):
+    """Coordinate setup for group-level AFNI modelling."""
+    # Write parent python script
+    sbatch_cmd = f"""\
+        #!/bin/env {sys.executable}
+
+        #SBATCH --job-name=pAfniSubbrick
+        #SBATCH --output={log_dir}/parAfniSubbrick.txt
+        #SBATCH --time=10:00:00
+        #SBATCH --mem=8G
+
+        import os
+        import sys
+        from func_model.workflows import wf_afni
+
+        # Identify decon subbricks
+        afni_ttest = wf_afni.AfniTtest(
+            "{task}",
+            "{model_name}",
+            "{stat}",
+            "{work_deriv}",
+            "{log_dir}",
+        )
+        afni_ttest.find_subbricks(
+            {emo_list},
+            blk_coef={blk_coef},
+        )
+
+    """
+    sbatch_cmd = textwrap.dedent(sbatch_cmd)
+    py_script = f"{log_dir}/run-afni_group-subbrick.py"
+    with open(py_script, "w") as ps:
+        ps.write(sbatch_cmd)
+
+    # Execute script
+    h_sp = subprocess.Popen(
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    h_out, _ = h_sp.communicate()
+    print(h_out.decode("utf-8"))
+
+
+def schedule_afni_group_univ(
+    task: str,
+    model_name: str,
+    stat: str,
+    emo_name: str,
+    work_deriv: Union[str, os.PathLike],
+    log_dir: Union[str, os.PathLike],
+    blk_coef: bool,
+):
+    """Coordinate setup for group-level AFNI modelling."""
+    # Write parent python script
+    sbatch_cmd = f"""\
+        #!/bin/env {sys.executable}
+
+        #SBATCH --job-name=pUniv{emo_name}
+        #SBATCH --output={log_dir}/parUniv{emo_name}.txt
+        #SBATCH --time=80:00:00
+        #SBATCH --mem=4G
+
+        import os
+        import sys
+        from func_model.workflows import wf_afni
+
+        # Conduct group-level test
+        afni_ttest = wf_afni.AfniTtest(
+            "{task}",
+            "{model_name}",
+            "{stat}",
+            "{work_deriv}",
+            "{log_dir}",
+        )
+        afni_ttest.run_etac(
+            "{emo_name}",
+            blk_coef={blk_coef},
+        )
+
+    """
+    sbatch_cmd = textwrap.dedent(sbatch_cmd)
+    suff = "_block.py" if blk_coef else ".py"
+    py_script = (
+        f"{log_dir}/run-afni_{stat}-{model_name}_{task}_emo-{emo_name}{suff}"
+    )
+    with open(py_script, "w") as ps:
+        ps.write(sbatch_cmd)
+
+    # Execute script
+    h_sp = subprocess.Popen(
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    h_out, _ = h_sp.communicate()
+
+    # Communicate to user
+    job_num = h_out.decode("utf-8")
+    print(f"{job_num}\tfor emo : {emo_name}")

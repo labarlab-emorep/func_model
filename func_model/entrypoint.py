@@ -25,12 +25,12 @@ def main():
     Sub-packages written for Duke Compute Cluster (DCC):
 
         - afni_model
+        - afni_univ
         - fsl_model
 
     Sub-packages written for labarserv2:
 
         - afni_extract
-        - afni_univ
         - afni_mvm
         - fsl_extract
         - fsl_map

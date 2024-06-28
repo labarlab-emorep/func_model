@@ -23,10 +23,10 @@ import subprocess
 import pandas as pd
 from multiprocessing import Process, Pool
 from natsort import natsorted
-from func_model.resources.afni import masks
-from func_model.resources.fsl import model
-from func_model.resources.fsl import group as fsl_group
-from func_model.resources.fsl import helper as fsl_helper
+from func_model.resources import masks
+from func_model.resources import model
+from func_model.resources import group
+from func_model.resources import helper
 
 
 # %%
@@ -60,7 +60,12 @@ class _SupportFsl:
 
     def _quick_sp(self, bash_cmd: str) -> Tuple:
         """Spawn quick subprocess."""
-        h_sp = subprocess.Popen(bash_cmd, shell=True, stdout=subprocess.PIPE)
+        h_sp = subprocess.Popen(
+            bash_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         h_out, h_err = h_sp.communicate()
         h_sp.wait()
         return (h_out, h_err)
@@ -224,7 +229,7 @@ class _SupportFslFirst(_SupportFsl):
             .split("task-")[1]
             .split("_")[0]
         )
-        if not fsl_helper.valid_task(self._task):
+        if not helper.valid_task(self._task):
             raise ValueError(f"Unexpected task name : {self._task}")
 
     def _get_run(self, file_name: str) -> str:
@@ -434,9 +439,9 @@ class FslFirst(_SupportFslFirst):
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
-        if not fsl_helper.valid_name(model_name):
+        if not helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
-        if not fsl_helper.valid_preproc(preproc_type):
+        if not helper.valid_preproc(preproc_type):
             raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
@@ -616,9 +621,7 @@ class FslFirst(_SupportFslFirst):
                 for fsf_path in design_list
             ]
             _ = pool.starmap(model.run_feat, items, chunksize=c_size)
-        fsl_helper.clean_up(
-            self._subj_work, self._subj_final, self._model_name
-        )
+        helper.clean_up(self._subj_work, self._subj_final, self._model_name)
 
 
 # %%
@@ -675,7 +678,7 @@ class FslSecond(_SupportFslSecond):
         keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
     ):
         """Initialize."""
-        if not fsl_helper.valid_name(model_name):
+        if not helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
 
         print("Initializing FslSecond")
@@ -716,7 +719,7 @@ class FslSecond(_SupportFslSecond):
         )
 
         # Clean up
-        fsl_helper.clean_up(
+        helper.clean_up(
             self._subj_work,
             self._subj_final,
             self._model_name,
@@ -1211,7 +1214,7 @@ class ExtractBetas:
         # Set attrs for future flexibility, get extraction methods
         self._model_level = "first"
         self._group_mask = "template"
-        self._ex_betas = fsl_group.ExtractTaskBetas()
+        self._ex_betas = group.ExtractTaskBetas()
 
     def _validate(self):
         """Validate user-specified arguments for beta extraction."""
@@ -1370,7 +1373,7 @@ def fsl_classify_mask(
         raise ValueError(f"Unsupported model name : {model_name}")
     if model_level != "first":
         raise ValueError(f"Unsupported model level : {model_level}")
-    if not fsl_helper.valid_contrast(con_name):
+    if not helper.valid_contrast(con_name):
         raise ValueError(f"Unsupported contrast name : {con_name}")
     if task_name not in ["movies", "scenarios", "both"]:
         raise ValueError(f"Unexpected value for task : {task_name}")
@@ -1387,7 +1390,7 @@ def fsl_classify_mask(
         os.makedirs(out_dir)
 
     # Derive MNI header info
-    mk_mask = fsl_group.ImportanceMask(tpl_path)
+    mk_mask = group.ImportanceMask(tpl_path)
 
     # Generate binary mask and cluster for each
     # db_emorep.tbl_plsda_binary_gm.emo_* field
@@ -1408,7 +1411,7 @@ def fsl_classify_mask(
         )
 
     # Trigger conjunction analyses
-    conj = fsl_group.ConjunctAnalysis(mask_list, out_dir)
+    conj = group.ConjunctAnalysis(mask_list, out_dir)
     conj.omni_map()
     conj.arousal_map()
     conj.valence_map()

@@ -19,12 +19,13 @@ afni_mvm -n rm
 afni_mvm -n rm --emo-name fear disgust
 
 """
+
 # %%
 import sys
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_afni
-from func_model.resources.afni import helper as afni_helper
+from func_model.resources import helper
 
 
 # %%
@@ -85,12 +86,12 @@ def main():
     proj_dir = args.proj_dir
     model_name = args.model_name
     emo_list = args.emo_name
-    if not afni_helper.valid_mvm_test(model_name):
+    if not helper.valid_mvm_test(model_name):
         print(f"Unsupported model name : {model_name}")
         sys.exit(1)
 
     # Get, validate emotion list
-    emo_dict = afni_helper.emo_switch()
+    emo_dict = helper.emo_switch()
     if emo_list:
         for emo in emo_list:
             if emo not in emo_dict.keys():
