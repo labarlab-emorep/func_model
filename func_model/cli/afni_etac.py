@@ -1,27 +1,29 @@
-"""Conduct univariate testing using AFNI-based methods.
-
-Written for the local labarserv2 environment.
-
-Construct and execute simple univariate tests for sanity checking
-pipeline output. Student and paired tests are organized by task
-stimulus type (movies, scenarios). Output is written to:
-    <proj-dir>/analyses/model_afni/ttest_<model-name>
+"""Conduct T-Testing using AFNI's ETAC methods.
 
 Model names:
-    - student  = Student's T-test, comparing each task emotion against zero
+    - mixed = use output of afni_model.py --model-name=mixed
+    - univ = use output of afni_model.py --model-name=univ
+
+Stat names:
+    - student = Student's T-test, comparing each task emotion against zero
     - paired = Paired T-test, comparing each task emotion against washout
 
-Examples
---------
-afni_univ --run-setup
-afni_univ --get-subbricks \\
-    --stat paired \\
-    --task scenarios \\
-    --block-coef
-afni_univ \\
-    --stat paired \\
-    --task movies \\
-    --block-coef
+Example
+-------
+1. Get necessary data
+    afni_univ --run-setup
+
+2. Identify sub-brick labels
+    afni_univ --get-subbricks \\
+        --stat paired \\
+        --task movies \\
+        --block-coef
+
+3. Conduct t-testing
+    afni_univ --run-etac \\
+        --stat paired \\
+        --task movies \\
+        --block-coef
 
 """
 
@@ -46,7 +48,8 @@ def _get_args():
     parser.add_argument(
         "--block-coef",
         action="store_true",
-        help="Test block coefficients instead of event for mixed models",
+        help="Test block (instead of event) coefficients "
+        + "when model-name=mixed",
     )
     parser.add_argument(
         "--emo-name",
@@ -61,7 +64,7 @@ def _get_args():
     )
     parser.add_argument(
         "--model-name",
-        choices=["mixed", "univ"],
+        choices=["mixed"],
         type=str,
         default="mixed",
         help=textwrap.dedent(
@@ -70,6 +73,11 @@ def _get_args():
             (default : %(default)s)
             """
         ),
+    )
+    parser.add_argument(
+        "--run-etac",
+        action="store_true",
+        help="Conduct t-testing via AFNI's ETAC",
     )
     parser.add_argument(
         "--run-setup",
@@ -101,7 +109,7 @@ def main():
     """Setup working environment."""
     # Validate env
     if "dcc" not in platform.uname().node:
-        raise EnvironmentError("afni_univ is written for execution on DCC")
+        raise EnvironmentError("afni_etac is written for execution on DCC")
 
     # Catch args
     args = _get_args().parse_args()
@@ -150,11 +158,12 @@ def main():
         return
 
     # Schedule model for each task, emotion
-    for emo in emo_list:
-        submit.schedule_afni_group_univ(
-            task, model_name, stat, emo, work_deriv, log_dir, blk_coef
-        )
-        time.sleep(3)
+    if args.run_etac:
+        for emo in emo_list:
+            submit.schedule_afni_group_etac(
+                task, model_name, stat, emo, work_deriv, log_dir, blk_coef
+            )
+            time.sleep(3)
 
 
 if __name__ == "__main__":

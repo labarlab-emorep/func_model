@@ -10,10 +10,12 @@ ConjunctAnalysis : generate conjunction maps from ImportanceMask output
 """
 
 import os
+import sys
 import re
 import json
 import glob
 import time
+import textwrap
 from typing import Union, Tuple
 import numpy as np
 import pandas as pd
@@ -414,35 +416,6 @@ def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
     return out_path
 
 
-class _SetupTest:
-    """Helper class for AFNI group-level tests classes."""
-
-    def __init__(self, out_dir: Union[str, os.PathLike]):
-        """Initialize."""
-        self._out_dir = out_dir
-        if not os.path.exists(self._out_dir):
-            os.makedirs(self._out_dir)
-
-    def _write_script(self, final_name: str, bash_cmd: str):
-        """Write BASH command to shell script."""
-        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
-        with open(etac_script, "w") as script:
-            script.write(bash_cmd)
-
-    def _setup_output(
-        self, stat: str, emo_short: str, blk_coef: bool
-    ) -> tuple:
-        """Setup, return final filename and location."""
-        print(f"\tBuilding {stat} test for {emo_short}")
-        final_name = (
-            f"FINAL_{stat}_block_{emo_short}"
-            if blk_coef
-            else f"FINAL_{stat}_event_{emo_short}"
-        )
-        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
-        return (final_name, out_path)
-
-
 # %%
 class EtacTest:
     """Build and execute ETAC tests.
@@ -673,13 +646,66 @@ class EtacTest:
         return last_line
 
 
-class MvmTest(_SetupTest):
+def _blur_decon(model_indiv, mask_path, blur, decon_list):
+    """Title."""
+    try:
+        arr_id = os.environ["SLURM_ARRAY_TASK_ID"]
+    except KeyError:
+        raise EnvironmentError(
+            "group._blur_decon intended for execution by SLURM array"
+        )
+
+    decon_path = decon_list[int(arr_id)]
+    out_path = decon_path.replace("+tlrc", f"_blur-{blur}+tlrc")
+    if os.path.exists(out_path):
+        return
+
+    sing_cmd = helper.prepend_afni_sing(
+        os.path.dirname(mask_path), model_indiv
+    )
+    afni_blur = [
+        "3dmerge",
+        f"-prefix {out_path}",
+        f"-1blur_fwhm {blur}",
+        "-doall",
+        decon_path,
+    ]
+    afni_cmd = " ".join(sing_cmd + afni_blur)
+    _ = submit.submit_subprocess(afni_cmd, out_path, "blur")
+
+
+def _calc_acf(model_indiv, mask_path, out_file, errts_list):
+    """Title."""
+    try:
+        arr_id = os.environ["SLURM_ARRAY_TASK_ID"]
+    except KeyError:
+        raise EnvironmentError(
+            "group._calc_acf intended for execution by SLURM array"
+        )
+
+    errts_path = errts_list[int(arr_id)]
+    sing_cmd = helper.prepend_afni_sing(
+        os.path.dirname(out_file), os.path.dirname(errts_path)
+    )
+    afni_blur = [
+        "3dFWHMx",
+        f"-mask {mask_path}",
+        f"input {errts_path}",
+        "-acf",
+        f">> {out_file}",
+    ]
+    afni_cmd = " ".join(sing_cmd + afni_blur)
+    _ = submit.submit_subprocess(afni_cmd, out_file, "3dfwhmx")
+
+
+class MvmTest:
     """Build and execute 3dMVM tests.
 
     Construct a two-factor repeated-measures ANOVA for sanity checking.
     3dMVM scripts and output are written to <out_dir>.
 
-    Inherits _SetupTest.
+    Parameters
+    ----------
 
     Methods
     --------
@@ -696,28 +722,19 @@ class MvmTest(_SetupTest):
 
     """
 
-    def __init__(self, proj_dir, out_dir, mask_path):
-        """Initialize.
-
-        Parameters
-        ----------
-        proj_dir : path
-            Location of project directory
-        out_dir : path
-            Output location for generated files
-        mask_path : path
-            Location of group mask
-
-        """
-        print("Initializing MvmTest")
-        super().__init__(proj_dir, out_dir, mask_path)
+    def __init__(self, model_indiv, model_group, mask_path, log_dir):
+        """Initialize."""
+        self._model_indiv = model_indiv
+        self._model_group = model_group
+        self._mask_path = mask_path
+        self._log_dir = log_dir
 
     def _build_row(self, row_dict: dict):
         """Write single row of datatable."""
         # Identify sub-brick integer from label
         for _, info_dict in row_dict.items():
             self._get_subbrick.decon_path = info_dict["decon_path"]
-            self._get_subbrick.subj_out_dir = self._out_dir
+            self._get_subbrick.subj_out_dir = self._model_group
             label_int = self._get_subbrick.get_label_int(
                 info_dict["sub_label"]
             )
@@ -734,7 +751,7 @@ class MvmTest(_SetupTest):
         """Build the datatable of 3dMVM."""
         # Initialize ExtractTaskBetas, subset group_dict for
         # individual subjects, sessions
-        self._get_subbrick = ExtractTaskBetas(self._proj_dir)
+        self._get_subbrick = ExtractTaskBetas(self._model_indiv)
         self._table_list = []
         for subj in self._group_dict:
             for task, info_dict in self._group_dict[subj].items():
@@ -831,7 +848,7 @@ class MvmTest(_SetupTest):
         print("\tBuilding 3dMVM command")
         mvm_head = [
             "3dMVM",
-            f"-prefix {self._out_dir}/{final_name}",
+            f"-prefix {self._model_group}/{final_name}",
             "-jobs 12",
             "-bsVars 1",
             "-wsVars 'sesslabel*stimlabel'",
@@ -850,7 +867,109 @@ class MvmTest(_SetupTest):
 
         print("\tExecuting 3dMVM command")
         submit.submit_subprocess(mvm_cmd, out_path, f"mvm{emo_short}")
-        return self._out_dir
+
+    def _submit_subproc(self, job_cmd: str):
+        """Title."""
+        job_sp = subprocess.Popen(
+            job_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        job_out, job_err = job_sp.communicate()
+        job_sp.wait()
+        return (job_out, job_err)
+
+    def blur_decon(self, model_name: str, blur: int = 4):
+        """Title.
+
+        Attributes
+        ----------
+        blur_dict : dict
+
+        """
+        #
+        search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
+        stat_list = sorted(
+            glob.glob(f"{search_path}/decon_{model_name}_stats_REML+tlrc.HEAD")
+        )
+        errts_list = sorted(
+            glob.glob(f"{search_path}/decon_{model_name}_errts_REML+tlrc.HEAD")
+        )
+        all_list = stat_list + errts_list
+
+        #
+        sbatch_cmd = f"""\
+            #!/bin/env {sys.executable}
+
+            #SBATCH --output={self._log_dir}/blur_decon_%a.txt
+            #SBATCH --array=0-{len(all_list) - 1}%20
+            #SBATCH --time=01:00:00
+            #SBATCH --mem=6G
+            #SBATCH --wait
+
+            from func_model.resources import group
+            group._blur_decon(
+                "{self._model_indiv}",
+                "{self._mask_path}",
+                {blur},
+                {all_list},
+            )
+
+        """
+        sbatch_cmd = textwrap.dedent(sbatch_cmd)
+
+        #
+        py_script = f"{self._log_dir}/run_blur_decon.py"
+        with open(py_script, "w") as ps:
+            ps.write(sbatch_cmd)
+        self._submit_subproc(f"sbatch {py_script}")
+
+    def noise_acf(self, model_name, use_blur=True, blur=4):
+        """Title."""
+        #
+        search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
+        search_str = (
+            f"decon_{model_name}_errts_REML_blur-{blur}+tlrc.HEAD"
+            if use_blur
+            else f"decon_{model_name}_errts_REML+tlrc.HEAD"
+        )
+        errts_list = sorted(glob.glob(f"{search_path}/{search_str}"))
+        if not errts_list:
+            raise FileNotFoundError(
+                f"Glob failed at finding : {search_path}/{search_str}"
+            )
+
+        #
+        out_file = os.path.join(self._out_dir, "ACF_raw.txt")
+        open(out_file, "w").close()
+
+        #
+        sbatch_cmd = f"""\
+            #!/bin/env {sys.executable}
+
+            #SBATCH --output={self._log_dir}/acf_errts_%a.txt
+            #SBATCH --array=0-{len(errts_list) - 1}%20
+            #SBATCH --time=01:00:00
+            #SBATCH --mem=6G
+            #SBATCH --wait
+
+            from func_model.resources import group
+            group._calc_acf(
+                "{self._model_indiv}",
+                "{self._mask_path}",
+                {out_file},
+                {errts_list},
+            )
+
+        """
+        sbatch_cmd = textwrap.dedent(sbatch_cmd)
+
+        #
+        py_script = f"{self._log_dir}/run_calc_acf.py"
+        with open(py_script, "w") as ps:
+            ps.write(sbatch_cmd)
+        self._submit_subproc(f"sbatch {py_script}")
 
     def clustsim(self):
         """Conduct mask-based Monte Carlo simulations.
@@ -872,12 +991,18 @@ class MvmTest(_SetupTest):
         if os.path.exists(sim_out):
             return sim_out
 
+        # TODO extract A, B, C from self._acf_raw
+        mean_a = ""
+        mean_b = ""
+        mean_c = ""
+
         print("\tConducting Monte Carlo simulations")
         bash_list = [
             "3dClustSim",
             f"-mask {self._mask_path}",
             "-LOTS",
             "-iter 10000",
+            f"-acf {mean_a} {mean_b} {mean_c}",
             f"> {sim_out}",
         ]
         submit.submit_subprocess(" ".join(bash_list), sim_out, "MCsim")

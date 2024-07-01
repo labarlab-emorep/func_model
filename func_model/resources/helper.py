@@ -63,7 +63,7 @@ def valid_univ_test(test_name: str) -> bool:
 
 def valid_mvm_test(test_name: str) -> bool:
     """Return bool of whether test_name is supported."""
-    return test_name in ["rm"]
+    return test_name in ["amodal"]
 
 
 def valid_name(model_name: str) -> bool:

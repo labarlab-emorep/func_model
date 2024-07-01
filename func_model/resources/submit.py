@@ -399,13 +399,13 @@ def schedule_afni_group_subbrick(
 
         # Identify decon subbricks
         afni_ttest = wf_afni.AfniTtest(
-            "{task}",
             "{model_name}",
             "{stat}",
             "{work_deriv}",
             "{log_dir}",
         )
         afni_ttest.find_subbricks(
+            "{task}",
             {emo_list},
             blk_coef={blk_coef},
         )
@@ -427,7 +427,7 @@ def schedule_afni_group_subbrick(
     print(h_out.decode("utf-8"))
 
 
-def schedule_afni_group_univ(
+def schedule_afni_group_etac(
     task: str,
     model_name: str,
     stat: str,
@@ -436,7 +436,7 @@ def schedule_afni_group_univ(
     log_dir: Union[str, os.PathLike],
     blk_coef: bool,
 ):
-    """Coordinate setup for group-level AFNI modelling."""
+    """Schedule ETAC workflow."""
     # Write parent python script
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
@@ -452,13 +452,13 @@ def schedule_afni_group_univ(
 
         # Conduct group-level test
         afni_ttest = wf_afni.AfniTtest(
-            "{task}",
             "{model_name}",
             "{stat}",
             "{work_deriv}",
             "{log_dir}",
         )
         afni_ttest.run_etac(
+            "{task}",
             "{emo_name}",
             blk_coef={blk_coef},
         )
@@ -484,3 +484,57 @@ def schedule_afni_group_univ(
     # Communicate to user
     job_num = h_out.decode("utf-8")
     print(f"{job_num}\tfor emo : {emo_name}")
+
+
+def schedule_afni_group_mvm(
+    model_name: str,
+    stat: str,
+    emo_list: list,
+    work_deriv: Union[str, os.PathLike],
+    log_dir: Union[str, os.PathLike],
+    blk_coef: bool,
+):
+    """Schedule 3dMVM."""
+    # Write parent python script
+    sbatch_cmd = f"""\
+        #!/bin/env {sys.executable}
+
+        #SBATCH --job-name=pMvm
+        #SBATCH --output={log_dir}/parMvm.txt
+        #SBATCH --time=80:00:00
+        #SBATCH --mem=4G
+
+        import os
+        import sys
+        from func_model.workflows import wf_afni
+
+        # Conduct group-level test
+        afni_mvm = wf_afni.afni_mvm(
+            "{model_name}",
+            "{stat}",
+            "{work_deriv}",
+            "{log_dir}",
+        )
+        afni_mvm.run_mvm(
+            {emo_list},
+            blk_coef={blk_coef},
+        )
+
+    """
+    sbatch_cmd = textwrap.dedent(sbatch_cmd)
+    suff = "_block.py" if blk_coef else ".py"
+    py_script = f"{log_dir}/run-afni_{stat}-{model_name}{suff}"
+    with open(py_script, "w") as ps:
+        ps.write(sbatch_cmd)
+
+    # Execute script
+    h_sp = subprocess.Popen(
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    h_out, _ = h_sp.communicate()
+
+    # Communicate to user
+    print(h_out.decode("utf-8"))
