@@ -643,7 +643,7 @@ class AfniMvm(AfniTtest):
         )
         run_mvm.blur_decon(self._model_name)
         run_mvm.noise_acf(self._model_name)
-        # run_mvm.clustsim()
+        run_mvm.clustsim()
 
         # # Find input files and sub-brick labels
         # decon_dict = {}

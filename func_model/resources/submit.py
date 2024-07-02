@@ -502,7 +502,8 @@ def schedule_afni_group_mvm(
         #SBATCH --job-name=pMvm
         #SBATCH --output={log_dir}/parMvm.txt
         #SBATCH --time=80:00:00
-        #SBATCH --mem=4G
+        #SBATCH --mem=12G
+        #SBATCH -c 10
 
         import os
         import sys

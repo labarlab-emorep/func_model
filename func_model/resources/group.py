@@ -736,12 +736,22 @@ class MvmTest:
 
     """
 
-    def __init__(self, model_indiv, model_group, mask_path, log_dir):
+    def __init__(
+        self,
+        model_indiv,
+        model_group,
+        mask_path,
+        log_dir,
+        use_blur=True,
+        blur=4,
+    ):
         """Initialize."""
         self._model_indiv = model_indiv
         self._model_group = model_group
         self._mask_path = mask_path
         self._log_dir = log_dir
+        self._use_blur = use_blur
+        self._blur = blur
 
     def _build_row(self, row_dict: dict):
         """Write single row of datatable."""
@@ -894,7 +904,7 @@ class MvmTest:
         job_sp.wait()
         return (job_out, job_err)
 
-    def blur_decon(self, model_name: str, blur: int = 4):
+    def blur_decon(self, model_name: str):
         """Title.
 
         Attributes
@@ -915,7 +925,9 @@ class MvmTest:
                     f"{func_path}/decon_{model_name}_"
                     + f"{file_type}_REML+tlrc.HEAD"
                 )
-                chk_blur = chk_stat.replace("+tlrc", f"_blur-{blur}+tlrc")
+                chk_blur = chk_stat.replace(
+                    "+tlrc", f"_blur-{self._blur}+tlrc"
+                )
                 if os.path.exists(chk_stat) and not os.path.exists(chk_blur):
                     decon_list.append(chk_stat)
 
@@ -936,7 +948,7 @@ class MvmTest:
             group._blur_decon(
                 "{self._model_indiv}",
                 "{self._mask_path}",
-                {blur},
+                {self._blur},
                 {decon_list},
             )
 
@@ -949,13 +961,13 @@ class MvmTest:
             ps.write(sbatch_cmd)
         self._submit_subproc(f"sbatch {py_script}")
 
-    def noise_acf(self, model_name, use_blur=True, blur=4):
+    def noise_acf(self, model_name):
         """Title."""
         #
         search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
         search_str = (
-            f"decon_{model_name}_errts_REML_blur-{blur}+tlrc.HEAD"
-            if use_blur
+            f"decon_{model_name}_errts_REML_blur-{self._blur}+tlrc.HEAD"
+            if self._use_blur
             else f"decon_{model_name}_errts_REML+tlrc.HEAD"
         )
         errts_all = sorted(glob.glob(f"{search_path}/{search_str}"))
@@ -967,9 +979,13 @@ class MvmTest:
         # Build errts_list to avoid submitting large array for few
         # needed files.
         errts_list = []
-        out_txt = f"ACF_raw_blur{blur}.txt" if use_blur else "ACF_raw.txt"
+        self._acf_name = (
+            f"ACF_raw_blur{self._blur}.txt"
+            if self._use_blur
+            else "ACF_raw.txt"
+        )
         for errts_path in errts_all:
-            chk_out = os.path.join(os.path.dirname(errts_path), out_txt)
+            chk_out = os.path.join(os.path.dirname(errts_path), self._acf_name)
             if not os.path.exists(chk_out):
                 errts_list.append(errts_path.split(".")[0])
 
@@ -991,7 +1007,7 @@ class MvmTest:
                 "{self._model_indiv}",
                 "{self._mask_path}",
                 {errts_list},
-                "{out_txt}",
+                "{self._acf_name}",
             )
 
         """
@@ -1004,41 +1020,64 @@ class MvmTest:
         self._submit_subproc(f"sbatch {py_script}")
 
     def clustsim(self):
-        """Conduct mask-based Monte Carlo simulations.
-
-        Does not incorporate ACF, but will if used for formal analyses
-        and not simple sanity-checking. Output file written to the
-        same directory as the group mask, and title
-        montecarlo_simulations.txt.
-
-        Returns
-        -------
-        path
-            Location of output file
-
-        """
-        sim_out = os.path.join(
-            os.path.dirname(self._mask_path), "montecarlo_simulations.txt"
-        )
+        """Conduct mask-based Monte Carlo simulations."""
+        sim_out = os.path.join(self._model_group, "montecarlo_simulations.txt")
         if os.path.exists(sim_out):
             return sim_out
 
-        # TODO extract A, B, C from self._acf_raw
-        mean_a = ""
-        mean_b = ""
-        mean_c = ""
+        # Calculate average ACF
+        self._get_acf()
+        mean_acf = list(self._df_acf.mean())
 
-        print("\tConducting Monte Carlo simulations")
+        # Build and submit cluststim
+        afni_prep = helper.prepend_afni_sing(
+            self._model_group, self._model_indiv
+        )
         bash_list = [
             "3dClustSim",
             f"-mask {self._mask_path}",
             "-LOTS",
             "-iter 10000",
-            f"-acf {mean_a} {mean_b} {mean_c}",
+            "-pthr 0.001",
+            "-athr 0.05",
+            f"-acf {mean_acf[0]} {mean_acf[1]} {mean_acf[2]}",
             f"> {sim_out}",
         ]
-        submit.submit_subprocess(" ".join(bash_list), sim_out, "MCsim")
-        return sim_out
+        submit.submit_subprocess(
+            " ".join(afni_prep + bash_list), sim_out, "MCsim"
+        )
+
+    def _get_acf(self):
+        """Title."""
+        search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
+        acf_list = sorted(glob.glob(f"{search_path}/{self._acf_name}"))
+        if not acf_list:
+            raise FileNotFoundError(
+                f"Glob failed at finding : {search_path}/{self._acf_name}"
+            )
+
+        #
+        with Pool(processes=8) as pool:
+            items = [(x) for x in acf_list]
+            acf_values = pool.map(self._mine_acf, items)
+        self._df_acf = pd.DataFrame(
+            acf_values, columns=["x", "y", "z", "comb"]
+        )
+
+        # Write out for
+        out_acf = os.path.join(self._model_group, "acf_all.csv")
+        self._df_acf.to_csv(out_acf)
+
+    def _mine_acf(self, acf_path) -> list:
+        """Title."""
+        with open(acf_path) as f:
+            for line in f:
+                pass
+            last_line = line
+
+        acf_values = [float(x) for x in last_line.strip().split()]
+        if len(acf_values) == 4:
+            return acf_values
 
 
 # %%
