@@ -674,7 +674,7 @@ def _blur_decon(model_indiv, mask_path, blur, decon_list):
     _ = submit.submit_subprocess(afni_cmd, out_path, "blur")
 
 
-def _calc_acf(model_indiv, mask_path, out_file, errts_list):
+def _calc_acf(model_indiv, mask_path, errts_list, out_txt):
     """Title."""
     try:
         arr_id = os.environ["SLURM_ARRAY_TASK_ID"]
@@ -683,19 +683,33 @@ def _calc_acf(model_indiv, mask_path, out_file, errts_list):
             "group._calc_acf intended for execution by SLURM array"
         )
 
+    #
     errts_path = errts_list[int(arr_id)]
+    out_path = os.path.join(os.path.dirname(errts_path), out_txt)
+    if os.path.exists(out_path):
+        return
+
+    #
     sing_cmd = helper.prepend_afni_sing(
-        os.path.dirname(out_file), os.path.dirname(errts_path)
+        os.path.dirname(mask_path), os.path.dirname(errts_path)
     )
     afni_blur = [
         "3dFWHMx",
         f"-mask {mask_path}",
-        f"input {errts_path}",
+        f"-input {errts_path}",
         "-acf",
-        f">> {out_file}",
+        f"> {out_path}",
     ]
     afni_cmd = " ".join(sing_cmd + afni_blur)
-    _ = submit.submit_subprocess(afni_cmd, out_file, "3dfwhmx")
+    # _ = submit.submit_subprocess(afni_cmd, out_path, "3dfwhmx")
+    job_sp = subprocess.Popen(
+        afni_cmd,
+        shell=True,
+        # stdout=subprocess.PIPE,
+        # stderr=subprocess.PIPE,
+    )
+    # job_out, job_err = job_sp.communicate()
+    job_sp.wait()
 
 
 class MvmTest:
@@ -888,24 +902,34 @@ class MvmTest:
         blur_dict : dict
 
         """
-        #
+        # Manually build decon_list to avoid resubmitting entire array
+        # for every single file update.
         search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
-        stat_list = sorted(
-            glob.glob(f"{search_path}/decon_{model_name}_stats_REML+tlrc.HEAD")
-        )
-        errts_list = sorted(
-            glob.glob(f"{search_path}/decon_{model_name}_errts_REML+tlrc.HEAD")
-        )
-        all_list = stat_list + errts_list
+        decon_list = []
+        func_dirs = sorted(glob.glob(search_path))
+        for func_path in func_dirs:
+            for file_type in ["stats", "errts"]:
+
+                #
+                chk_stat = (
+                    f"{func_path}/decon_{model_name}_"
+                    + f"{file_type}_REML+tlrc.HEAD"
+                )
+                chk_blur = chk_stat.replace("+tlrc", f"_blur-{blur}+tlrc")
+                if os.path.exists(chk_stat) and not os.path.exists(chk_blur):
+                    decon_list.append(chk_stat)
+
+        if not decon_list:
+            return
 
         #
         sbatch_cmd = f"""\
             #!/bin/env {sys.executable}
 
             #SBATCH --output={self._log_dir}/blur_decon_%a.txt
-            #SBATCH --array=0-{len(all_list) - 1}%20
-            #SBATCH --time=01:00:00
-            #SBATCH --mem=6G
+            #SBATCH --array=0-{len(decon_list) - 1}%20
+            #SBATCH --time=06:00:00
+            #SBATCH --mem=24G
             #SBATCH --wait
 
             from func_model.resources import group
@@ -913,7 +937,7 @@ class MvmTest:
                 "{self._model_indiv}",
                 "{self._mask_path}",
                 {blur},
-                {all_list},
+                {decon_list},
             )
 
         """
@@ -934,15 +958,23 @@ class MvmTest:
             if use_blur
             else f"decon_{model_name}_errts_REML+tlrc.HEAD"
         )
-        errts_list = sorted(glob.glob(f"{search_path}/{search_str}"))
-        if not errts_list:
+        errts_all = sorted(glob.glob(f"{search_path}/{search_str}"))
+        if not errts_all:
             raise FileNotFoundError(
                 f"Glob failed at finding : {search_path}/{search_str}"
             )
 
-        #
-        out_file = os.path.join(self._out_dir, "ACF_raw.txt")
-        open(out_file, "w").close()
+        # Build errts_list to avoid submitting large array for few
+        # needed files.
+        errts_list = []
+        out_txt = f"ACF_raw_blur{blur}.txt" if use_blur else "ACF_raw.txt"
+        for errts_path in errts_all:
+            chk_out = os.path.join(os.path.dirname(errts_path), out_txt)
+            if not os.path.exists(chk_out):
+                errts_list.append(errts_path.split(".")[0])
+
+        if not errts_list:
+            return
 
         #
         sbatch_cmd = f"""\
@@ -950,16 +982,16 @@ class MvmTest:
 
             #SBATCH --output={self._log_dir}/acf_errts_%a.txt
             #SBATCH --array=0-{len(errts_list) - 1}%20
-            #SBATCH --time=01:00:00
-            #SBATCH --mem=6G
+            #SBATCH --time=06:00:00
+            #SBATCH --mem=24G
             #SBATCH --wait
 
             from func_model.resources import group
             group._calc_acf(
                 "{self._model_indiv}",
                 "{self._mask_path}",
-                {out_file},
                 {errts_list},
+                "{out_txt}",
             )
 
         """

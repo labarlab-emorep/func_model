@@ -509,7 +509,7 @@ def schedule_afni_group_mvm(
         from func_model.workflows import wf_afni
 
         # Conduct group-level test
-        afni_mvm = wf_afni.afni_mvm(
+        afni_mvm = wf_afni.AfniMvm(
             "{model_name}",
             "{stat}",
             "{work_deriv}",

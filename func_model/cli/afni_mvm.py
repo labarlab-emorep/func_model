@@ -82,11 +82,12 @@ def main():
     work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
     now_time = datetime.now()
     log_name = "func-afni_setup" if args.run_setup else "func-afni_mvm"
-    log_dir = os.path.join(
-        work_deriv,
-        "logs",
-        f"{log_name}_{now_time.strftime('%Y-%m-%d_%H:%M')}",
-    )
+    # log_dir = os.path.join(
+    #     work_deriv,
+    #     "logs",
+    #     f"{log_name}_{now_time.strftime('%Y-%m-%d_%H:%M')}",
+    # )
+    log_dir = os.path.join(work_deriv, "logs", log_name)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 

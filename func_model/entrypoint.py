@@ -14,7 +14,7 @@ def main():
 
         afni_model   : Conduct AFNI-style deconvolution
         afni_extract : Extract emotion betas from deconvolve AFNI as a matrix
-        afni_univ    : Conduct univariate tests in AFNI
+        afni_etac    : Conduct T-tests in AFNI via ETAC
         afni_mvm     : Conduct multivariate tests in AFNI
 
         fsl_model    : Conduct FSL-style first- and second-level regressions
@@ -25,13 +25,13 @@ def main():
     Sub-packages written for Duke Compute Cluster (DCC):
 
         - afni_model
-        - afni_univ
+        - afni_etac
+        - afni_mvm
         - fsl_model
 
     Sub-packages written for labarserv2:
 
         - afni_extract
-        - afni_mvm
         - fsl_extract
         - fsl_map
         - fsl_group
