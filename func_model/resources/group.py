@@ -41,14 +41,17 @@ def _cmd_sub_int(
 
 
 def get_subbrick_label(
-    sub_label: str, decon_path: Union[str, os.PathLike], out_txt=None
+    sub_label: str,
+    model_name: str,
+    decon_path: Union[str, os.PathLike],
+    out_txt=None,
 ):
     """Title."""
     subj_work = os.path.dirname(decon_path)
     sing_head = helper.prepend_afni_sing(subj_work, subj_work)
     if not out_txt:
         out_txt = os.path.join(
-            subj_work, f"subbrick_{sub_label.split('#')[0]}.txt"
+            subj_work, f"subbrick_{model_name}_{sub_label.split('#')[0]}.txt"
         )
     sub_cmd = _cmd_sub_int(sub_label, decon_path, out_txt=out_txt)
     bash_cmd = " ".join(sing_head + sub_cmd)
@@ -625,7 +628,10 @@ class EtacTest:
             or os.stat(subbrick_txt).st_size == 0
         ):
             get_subbrick_label(
-                self._sub_label, self._decon_path, out_txt=subbrick_txt
+                self._sub_label,
+                self._model_name,
+                self._decon_path,
+                out_txt=subbrick_txt,
             )
         if not os.path.exists(subbrick_txt):
             return None
@@ -829,22 +835,9 @@ class MvmTest:
                     },
                 }
         model_name : str
-            [rm]
             Model identifier
         emo_short : str
             Shortened (AFNI) emotion name
-
-        Returns
-        -------
-        path
-            Output directory location
-
-        Raises
-        ------
-        KeyError
-            Unexpected group_dict organization
-        ValueError
-            Unexpected model name
 
         """
         # Validate

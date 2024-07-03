@@ -407,7 +407,7 @@ def schedule_afni_group_subbrick(
         afni_ttest.find_subbricks(
             "{task}",
             {emo_list},
-            blk_coef={blk_coef},
+            {blk_coef},
         )
 
     """
@@ -460,7 +460,7 @@ def schedule_afni_group_etac(
         afni_ttest.run_etac(
             "{task}",
             "{emo_name}",
-            blk_coef={blk_coef},
+            {blk_coef},
         )
 
     """
@@ -518,7 +518,7 @@ def schedule_afni_group_mvm(
         )
         afni_mvm.run_mvm(
             {emo_list},
-            blk_coef={blk_coef},
+            {blk_coef},
         )
 
     """

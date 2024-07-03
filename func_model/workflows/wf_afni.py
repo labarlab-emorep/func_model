@@ -572,7 +572,7 @@ class AfniTtest:
         if emo_name not in emo_valid:
             raise ValueError(f"Unexpected emo : {emo_name}")
 
-    def find_subbricks(self, task, emo_list, blk_coef=False, decon_dict=None):
+    def find_subbricks(self, task, emo_list, blk_coef, decon_dict=None):
         """Title."""
         # Validate
         if not helper.valid_task(task):
@@ -591,11 +591,15 @@ class AfniTtest:
         # Coordinate subbrick finding
         for _subj, decon_path in self._decon_dict.items():
             for self._emo_name in emo_list:
-                group.get_subbrick_label(self._make_sub_label(), decon_path)
+                group.get_subbrick_label(
+                    self._make_sub_label(), self._model_name, decon_path
+                )
             if self._stat == "paired":
-                group.get_subbrick_label("comWas#0_Coef", decon_path)
+                group.get_subbrick_label(
+                    "comWas#0_Coef", self._model_name, decon_path
+                )
 
-    def run_etac(self, task, emo_name, blk_coef=False):
+    def run_etac(self, task, emo_name, blk_coef):
         """Title."""
         if not helper.valid_task(task):
             raise ValueError(f"Unexpected task value : {task}")
@@ -628,11 +632,12 @@ class AfniTtest:
 class AfniMvm(AfniTtest):
     """Title."""
 
-    def __init__(self, model_name, stat, work_deriv, log_dir):
+    def __init__(self, model_name, mvm_stat, work_deriv, log_dir):
         """Title."""
-        super().__init__(model_name, stat, work_deriv, log_dir)
+        self._mvm_stat = mvm_stat
+        super().__init__(model_name, "paired", work_deriv, log_dir)
 
-    def run_mvm(self, emo_list, blk_coef=False):
+    def run_mvm(self, emo_list, blk_coef):
         """Title."""
         self._setup()
         mask_path = masks.tpl_gm(self._model_group)
@@ -645,11 +650,17 @@ class AfniMvm(AfniTtest):
         run_mvm.noise_acf(self._model_name)
         run_mvm.clustsim()
 
-        # # Find input files and sub-brick labels
-        # decon_dict = {}
-        # for task in ["task-movies", "task-scenarios"]:
-        #     self.find_subbricks(task, emo_list, blk_coef=blk_coef)
-        #     decon_dict.update(self._decon_dict)
+        # Find input files
+        decon_dict = {}
+        for self._task in ["task-movies", "task-scenarios"]:
+            self._find_decons()
+            decon_dict[self._task] = self._decon_dict
+
+        # Extract sub-bricks
+        cond_list = emo_list + ["comWas"]
+        for self._task, decon_dict in decon_dict.items():
+            for cond in cond_list:
+                pass
 
 
 # def afni_mvm(model_name, stat_name, emo_list, work_deriv, log_dir, blk_coef):
