@@ -239,13 +239,13 @@ def afni_task(
     work_deriv : str, os.PathLike
         Parent location for writing pipeline intermediates
     model_name : str
-        {"univ", "mixed"}
+        {"mixed", "task", "block"}
         Desired AFNI model, for triggering different workflows
     log_dir : str, os.PathLike
         Output location for log files and scripts
 
     """
-    if model_name not in ["univ", "mixed"]:
+    if model_name not in ["mixed", "task", "block"]:
         raise ValueError(f"Unsupported model name : {model_name}")
 
     # Setup, download required files
@@ -279,9 +279,10 @@ def afni_task(
     # Generate and compile timing files
     make_tf = deconvolve.TimingFiles(subj, sess, task, subj_work, sess_events)
     tf_list = make_tf.common_events()
-    tf_list += make_tf.session_events()
     tf_list += make_tf.select_events()
-    if model_name == "mixed":
+    if model_name != "block":
+        tf_list += make_tf.session_events()
+    if model_name != "task":
         tf_list += make_tf.session_blocks()
 
     # Organize timing files by description
@@ -294,6 +295,7 @@ def afni_task(
     run_reml = deconvolve.RunReml(
         subj,
         sess,
+        task,
         subj_work,
         work_deriv,
         sess_anat,
