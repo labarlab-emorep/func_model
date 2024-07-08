@@ -142,10 +142,11 @@ class _SyncData(wf_fsl._SupportFsl):
             )
         return event_list
 
-    def clean_deriv(self, model_name: str, sess_anat: dict):
+    def clean_deriv(self, task: str, model_name: str, sess_anat: dict):
         """Remove unneeded files from model_afni."""
         self._model_name = model_name
         self._sess_anat = sess_anat
+        self._task = task
         if not hasattr(self, "_subj_work"):
             self.setup_indiv()
 
@@ -161,8 +162,12 @@ class _SyncData(wf_fsl._SupportFsl):
     def _save_task(self) -> list:
         """Return list of important task decon files."""
         # Check for pipeline output
+        decon_name = (
+            f"{self._subj}_{self._sess}_{self._task}_"
+            + f"desc-decon_{self._model_name}"
+        )
         chk_file = os.path.join(
-            self._subj_work, f"decon_{self._model_name}_stats_REML+tlrc.HEAD"
+            self._subj_work, f"{decon_name}_stats_REML+tlrc.HEAD"
         )
         if not os.path.exists(chk_file):
             raise FileNotFoundError(
@@ -170,7 +175,7 @@ class _SyncData(wf_fsl._SupportFsl):
             )
 
         # Build return list
-        save_list = glob.glob(f"{self._subj_work}/*decon_{self._model_name}*")
+        save_list = glob.glob(f"{self._subj_work}/*{decon_name}*")
         save_list.append(self._sess_anat["mask-WMe"])
         save_list.append(self._sess_anat["mask-int"])
         save_list.append(os.path.join(self._subj_work, "motion_files"))
@@ -227,7 +232,7 @@ def afni_task(
 
     Download data from Keoki, generate timing files from
     rawdata events, motion files and preprocessed files
-    from fMRIPrep, then generate deconvultion files,
+    from fMRIPrep. Then generate deconvultion files,
     nuissance files, and execute 3dREMLfit.
 
     Parameters
@@ -296,20 +301,21 @@ def afni_task(
         subj,
         sess,
         task,
+        model_name,
         subj_work,
         work_deriv,
         sess_anat,
         sess_func,
         log_dir,
     )
-    run_reml.build_decon(model_name, sess_tfs=sess_timing)
+    run_reml.build_decon(sess_tfs=sess_timing)
 
     # Use decon command to make REMl command, execute REML
     run_reml.generate_reml()
     _ = run_reml.exec_reml()
 
     # Send data to Keoki, clean
-    sync_data.clean_deriv(model_name, sess_anat)
+    sync_data.clean_deriv(task, model_name, sess_anat)
     sync_data.send_decon()
     shutil.rmtree(os.path.dirname(subj_work))
     shutil.rmtree(subj_fp)

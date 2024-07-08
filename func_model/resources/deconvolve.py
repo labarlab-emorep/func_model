@@ -850,6 +850,9 @@ class _WriteDecon:
         BIDS session identifier
     task : str
         BIDS task identifer
+    model_name : str
+        {"rest", "mixed", "task", "block"}
+        Desired AFNI model, for triggering different workflows
     subj_work : str, os.PathLike
         Location of working directory for intermediates
     work_deriv : str, os.PathLike
@@ -902,6 +905,7 @@ class _WriteDecon:
         subj,
         sess,
         task,
+        model_name,
         subj_work,
         work_deriv,
         sess_func,
@@ -921,12 +925,13 @@ class _WriteDecon:
         self._subj = subj
         self._sess = sess
         self._task = task
+        self._model_name = model_name
         self._subj_work = subj_work
         self._sess_func = sess_func
         self._sess_anat = sess_anat
         self._afni_prep = helper.prepend_afni_sing(work_deriv, self._subj_work)
 
-    def build_decon(self, model_name, sess_tfs=None):
+    def build_decon(self, sess_tfs=None):
         """Trigger deconvolution method.
 
         Use model_name to trigger the method that writes the
@@ -934,9 +939,6 @@ class _WriteDecon:
 
         Parameters
         ----------
-        model_name : str
-            {"rest", "mixed", "task", "block"}
-            Desired AFNI model, triggers corresponding methods
         sess_tfs : None, dict, optional
             Required when model_name != rest.
             Contains reference names (key) and paths (value) to
@@ -944,20 +946,22 @@ class _WriteDecon:
 
         """
         # Validate model name
-        model_valid = helper.valid_models(model_name)
+        model_valid = helper.valid_models(self._model_name)
         if not model_valid:
-            raise ValueError(f"Unsupported model name : {model_name}")
+            raise ValueError(f"Unsupported model name : {self._model_name}")
 
         # Require timing files for task decons
-        if model_name in ["task", "block", "mixed"]:
+        print("\tBuilding 3dDeconvolve command")
+        if self._model_name in ["task", "block", "mixed"]:
             if not sess_tfs:
                 raise ValueError(
-                    f"Argument sess_tfs required with model_name={model_name}"
+                    "Argument sess_tfs required with "
+                    + f"model_name={self._model_name}"
                 )
             self._tf_dict = sess_tfs
 
         # Find, trigger appropriate method
-        write_meth = getattr(self, f"write_{model_name}")
+        write_meth = getattr(self, f"write_{self._model_name}")
         write_meth()
 
     def _build_behavior(self, basis_func):
@@ -1346,6 +1350,9 @@ class RunReml(_WriteDecon):
         BIDS session identifier
     task : str
         BIDS task identifer
+    model_name : str
+        {"rest", "mixed", "task", "block"}
+        Desired AFNI model, for triggering different workflows
     subj_work : str, os.PathLike
         Location of working directory for intermediates
     work_deriv : str, os.PathLike
@@ -1384,6 +1391,7 @@ class RunReml(_WriteDecon):
         subj,
         sess,
         task,
+        model_name,
         subj_work,
         work_deriv,
         sess_anat,
@@ -1397,16 +1405,25 @@ class RunReml(_WriteDecon):
         if "func-scaled" not in sess_func:
             raise KeyError("Expected func-scaled key in sess_func")
 
+        print("\nInitializing RunReml")
         self._subj = subj
         self._sess = sess
         self._task = task
+        self._model_name = model_name
         self._subj_work = subj_work
         self._sess_anat = sess_anat
         self._sess_func = sess_func
         self._log_dir = log_dir
         self._afni_prep = helper.prepend_afni_sing(work_deriv, subj_work)
         super().__init__(
-            subj, sess, task, subj_work, work_deriv, sess_func, sess_anat
+            subj,
+            sess,
+            task,
+            model_name,
+            subj_work,
+            work_deriv,
+            sess_func,
+            sess_anat,
         )
 
     def generate_reml(self):
@@ -1416,6 +1433,8 @@ class RunReml(_WriteDecon):
         command and required input.
 
         """
+        print("\tGenerating REML")
+
         # Setup output file, avoid repeating work
         self._reml_path = os.path.join(
             self._subj_work, f"{self.decon_name}_stats.REML_cmd"
@@ -1506,13 +1525,17 @@ class RunReml(_WriteDecon):
             Location of deconvolved HEAD file
 
         """
+        print("\tExecuting REML")
+
         # Set final path name (anticipate AFNI output)
         out_path = self._reml_path.replace(".REML_cmd", "_REML+tlrc.HEAD")
         if os.path.exists(out_path):
             return out_path
 
         # Extract reml command from generated reml_path
-        tail_path = os.path.join(self._subj_work, "tmp_decon_reml.txt")
+        tail_path = os.path.join(
+            self._subj_work, f"tmp_decon_{self._model_name}_reml.txt"
+        )
         bash_cmd = f"tail -n 6 {self._reml_path} > {tail_path}"
         _ = submit.submit_subprocess(bash_cmd, tail_path, "Tail")
 

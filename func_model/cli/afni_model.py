@@ -9,16 +9,17 @@ A workflow is submitted for each session found in subject's fmriprep
 directory.
 
 Model names:
-    - task = A standard univariate model yielding a single
-        averaged beta-coefficient for each event type (-stim_times_AM1)
-    - block = TODO
-    - mixed = TODO
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
     - rest = Deprecated. Conduct a resting-state analysis referencing
         example 11 of afni_proc.py.
 
 Requires
 --------
-TODO
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+- c3d executable from PATH
 
 Examples
 --------
@@ -74,7 +75,6 @@ def _get_args():
     )
 
     required_args = parser.add_argument_group("Required Arguments")
-
     required_args.add_argument(
         "-s",
         "--subj",
