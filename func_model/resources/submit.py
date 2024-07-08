@@ -146,7 +146,7 @@ def schedule_afni(
     work_deriv : path
         Parent location for writing pipeline intermediates
     model_name : str
-        {"univ", "rest", "mixed"}
+        {"rest", "mixed", "task", "block"}
         Desired AFNI model, for triggering different workflows
     log_dir : path
         Output location for log files and scripts

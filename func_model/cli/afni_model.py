@@ -9,18 +9,17 @@ A workflow is submitted for each session found in subject's fmriprep
 directory.
 
 Model names:
-    - univ = Deprecated. A standard univariate model yielding a single
-        averaged beta-coefficient for each event type (-stim_times_AM1)
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
     - rest = Deprecated. Conduct a resting-state analysis referencing
         example 11 of afni_proc.py.
-    - mixed = TODO
-
-Output logs are written to:
-    /work/$(whoami)/EmoRep/logs/func-afni_model-<model-name>_<timestamp>
 
 Requires
 --------
-TODO
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+- c3d executable from PATH
 
 Examples
 --------
@@ -41,7 +40,6 @@ import platform
 from datetime import datetime
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.resources import submit
-from func_model.resources import helper
 
 
 # %%
@@ -53,8 +51,8 @@ def _get_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="mixed",
-        choices=["mixed"],
+        default="task",
+        choices=["mixed", "task", "block", "rest"],
         help=textwrap.dedent(
             """\
             AFNI model name/type, for triggering different workflows
@@ -77,7 +75,6 @@ def _get_args():
     )
 
     required_args = parser.add_argument_group("Required Arguments")
-
     required_args.add_argument(
         "-s",
         "--subj",
@@ -107,16 +104,6 @@ def main():
     subj_list = args.subj
     sess_list = args.sess
     model_name = args.model_name
-
-    #
-    if model_name != "mixed":
-        raise ValueError(f"Unsupported model: {model_name}")
-
-    # Check model_name
-    model_valid = helper.valid_models(model_name)
-    if not model_valid:
-        print(f"Unsupported model name : {model_name}")
-        sys.exit(1)
 
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")

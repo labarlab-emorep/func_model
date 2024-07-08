@@ -12,6 +12,7 @@ import json
 import time
 import math
 import subprocess
+from typing import Union
 import pandas as pd
 import numpy as np
 from func_model.resources import helper
@@ -400,7 +401,7 @@ class TimingFiles:
 
         Notes
         -----
-        Timing files written to self._subj_tf_dir
+        Currently only writes time for movies/scenarios and not replay
 
         """
         print("\tMaking timing files for session-specific trials")
@@ -521,7 +522,6 @@ class TimingFiles:
             open(tf_path, "w").close()
 
             # Get emo info for each run
-            # dur_list = []
             for run in self._events_run:
 
                 # Identify index of emotions, account for emotion
@@ -844,6 +844,15 @@ class _WriteDecon:
 
     Parameters
     ----------
+    subj : str
+        BIDS subject identifier
+    sess : str
+        BIDS session identifier
+    task : str
+        BIDS task identifer
+    model_name : str
+        {"rest", "mixed", "task", "block"}
+        Desired AFNI model, for triggering different workflows
     subj_work : str, os.PathLike
         Location of working directory for intermediates
     work_deriv : str, os.PathLike
@@ -876,18 +885,27 @@ class _WriteDecon:
     Methods
     -------
     build_decon()
+        Main entrypoint method.
         Trigger the appropriate method for the current pipeline, e.g.
-        build_decon(model_name="univ") causes the method "write_univ"
+        build_decon(model_name="task") causes the method "write_task"
         to be executed.
-    write_univ()
-        Write a univariate 3dDeconvolve command for sanity checks
+    write_task()
+        Write a 3dDeconvolve command for modeling task trials
+    write_block()
+        Write a 3dDeconvolve command for modeling task blocks
+    write_mixed()
+        Write a 3dDeconvolve command for modeling task trials + blocks
     write_rest()
-        Setup for and write a resting-state 3dDeconvolve command
+        Write a 3dDeconvolve command for modeling rest-state
 
     """
 
     def __init__(
         self,
+        subj,
+        sess,
+        task,
+        model_name,
         subj_work,
         work_deriv,
         sess_func,
@@ -904,13 +922,16 @@ class _WriteDecon:
         if len(sess_func["func-scaled"]) == 0:
             raise ValueError("Expected list of paths to scaled EPI files.")
 
-        print("\nInitializing WriteDecon")
+        self._subj = subj
+        self._sess = sess
+        self._task = task
+        self._model_name = model_name
         self._subj_work = subj_work
         self._sess_func = sess_func
         self._sess_anat = sess_anat
         self._afni_prep = helper.prepend_afni_sing(work_deriv, self._subj_work)
 
-    def build_decon(self, model_name, sess_tfs=None):
+    def build_decon(self, sess_tfs=None):
         """Trigger deconvolution method.
 
         Use model_name to trigger the method that writes the
@@ -918,30 +939,29 @@ class _WriteDecon:
 
         Parameters
         ----------
-        model_name : str
-            {"univ", "rest", "mixed"}
-            Desired AFNI model, triggers corresponding methods
         sess_tfs : None, dict, optional
-            Required by model_name = univ|indiv.
+            Required when model_name != rest.
             Contains reference names (key) and paths (value) to
             session AFNI-style timing files.
 
         """
         # Validate model name
-        model_valid = helper.valid_models(model_name)
+        model_valid = helper.valid_models(self._model_name)
         if not model_valid:
-            raise ValueError(f"Unsupported model name : {model_name}")
+            raise ValueError(f"Unsupported model name : {self._model_name}")
 
         # Require timing files for task decons
-        if model_name in ["univ", "mixed"]:
+        print("\tBuilding 3dDeconvolve command")
+        if self._model_name in ["task", "block", "mixed"]:
             if not sess_tfs:
                 raise ValueError(
-                    f"Argument sess_tfs required with model_name={model_name}"
+                    "Argument sess_tfs required with "
+                    + f"model_name={self._model_name}"
                 )
             self._tf_dict = sess_tfs
 
         # Find, trigger appropriate method
-        write_meth = getattr(self, f"write_{model_name}")
+        write_meth = getattr(self, f"write_{self._model_name}")
         write_meth()
 
     def _build_behavior(self, basis_func):
@@ -987,7 +1007,7 @@ class _WriteDecon:
         # Combine into string for 3dDeconvolve parameter
         return " ".join(model_beh)
 
-    def write_univ(self, basis_func="dur_mod", decon_name="decon_univ"):
+    def write_task(self, basis_func="dur_mod", decon_name=None):
         """Write an AFNI 3dDeconvolve command for univariate checking.
 
         Build 3dDeconvolve command with minimal support for different
@@ -1013,81 +1033,36 @@ class _WriteDecon:
         if basis_func not in ["dur_mod", "ind_mod"]:
             raise ValueError("Invalid basis_func parameter")
 
-        # Determine input variables for 3dDeconvolve
-        print("\tBuilding 3dDeconvolve command ...")
-        epi_preproc = " ".join(self._sess_func["func-scaled"])
-        reg_motion_mean = self._sess_func["mot-mean"]
-        reg_motion_deriv = self._sess_func["mot-deriv"]
-        motion_censor = self._sess_func["mot-cens"]
-        mask_int = self._sess_anat["mask-int"]
+        self.decon_name = (
+            decon_name
+            if decon_name
+            else f"{self._subj}_{self._sess}_{self._task}_desc-decon_task"
+        )
 
         # Build behavior regressors
         self._count_beh = 0
         reg_events = self._build_behavior(basis_func)
 
         # Build decon command
-        decon_list = [
-            "3dDeconvolve",
-            "-x1D_stop",
-            "-GOFORIT",
-            f"-mask {mask_int}",
-            f"-input {epi_preproc}",
-            f"-censor {motion_censor}",
-            f"-ortvec {reg_motion_mean} mot_mean",
-            f"-ortvec {reg_motion_deriv} mot_deriv",
-            "-polort A",
-            "-float",
-            "-local_times",
-            f"-num_stimts {self._count_beh}",
-            reg_events,
-            "-jobs 1",
-            f"-x1D {self._subj_work}/X.{decon_name}.xmat.1D",
-            f"-xjpeg {self._subj_work}/X.{decon_name}.jpg",
-            f"-x1D_uncensored {self._subj_work}/X.{decon_name}.jpg",
-            f"-bucket {self._subj_work}/{decon_name}_stats",
-            f"-cbucket {self._subj_work}/{decon_name}_cbucket",
-            f"-errts {self._subj_work}/{decon_name}_errts",
-        ]
+        decon_list = self._build_task_decon(reg_events)
         self.decon_cmd = " ".join(self._afni_prep + decon_list)
 
         # Write script for review, records
-        decon_script = os.path.join(self._subj_work, f"{decon_name}.sh")
+        decon_script = os.path.join(self._subj_work, f"{self.decon_name}.sh")
         with open(decon_script, "w") as script:
             script.write(self.decon_cmd)
-        self.decon_name = decon_name
 
-    def write_indiv(self):
-        """Write an AFNI 3dDeconvolve command for individual mod checking.
+    def _build_task_decon(self, reg_events: str) -> list:
+        """Return task-based 3dDeconvolve command."""
 
-        DEPRECATED.
-
-        The "indiv" approach requires the same files and workflow as "univ",
-        the only difference is in the basis function (and file name). So,
-        use the class method write_univ with different parameters.
-
-        """
-        self.write_univ(basis_func="ind_mod", decon_name="decon_indiv")
-
-    def write_mixed(self, decon_name="decon_mixed"):
-        """Write an AFNI 3dDeconvolve command for mixed modelling.
-
-        Regressors include event and block designs.
-
-        """
         # Determine input variables for 3dDeconvolve
-        print("\tBuilding 3dDeconvolve command ...")
         epi_preproc = " ".join(self._sess_func["func-scaled"])
         reg_motion_mean = self._sess_func["mot-mean"]
         reg_motion_deriv = self._sess_func["mot-deriv"]
         motion_censor = self._sess_func["mot-cens"]
         mask_int = self._sess_anat["mask-int"]
 
-        # Build behavior regressors
-        self._count_beh = 0
-        reg_events = self._build_behavior("dur_mod")
-
-        # Build decon command
-        decon_list = [
+        return [
             "3dDeconvolve",
             "-x1D_stop",
             "-GOFORIT",
@@ -1102,33 +1077,43 @@ class _WriteDecon:
             f"-num_stimts {self._count_beh}",
             reg_events,
             "-jobs 1",
-            f"-x1D {self._subj_work}/X.{decon_name}.xmat.1D",
-            f"-xjpeg {self._subj_work}/X.{decon_name}.jpg",
-            f"-x1D_uncensored {self._subj_work}/X.{decon_name}.jpg",
-            f"-bucket {self._subj_work}/{decon_name}_stats",
-            f"-cbucket {self._subj_work}/{decon_name}_cbucket",
-            f"-errts {self._subj_work}/{decon_name}_errts",
+            f"-x1D {self._subj_work}/X.{self.decon_name}.xmat.1D",
+            f"-xjpeg {self._subj_work}/X.{self.decon_name}.jpg",
+            f"-x1D_uncensored {self._subj_work}/X.{self.decon_name}.jpg",
+            f"-bucket {self._subj_work}/{self.decon_name}_stats",
+            f"-cbucket {self._subj_work}/{self.decon_name}_cbucket",
+            f"-errts {self._subj_work}/{self.decon_name}_errts",
         ]
-        self.decon_cmd = " ".join(self._afni_prep + decon_list)
 
-        # Write script for review, records
-        decon_script = os.path.join(self._subj_work, f"{decon_name}.sh")
-        with open(decon_script, "w") as script:
-            script.write(self.decon_cmd)
-        self.decon_name = decon_name
+    def write_indiv(self):
+        """Write an AFNI 3dDeconvolve command for individual mod checking.
 
-    def write_rest(self, decon_name="decon_rest"):
+        DEPRECATED.
+
+        The "indiv" approach requires the same files and workflow as "task",
+        the only difference is in the basis function (and file name). So,
+        use the class method write_task with different parameters.
+
+        """
+        self.write_task(basis_func="ind_mod", decon_name="decon_indiv")
+
+    def write_block(self):
+        """Write an AFNI 3dDeconvolve command for block modeling."""
+        decon_name = f"{self._subj}_{self._sess}_{self._task}_desc-decon_block"
+        self.write_task(decon_name=decon_name)
+
+    def write_mixed(self):
+        """Write an AFNI 3dDeconvolve command for mixed modeling."""
+        decon_name = f"{self._subj}_{self._sess}_{self._task}_desc-decon_mixed"
+        self.write_task(decon_name=decon_name)
+
+    def write_rest(self):
         """Write an AFNI 3dDeconvolve command for resting state checking.
 
         First conduct PCA on the CSF to determine a nuissance timeseries.
         Then model all nuissance parameters to produce 'cleaned' resting
         state output. Writes a shell script to:
             <subj_work>/<decon_name>.sh
-
-        Parameters
-        ----------
-        decon_name : str, optional
-            Prefix for output deconvolve files
 
         Attributes
         ----------
@@ -1138,6 +1123,10 @@ class _WriteDecon:
             Prefix for output deconvolve files
 
         """
+        self.decon_name = (
+            f"{self._subj}_{self._sess}_{self._task}_desc-decon_rest"
+        )
+
         # Conduct principal components analysis
         pcomp_path = self._run_pca()
 
@@ -1150,7 +1139,6 @@ class _WriteDecon:
         # Build deconvolve command, write script for review.
         # This will load effects of no interest on fitts sub-brick, and
         # errts will contain cleaned time series.
-        print("\tBuilding 3dDeconvolve command ...")
         decon_list = [
             "3dDeconvolve",
             "-x1D_stop",
@@ -1161,23 +1149,20 @@ class _WriteDecon:
             f"-ortvec {reg_motion_deriv} mot_deriv",
             "-polort A",
             "-fout -tout",
-            f"-x1D {self._subj_work}/X.{decon_name}.xmat.1D",
-            f"-xjpeg {self._subj_work}/X.{decon_name}.jpg",
+            f"-x1D {self._subj_work}/X.{self.decon_name}.xmat.1D",
+            f"-xjpeg {self._subj_work}/X.{self.decon_name}.jpg",
             "-x1D_uncensored",
-            f"{self._subj_work}/X.{decon_name}.nocensor.xmat.1D",
-            f"-fitts {self._subj_work}/{decon_name}_fitts",
-            f"-errts {self._subj_work}/{decon_name}_errts",
-            f"-bucket {self._subj_work}/{decon_name}_stats",
+            f"{self._subj_work}/X.{self.decon_name}.nocensor.xmat.1D",
+            f"-fitts {self._subj_work}/{self.decon_name}_fitts",
+            f"-errts {self._subj_work}/{self.decon_name}_errts",
+            f"-bucket {self._subj_work}/{self.decon_name}_stats",
         ]
-        decon_cmd = " ".join(self._afni_prep + decon_list)
+        self.decon_cmd = " ".join(self._afni_prep + decon_list)
 
         # Write script for review/records
-        decon_script = os.path.join(self._subj_work, f"{decon_name}.sh")
+        decon_script = os.path.join(self._subj_work, f"{self.decon_name}.sh")
         with open(decon_script, "w") as script:
-            script.write(decon_cmd)
-
-        self.decon_cmd = decon_cmd
-        self.decon_name = decon_name
+            script.write(self.decon_cmd)
 
     def _run_pca(self):
         """Conduct principal components analysis.
@@ -1353,12 +1338,9 @@ class _WriteDecon:
 
 
 class RunReml(_WriteDecon):
-    """Run 3dREMLfit deconvolution.
+    """Setup for and execute 3dREMLfit command generated by 3dDeconvolve.
 
     Inherits _WriteDecon.
-
-    Setup for and execute 3dREMLfit command generated by
-    3dDeconvolve (afni.WriteDecon.build_decon).
 
     Parameters
     ----------
@@ -1366,6 +1348,11 @@ class RunReml(_WriteDecon):
         BIDS subject identifier
     sess : str
         BIDS session identifier
+    task : str
+        BIDS task identifer
+    model_name : str
+        {"rest", "mixed", "task", "block"}
+        Desired AFNI model, for triggering different workflows
     subj_work : str, os.PathLike
         Location of working directory for intermediates
     work_deriv : str, os.PathLike
@@ -1403,6 +1390,8 @@ class RunReml(_WriteDecon):
         self,
         subj,
         sess,
+        task,
+        model_name,
         subj_work,
         work_deriv,
         sess_anat,
@@ -1416,15 +1405,26 @@ class RunReml(_WriteDecon):
         if "func-scaled" not in sess_func:
             raise KeyError("Expected func-scaled key in sess_func")
 
-        print("\nInitializing RunDecon")
+        print("\nInitializing RunReml")
         self._subj = subj
         self._sess = sess
+        self._task = task
+        self._model_name = model_name
         self._subj_work = subj_work
         self._sess_anat = sess_anat
         self._sess_func = sess_func
         self._log_dir = log_dir
         self._afni_prep = helper.prepend_afni_sing(work_deriv, subj_work)
-        super().__init__(subj_work, work_deriv, sess_func, sess_anat)
+        super().__init__(
+            subj,
+            sess,
+            task,
+            model_name,
+            subj_work,
+            work_deriv,
+            sess_func,
+            sess_anat,
+        )
 
     def generate_reml(self):
         """Generate matrices and 3dREMLfit command.
@@ -1432,14 +1432,10 @@ class RunReml(_WriteDecon):
         Run the 3dDeconvolve command to generate the 3dREMLfit
         command and required input.
 
-        Returns
-        -------
-        path
-            Location of 3dREMLfit script
-
         """
+        print("\tGenerating REML")
+
         # Setup output file, avoid repeating work
-        print("\tRunning 3dDeconvolve command ...")
         self._reml_path = os.path.join(
             self._subj_work, f"{self.decon_name}_stats.REML_cmd"
         )
@@ -1466,20 +1462,13 @@ class RunReml(_WriteDecon):
                 f"Expected 8 lines in {self._reml_path}, found {line_count}"
             )
 
-    def _make_nuiss(self):
+    def _make_nuiss(self) -> Union[str, os.PathLike]:
         """Make noise estimation file.
 
         Generate file containing white matter EPI signal, used with
         -dsort option in 3dREMLfit.
 
-        Returns
-        -------
-        path
-            Location of WM signal file
-
         """
-        print("\tMaking nuissance mask")
-
         # Setup output location and name, avoid repeating work
         h_name = os.path.basename(self._sess_anat["mask-WMe"])
         out_path = os.path.join(
@@ -1532,17 +1521,21 @@ class RunReml(_WriteDecon):
 
         Returns
         -------
-        path
+        str, os.PathLike
             Location of deconvolved HEAD file
 
         """
+        print("\tExecuting REML")
+
         # Set final path name (anticipate AFNI output)
         out_path = self._reml_path.replace(".REML_cmd", "_REML+tlrc.HEAD")
         if os.path.exists(out_path):
             return out_path
 
         # Extract reml command from generated reml_path
-        tail_path = os.path.join(self._subj_work, "decon_reml.txt")
+        tail_path = os.path.join(
+            self._subj_work, f"tmp_decon_{self._model_name}_reml.txt"
+        )
         bash_cmd = f"tail -n 6 {self._reml_path} > {tail_path}"
         _ = submit.submit_subprocess(bash_cmd, tail_path, "Tail")
 
@@ -1579,7 +1572,6 @@ class RunReml(_WriteDecon):
         reml_list.append("-GOFORIT")
 
         # Write script for review/records, then run
-        print("\tRunning 3dREMLfit")
         bash_cmd = " ".join(self._afni_prep + reml_list)
         reml_script = os.path.join(
             self._subj_work, f"{self.decon_name}_reml.sh"

@@ -53,7 +53,7 @@ def prepend_afni_sing(
 
 def valid_models(model_name: str) -> bool:
     """Return bool of whether model_name is supported."""
-    return model_name in ["univ", "rest", "mixed"]
+    return model_name in ["rest", "mixed", "task", "block"]
 
 
 def valid_univ_test(test_name: str) -> bool:
