@@ -1,22 +1,17 @@
 #!/bin/bash
 
-#SBATCH --job-name=array
-#SBATCH --time=200:00:00
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
-
 function Usage {
     cat <<USAGE
-    Usage: sbatch [OPTS] --array=0-10%2 cli_array.sh -e <sess> -m <model> [-f <path>] [-s "<sub-A> <sub-B>"]
+    Usage: ./array_cli.sh -e <sess> -m <model> [-a <path> -f <path>]
 
-    Schedule SLURM array to execute AFNI deconvolution. Requires execution using
-    'sbatch --array=x-y%z' options.
+    Schedule array_submit.sh with SLURM scheduler as array of jobs. Finds
+    participants with fMRIPrep output and missing model_afni decon output.
 
     Optional Arguments:
-        -f <fmriprep path>
-            Location of directory containing subject fMRIPrep output
-        -s "<subj-1> <subj-2>"
-            List of subjects with fMRIPrep data on Keoki in quotes
+        -a <path>
+            Keoki location of afni_model output
+        -f <path>
+            Keoki location of fMRIPrep output
 
     Required Arguments:
         -e [ses-day2|ses-day3]
@@ -25,31 +20,24 @@ function Usage {
             Model name for triggering AFNI workflow
 
     Example Usage:
-        sbatch \\
-            --output=/work/$(whoami)/EmoRep/logs/afni_array/slurm_%A_%a.log \\
-            --array=0-120%10 \\
-            array_cli.sh \\
+        ./array_cli.sh \\
             -e ses-day2 \\
             -m mixed
-
-        sbatch \\
-            --output=/work/$(whoami)/EmoRep/logs/afni_array/slurm_%A_%a.log \\
-            --array=0-120%10 \\
-            array_cli.sh \\
-            -e ses-day2 \\
-            -m mixed \\
-            -s "sub-ER0009 sub-ER0016"
 
 USAGE
 }
 
-# Optional arguments
-subj_list=()
-fmriprep_dir=/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives/pre_processing/fmriprep
+# Optional args
+deriv_dir=/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives
+fmriprep_dir=${deriv_dir}/pre_processing/fmriprep
+afni_dir=${deriv_dir}/model_afni
 
 # Capture arguments
-while getopts ":e:f:s:m:h" OPT; do
+while getopts ":a:e:f:m:h" OPT; do
     case $OPT in
+    a)
+        afni_dir=${OPTARG}
+        ;;
     e)
         sess=${OPTARG}
         ;;
@@ -58,9 +46,6 @@ while getopts ":e:f:s:m:h" OPT; do
         ;;
     m)
         model=${OPTARG}
-        ;;
-    s)
-        subj_list+=($OPTARG)
         ;;
     h)
         Usage
@@ -91,22 +76,55 @@ if [ -z $sess ] || [ -z $model ]; then
     exit 1
 fi
 
-# Check for array
-if [ -z $SLURM_ARRAY_TASK_ID ]; then
+# Setup output location
+log_dir=/work/$(whoami)/EmoRep/logs/afni_array
+mkdir -p $log_dir
+
+# Find subjects with fMRIPrep output
+echo "Building list of subjects ..."
+fmriprep_list=(
+    $(
+        ssh -i $RSA_LS2 \
+            $(whoami)@ccn-labarserv2.vm.duke.edu \
+            " command ; bash -c 'ls ${fmriprep_dir} 2>/dev/null | grep sub* | grep -v html'"
+    )
+)
+
+# Find subjects with afni_model decon output
+search_str="${afni_dir}/sub-*/$sess/func/sub-*_${sess}_\
+task-*_desc-decon_model-${model}_stats_REML+tlrc.HEAD"
+decon_list=(
+    $(
+        ssh -i $RSA_LS2 \
+            $(whoami)@ccn-labarserv2.vm.duke.edu \
+            " command ; bash -c 'ls ${search_str} 2>/dev/null'"
+    )
+)
+
+# Determine subject in fmriprep and not in decon lists
+for subj in ${fmriprep_list[@]}; do
+    printf '%s\n' "${decon_list[@]}" |
+        grep $subj 1>/dev/null 2>&1 ||
+        subj_list+=($subj)
+done
+echo -e "\tDone"
+
+# Check that subjs were found
+num_subj=${#subj_list[@]}
+if [ $num_subj == 0 ]; then
+    echo -e "\nNo subjects detected! Looking in:" >&2
+    echo -e "\tfmriprep_dir=${fmriprep_dir}" >&2
+    echo -e "\tafni_dir=${afni_dir}\n" >&2
     Usage
     exit 1
 fi
+echo -e "\tFound ${num_subj} subjects"
 
-# Stagger job start time
-sleep $((RANDOM % 30 + 1))
-
-# Get subject list if needed
-if [ -z $subj_list ]; then
-    subj_list=($(
-        ssh -i $RSA_LS2 \
-            $(whoami)@ccn-labarserv2.vm.duke.edu \
-            " command ; bash -c 'ls ${fmriprep_dir} | grep sub* | grep -v html'"
-    ))
-fi
-
-python array_wf_afni.py -e $sess -m $model -s ${subj_list[$SLURM_ARRAY_TASK_ID]}
+# Schedule array
+sbatch \
+    --output=${log_dir}/slurm_%A_%a.log \
+    --array=0-${num_subj}%10 \
+    array_submit.sh \
+    -e $sess \
+    -m $model \
+    "${subj_list[@]}"

@@ -68,7 +68,7 @@ def _get_args():
         type=str,
         help=textwrap.dedent(
             """\
-            "List of session BIDS IDs"
+            List of session BIDS IDs
             (default : %(default)s)
             """
         ),

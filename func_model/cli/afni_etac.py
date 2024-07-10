@@ -1,28 +1,38 @@
-"""Conduct T-Testing using AFNI's ETAC methods.
+r"""Conduct T-Testing using AFNI's ETAC methods.
 
 Model names:
-    - mixed = use output of afni_model.py --model-name=mixed
-    - univ = use output of afni_model.py --model-name=univ
+    - task
+    - block
+    - mixed
 
 Stat names:
-    - student = Student's T-test, comparing each task emotion against zero
-    - paired = Paired T-test, comparing each task emotion against washout
+    - student = Student's T-test, compare each task emotion against zero
+    - paired = Paired T-test, compare each task emotion against washout
+
+Notes
+-----
+- Option --block-coef only available for --model-name=mixed.
 
 Example
 -------
 1. Get necessary data
-    afni_univ --run-setup
+    afni_etac \
+        --run-setup \
+        --task movies \
+        --model-name mixed
 
 2. Identify sub-brick labels
-    afni_univ --get-subbricks \\
-        --stat paired \\
-        --task movies \\
+    afni_etac --get-subbricks \
+        --stat paired \
+        --task movies \
+        --model-name mixed \
         --block-coef
 
-3. Conduct t-testing
-    afni_univ --run-etac \\
-        --stat paired \\
-        --task movies \\
+3. Conduct T-testing
+    afni_etac --run-etac \
+        --stat paired \
+        --task movies \
+        --model-name mixed \
         --block-coef
 
 """
@@ -64,9 +74,9 @@ def _get_args():
     )
     parser.add_argument(
         "--model-name",
-        choices=["mixed"],
+        choices=["mixed", "task", "block"],
         type=str,
-        default="mixed",
+        default="task",
         help=textwrap.dedent(
             """\
             AFNI deconv name
@@ -121,7 +131,7 @@ def main():
     get_subs = args.get_subbricks
 
     # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRepTest")
     now_time = datetime.now()
     log_name = (
         "func-afni_setup"
@@ -138,7 +148,7 @@ def main():
 
     # Get data
     if args.run_setup:
-        submit.schedule_afni_group_setup(work_deriv, log_dir)
+        submit.schedule_afni_group_setup(task, model_name, work_deriv, log_dir)
         return
 
     # Validate args
