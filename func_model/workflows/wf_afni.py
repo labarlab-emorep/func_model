@@ -530,31 +530,23 @@ class AfniTtest:
         if not hasattr(self, "_model_indiv"):
             self._setup()
 
-        # Identify participant/sessions with desired task from timing file
-        search_path = os.path.join(
-            self._model_indiv, "sub-*", "ses-*", "func", "timing_files"
+        # Find all decon files for requested task, model_name
+        search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
+        search_decon = (
+            f"*{self._task}_desc-decon_model-{self._model_name}_"
+            + "stats_REML+tlrc.HEAD"
         )
-        wash_list = sorted(
-            glob.glob(f"{search_path}/*_{self._task}_desc-comWas_events.1D")
-        )
-        if not wash_list:
-            raise ValueError("Failed to detect desc-comWas timing files.")
+        decon_list = sorted(glob.glob(f"{search_path}/{search_decon}"))
+        if not decon_list:
+            raise FileNotFoundError(
+                f"Expected decon files {search_path}/{search_decon}"
+            )
 
         # Build dict needed by group.EtacTest.write_exec
         self._decon_dict = {}
-        for wash_path in wash_list:
-
-            # Find the decon file
-            decon_path = os.path.join(
-                os.path.dirname(os.path.dirname(wash_path)),
-                f"decon_{self._model_name}_stats_REML+tlrc.HEAD",
-            )
-            if not os.path.exists(decon_path):
-                raise FileNotFoundError(f"Expected decon file : {decon_path}")
-
-            # Identify subj, sess info
-            subj, _sess, _task, _desc, _suff = os.path.basename(
-                wash_path
+        for decon_path in decon_list:
+            subj, _sess, _task, _desc, _task, _stat, _suff = os.path.basename(
+                decon_path
             ).split("_")
             self._decon_dict[subj] = decon_path
 

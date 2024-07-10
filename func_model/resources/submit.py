@@ -332,7 +332,10 @@ def schedule_fsl(
 
 
 def schedule_afni_group_setup(
-    work_deriv: Union[str, os.PathLike], log_dir: Union[str, os.PathLike]
+    task: str,
+    model_name: str,
+    work_deriv: Union[str, os.PathLike],
+    log_dir: Union[str, os.PathLike],
 ):
     """Coordinate setup for group-level AFNI modelling."""
     # Write parent python script
@@ -352,7 +355,7 @@ def schedule_afni_group_setup(
         # Get modeled data
         get_data = helper.SyncGroup("{work_deriv}")
         _, model_group = get_data.setup_group()
-        get_data.get_model_afni()
+        get_data.get_model_afni("{task}", "{model_name}")
 
         # Make template GM mask
         masks.tpl_gm(model_group)

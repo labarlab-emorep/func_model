@@ -237,8 +237,23 @@ class SyncGroup(wf_fsl._SupportFsl):
                 os.makedirs(_dir)
         return (self._model_indiv, self._model_group)
 
-    def get_model_afni(self):
-        """Download model_afni data."""
+    def get_model_afni(self, task: str, model_name: str):
+        """Download model_afni data.
+
+        Parameters
+        ----------
+        task: str
+            {"task-movies", "task-scenarios"}
+            BIDS task description
+        model_name : str
+            {"task", "block", "mixed"}
+            AFNI deconvolution name
+
+        """
+        if task not in ["task-movies", "task-scenarios"]:
+            raise ValueError(f"Unexpected task : {task}")
+        if model_name not in ["task", "block", "mixed"]:
+            raise ValueError(f"Unexpected model_name : {model_name}")
         if not hasattr(self, "_model_indiv"):
             self.setup_group()
 
@@ -246,13 +261,25 @@ class SyncGroup(wf_fsl._SupportFsl):
         source_afni = os.path.join(
             self._keoki_path, "derivatives", "model_afni", "sub-*"
         )
-        _, _ = self._submit_rsync(
-            f"{self._ls2_addr}:{source_afni}", self._model_indiv
-        )
+        bash_cmd = f"""rsync \
+            -e "ssh -i {self._rsa_key}" \
+            --prune-empty-dirs \
+            --include "*/" \
+            --include="*{task}_desc-decon_model-{model_name}*" \
+            --exclude="*" \
+            -rauv \
+            {self._ls2_addr}:{source_afni} \
+            {self._model_indiv}
+        """
+        h_out, h_err = self._quick_sp(bash_cmd)
 
         # Verify download
-        chk_subj = os.path.join(self._model_indiv, "sub-ER0009")
-        if not os.path.exists(chk_subj):
+        chk_subj = glob.glob(
+            f"{self._model_indiv}/sub-ER0009/ses-*/func/*{model_name}*"
+        )
+        if not chk_subj:
+            print(h_out)
+            print(h_err)
             raise FileNotFoundError("model_afni download failed")
 
     def send_etac(self, test_dir: Union[str, os.PathLike]):

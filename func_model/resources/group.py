@@ -483,12 +483,12 @@ class EtacTest:
     def _setup_output(self, blk_coef: bool) -> Union[str, os.PathLike]:
         """Setup, return final filename and location."""
         # Make identifier string
-        id_str = (
-            f"stat-{self._stat}_{self._task}_"
-            + f"model-{self._model_name}_emo-{self._emo_name}"
+        model = (
+            f"model-{self._model_name}Block"
+            if blk_coef
+            else f"model-{self._model_name}"
         )
-        if blk_coef:
-            id_str += "_block"
+        id_str = f"stat-{self._stat}_{self._task}_{model}_emo-{self._emo_name}"
 
         # Setup output directory
         test_dir = os.path.join(self._out_dir, id_str)
@@ -496,7 +496,7 @@ class EtacTest:
             os.makedirs(test_dir)
 
         # Setup expected output
-        return os.path.join(test_dir, f"FINAL_{id_str}+tlrc.HEAD")
+        return os.path.join(test_dir, f"{id_str}+tlrc.HEAD")
 
     def write_exec(
         self,
@@ -619,7 +619,7 @@ class EtacTest:
         """Return sub-brick num given label."""
         subbrick_txt = os.path.join(
             os.path.dirname(self._decon_path),
-            f"subbrick_{self._sub_label.split('#')[0]}.txt",
+            f"subbrick_{self._model_name}_{self._sub_label.split('#')[0]}.txt",
         )
 
         # Extract sub-brick label num if needed

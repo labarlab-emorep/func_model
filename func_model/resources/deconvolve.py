@@ -885,18 +885,7 @@ class _WriteDecon:
     Methods
     -------
     build_decon()
-        Main entrypoint method.
-        Trigger the appropriate method for the current pipeline, e.g.
-        build_decon(model_name="task") causes the method "write_task"
-        to be executed.
-    write_task()
-        Write a 3dDeconvolve command for modeling task trials
-    write_block()
-        Write a 3dDeconvolve command for modeling task blocks
-    write_mixed()
-        Write a 3dDeconvolve command for modeling task trials + blocks
-    write_rest()
-        Write a 3dDeconvolve command for modeling rest-state
+        Write a 3dDeconvolve command for modeling task or resting-state data
 
     """
 
@@ -960,9 +949,11 @@ class _WriteDecon:
                 )
             self._tf_dict = sess_tfs
 
-        # Find, trigger appropriate method
-        write_meth = getattr(self, f"write_{self._model_name}")
-        write_meth()
+        # Trigger appropriate method
+        if self._model_name == "rest":
+            self._write_rest()
+        else:
+            self._write_task()
 
     def _build_behavior(self, basis_func):
         """Build a behavior regressor argument.
@@ -1007,7 +998,7 @@ class _WriteDecon:
         # Combine into string for 3dDeconvolve parameter
         return " ".join(model_beh)
 
-    def write_task(self, basis_func="dur_mod", decon_name=None):
+    def _write_task(self, basis_func="dur_mod", decon_name=None):
         """Write an AFNI 3dDeconvolve command for univariate checking.
 
         Build 3dDeconvolve command with minimal support for different
@@ -1036,7 +1027,8 @@ class _WriteDecon:
         self.decon_name = (
             decon_name
             if decon_name
-            else f"{self._subj}_{self._sess}_{self._task}_desc-decon_task"
+            else f"{self._subj}_{self._sess}_{self._task}_"
+            + f"desc-decon_model-{self._model_name}"
         )
 
         # Build behavior regressors
@@ -1085,7 +1077,7 @@ class _WriteDecon:
             f"-errts {self._subj_work}/{self.decon_name}_errts",
         ]
 
-    def write_indiv(self):
+    def _write_indiv(self):
         """Write an AFNI 3dDeconvolve command for individual mod checking.
 
         DEPRECATED.
@@ -1095,19 +1087,23 @@ class _WriteDecon:
         use the class method write_task with different parameters.
 
         """
-        self.write_task(basis_func="ind_mod", decon_name="decon_indiv")
+        self._write_task(basis_func="ind_mod", decon_name="decon_indiv")
 
-    def write_block(self):
-        """Write an AFNI 3dDeconvolve command for block modeling."""
-        decon_name = f"{self._subj}_{self._sess}_{self._task}_desc-decon_block"
-        self.write_task(decon_name=decon_name)
+    # def write_block(self):
+    #     """Write an AFNI 3dDeconvolve command for block modeling."""
+    #     decon_name = (
+    #         f"{self._subj}_{self._sess}_{self._task}_desc-decon_model-block"
+    #     )
+    #     self.write_task(decon_name=decon_name)
 
-    def write_mixed(self):
-        """Write an AFNI 3dDeconvolve command for mixed modeling."""
-        decon_name = f"{self._subj}_{self._sess}_{self._task}_desc-decon_mixed"
-        self.write_task(decon_name=decon_name)
+    # def write_mixed(self):
+    #     """Write an AFNI 3dDeconvolve command for mixed modeling."""
+    #     decon_name = (
+    #         f"{self._subj}_{self._sess}_{self._task}_desc-decon_model-mixed"
+    #     )
+    #     self.write_task(decon_name=decon_name)
 
-    def write_rest(self):
+    def _write_rest(self):
         """Write an AFNI 3dDeconvolve command for resting state checking.
 
         First conduct PCA on the CSF to determine a nuissance timeseries.
@@ -1124,7 +1120,7 @@ class _WriteDecon:
 
         """
         self.decon_name = (
-            f"{self._subj}_{self._sess}_{self._task}_desc-decon_rest"
+            f"{self._subj}_{self._sess}_{self._task}_desc-decon_model-rest"
         )
 
         # Conduct principal components analysis
