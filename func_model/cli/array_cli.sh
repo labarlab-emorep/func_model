@@ -7,6 +7,9 @@ function Usage {
     Schedule array_submit.sh with SLURM scheduler as array of jobs. Finds
     participants with fMRIPrep output and missing model_afni decon output.
 
+    Requires:
+        - Global variable 'RSA_LS2' which holds RSA key for labarserv2.
+
     Optional Arguments:
         -a <path>
             Keoki location of afni_model output
@@ -76,9 +79,10 @@ if [ -z $sess ] || [ -z $model ]; then
     exit 1
 fi
 
-# Setup output location
+# Setup array, batch output location
 log_dir=/work/$(whoami)/EmoRep/logs/afni_array
 mkdir -p $log_dir
+mkdir /work/$(whoami)/EmoRep/logs/afni_${model}_batch
 
 # Find subjects with fMRIPrep output
 echo "Building list of subjects ..."

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# SBATCH --job-name=array
-# SBATCH --time=200:00:00
-# SBATCH --cpus-per-task=2
-# SBATCH --mem=8G
+#SBATCH --job-name=array
+#SBATCH --time=200:00:00
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=12G
 
 function Usage {
     cat <<USAGE
@@ -69,7 +69,8 @@ fi
 shift 4
 subj_list=("$@")
 if [ ${#subj_list[@]} == 0 ]; then
-    echo "Empty subject list"
+    echo "ERROR: Empty subject list"
+    Usage
     exit 1
 fi
 

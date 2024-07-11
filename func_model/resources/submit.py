@@ -171,7 +171,7 @@ def schedule_afni(
         #SBATCH --job-name=p{subj[6:]}s{sess[-1]}
         #SBATCH --output={log_dir}/par{subj[6:]}s{sess[-1]}.txt
         #SBATCH --time=45:00:00
-        #SBATCH --mem=8G
+        #SBATCH --mem=12G
 
         import os
         import sys
