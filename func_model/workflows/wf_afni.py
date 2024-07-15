@@ -164,7 +164,7 @@ class _SyncData(wf_fsl._SupportFsl):
         # Check for pipeline output
         decon_name = (
             f"{self._subj}_{self._sess}_{self._task}_"
-            + f"desc-decon_{self._model_name}"
+            + f"desc-decon_model-{self._model_name}"
         )
         chk_file = os.path.join(
             self._subj_work, f"{decon_name}_stats_REML+tlrc.HEAD"
@@ -545,9 +545,7 @@ class AfniTtest:
         # Build dict needed by group.EtacTest.write_exec
         self._decon_dict = {}
         for decon_path in decon_list:
-            subj, _sess, _task, _desc, _task, _stat, _suff = os.path.basename(
-                decon_path
-            ).split("_")
+            subj = os.path.basename(decon_path).split("_")[0]
             self._decon_dict[subj] = decon_path
 
     def _make_sub_label(self) -> str:
@@ -592,11 +590,14 @@ class AfniTtest:
         for _subj, decon_path in self._decon_dict.items():
             for self._emo_name in emo_list:
                 group.get_subbrick_label(
-                    self._make_sub_label(), self._model_name, decon_path
+                    self._make_sub_label(),
+                    self._task,
+                    self._model_name,
+                    decon_path,
                 )
             if self._stat == "paired":
                 group.get_subbrick_label(
-                    "comWas#0_Coef", self._model_name, decon_path
+                    "comWas#0_Coef", self._task, self._model_name, decon_path
                 )
 
     def run_etac(self, task, emo_name, blk_coef):

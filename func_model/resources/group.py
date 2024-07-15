@@ -42,6 +42,7 @@ def _cmd_sub_int(
 
 def get_subbrick_label(
     sub_label: str,
+    task: str,
     model_name: str,
     decon_path: Union[str, os.PathLike],
     out_txt=None,
@@ -51,7 +52,8 @@ def get_subbrick_label(
     sing_head = helper.prepend_afni_sing(subj_work, subj_work)
     if not out_txt:
         out_txt = os.path.join(
-            subj_work, f"subbrick_{model_name}_{sub_label.split('#')[0]}.txt"
+            subj_work,
+            f"subbrick_{task}_{model_name}_{sub_label.split('#')[0]}.txt",
         )
     sub_cmd = _cmd_sub_int(sub_label, decon_path, out_txt=out_txt)
     bash_cmd = " ".join(sing_head + sub_cmd)
@@ -619,7 +621,8 @@ class EtacTest:
         """Return sub-brick num given label."""
         subbrick_txt = os.path.join(
             os.path.dirname(self._decon_path),
-            f"subbrick_{self._model_name}_{self._sub_label.split('#')[0]}.txt",
+            f"subbrick_{self._task}_{self._model_name}_"
+            + f"{self._sub_label.split('#')[0]}.txt",
         )
 
         # Extract sub-brick label num if needed
@@ -629,6 +632,7 @@ class EtacTest:
         ):
             get_subbrick_label(
                 self._sub_label,
+                self._task,
                 self._model_name,
                 self._decon_path,
                 out_txt=subbrick_txt,
