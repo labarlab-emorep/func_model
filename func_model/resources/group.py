@@ -524,7 +524,7 @@ class EtacTest:
             {"task-movies", "task-scenarios"}
             BIDS task identifier
         model_name : str
-            {"univ", "mixed"}
+            {"task", "block", "mixed"}
             Type of AFNI deconvolution
         stat : str
             {"student", "paired"}
@@ -720,6 +720,92 @@ def _calc_acf(model_indiv, mask_path, errts_list, out_txt):
     )
     # job_out, job_err = job_sp.communicate()
     job_sp.wait()
+
+
+class LmerTest(EtacTest):
+    """Title."""
+
+    def __init__(self, emo_list):
+        """Title."""
+        self._emo_list = emo_list
+
+    def _lmer_opts(
+        self,
+        out_path: Union[str, os.PathLike],
+    ) -> list:
+        """Return 3dLMEr options."""
+        # Build 3dLMEr for singularity
+        work_dir = os.path.dirname(out_path)
+        sing_cmd = helper.prepend_afni_sing(
+            os.path.dirname(self._out_dir), work_dir
+        )
+        lmer_head = [f"cd {work_dir};"] + sing_cmd + ["3dLMEr"]
+
+        # Build 3dLMEr options
+        final_name = os.path.basename(out_path).split("+")[0]
+        lmer_body = [
+            f"-mask {self._mask_path}",
+            f"-prefix {final_name}",
+            "-jobs 12",
+            "-SS_type 3",
+            "-bounds -3 3",
+            "-model 'emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)'",
+            " ".join(self._glt_code()),
+            "-dataTable",
+            "Subj task emotion InputFile",
+        ]
+
+    def _glt_code(self) -> list:
+        """Title."""
+        glt_code = []
+        for emo in self._emo_list:
+            glt_code.append(f"-gltCode {emo}")
+            glt_code.append(f"'emotion : 1*{emo}'")
+
+            for task in self._decon_dict.keys():
+                task_short = task.split("-")[1]
+                glt_code.append(f"-gltCode {emo}-{task_short}")
+                glt_code.append(f"'task : 1*{task_short} emotion : 1*{emo}'")
+        return glt_code
+
+    def _build_datatable(self) -> list:
+        """Title."""
+        data_list = []
+        for self._task, decon_list in self._decon_dict.items():
+            task_short = self._task.split("-")[1]
+            for self._decon_path in decon_list:
+                subj = (
+                    os.path.basename(self._decon_path)
+                    .split("_")[0]
+                    .split("-")[1]
+                )
+                for emo in self._emo_list:
+                    self._sub_label = self._sub_label(emo)
+                    label_int = self._get_label_int()
+                    data_list.append(f"{subj} {task_short} {emo}")
+                    data_list.append(f"{self._decon_path}'[{label_int}]'")
+
+    def _sub_label(self, emo: str) -> str:
+        """Title."""
+        task_short = self._task.split("-")[1][:3]
+        if task_short not in ["mov", "sce"]:
+            raise ValueError("Problem splitting task name")
+        emo_short = helper.emo_switch()[emo]
+        sub_label = (
+            f"blk{task_short.title()[0]}{emo_short}#0_Coef"
+            if self._blk_coef
+            else f"{task_short}{emo_short}#0_Coef"
+        )
+        return sub_label
+
+    def write_exec(self, decon_dict, emo_list, blk_coef):
+        """Title."""
+        for chk_task in decon_dict.keys():
+            if chk_task not in ["task-movies", "task-scenarios"]:
+                raise KeyError()
+        self._decon_dict = decon_dict
+        self._emo_list = emo_list
+        self._blk_coef = blk_coef
 
 
 class MvmTest:

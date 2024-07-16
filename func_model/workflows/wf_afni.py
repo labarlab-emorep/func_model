@@ -630,6 +630,32 @@ class AfniTtest:
         shutil.rmtree(out_dir)
 
 
+class AfniLmer(AfniTtest):
+    """Title."""
+
+    def __init__(self, model_name, mvm_stat, work_deriv, log_dir):
+        """Title."""
+        if model_name != "mixed":
+            raise ValueError("Expected model_name mixed")
+        self._mvm_stat = mvm_stat
+        super().__init__(model_name, "student", work_deriv, log_dir)
+
+    def run_lmer(self, emo_list, blk_coef):
+        """Title."""
+        self._blk_coef = blk_coef
+        self._setup()
+        mask_path = masks.tpl_gm(self._model_group)
+
+        # TODO blur, acf, clustsim?
+
+        #
+        # Find input files
+        decon_dict = {}
+        for self._task in ["task-movies", "task-scenarios"]:
+            self._find_decons()
+            decon_dict[self._task] = self._decon_dict
+
+
 class AfniMvm(AfniTtest):
     """Title."""
 
