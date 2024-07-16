@@ -557,12 +557,12 @@ class AfniTtest:
         if task_short not in ["mov", "sce"]:
             raise ValueError("Problem splitting task name")
         emo_short = helper.emo_switch()[self._emo_name]
-        sub_label = (
-            f"blk{task_short.title()[0]}{emo_short}#0_Coef"
-            if self._blk_coef
-            else f"{task_short}{emo_short}#0_Coef"
-        )
-        return sub_label
+
+        # Account for task/stim or block coefficient
+        if self._blk_coef or self._model_name == "block":
+            return f"blk{task_short.title()[0]}{emo_short}#0_Coef"
+        elif self._model_name == "task":
+            return f"{task_short}{emo_short}#0_Coef"
 
     def _valid_emo(self, emo_name):
         """Title."""
