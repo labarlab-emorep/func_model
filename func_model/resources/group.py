@@ -1,7 +1,11 @@
 """Methods for group-level analyses.
 
+get_subbrick_label : identify subbrick label ID from AFNI decon files
+make_subbrick_label : construct label string for AFNI decon
 AfniExtractBetas : mine AFNI deconvolve output for betas estimates
+comb_matrices : combine beta matrices into large dataframe
 EtacTest : conduct AFNI group-level test via 3dttest++
+LmerTest : conduct AFNI group-level test via 3dLMEr
 MvmTest : conduct AFNI group-level test via 3dMVM
 ExtractTaskBetas : mine FSL first-level output for beta estimates
 ImportanceMask : generate mask in template space from classifier output
@@ -45,9 +49,9 @@ def get_subbrick_label(
     task: str,
     model_name: str,
     decon_path: Union[str, os.PathLike],
-    out_txt=None,
+    out_txt: Union[str, os.PathLike] = None,
 ):
-    """Title."""
+    """Write subbrick label ID to out_txt."""
     subj_work = os.path.dirname(decon_path)
     sing_head = helper.prepend_afni_sing(subj_work, subj_work)
     if not out_txt:
@@ -62,6 +66,25 @@ def get_subbrick_label(
     sub_job.wait()
     if not os.path.exists(out_txt):
         time.sleep(3)
+
+
+def make_subbrick_label(
+    task: str, emo_name: str, model_name: str, blk_coef: bool
+) -> str:
+    """Make subbrick label str set by deconvolve.TimingFiles."""
+    # Build coefficient name to match sub-brick, recreate name
+    # specified by resources.deconvolve.TimingFiles.session_events,
+    # and append AFNI coefficient title.
+    task_short = task.split("-")[1][:3]
+    if task_short not in ["mov", "sce"]:
+        raise ValueError("Problem splitting task name")
+    emo_short = helper.emo_switch()[emo_name]
+
+    # Account for task/stim or block coefficient
+    if blk_coef or model_name == "block":
+        return f"blk{task_short.title()[0]}{emo_short}#0_Coef"
+    elif model_name == "task":
+        return f"{task_short}{emo_short}#0_Coef"
 
 
 class AfniExtractTaskBetas(matrix.NiftiArray):
@@ -723,13 +746,29 @@ def _calc_acf(model_indiv, mask_path, errts_list, out_txt):
 
 
 class LmerTest(EtacTest):
-    """Title."""
+    """Build and execute 3dLMEr command.
 
-    def __init__(self, emo_list):
-        """Title."""
-        self._emo_list = emo_list
+    Parameters
+    ----------
+    out_dir : str, os.PathLike
+        Location of output directory
+    mask_path : str, os.PathLike
+        Location of template mask
 
-    def _lmer_opts(
+    Methods
+    -------
+    write_exec()
+        Write and then execute 3dLMEr command
+
+    """
+
+    def __init__(self, out_dir, mask_path):
+        """Initialize LmerTest."""
+        self._out_dir = out_dir
+        self._mask_path = mask_path
+        super().__init__(out_dir, mask_path)
+
+    def _lmer_cmd(
         self,
         out_path: Union[str, os.PathLike],
     ) -> list:
@@ -743,69 +782,133 @@ class LmerTest(EtacTest):
 
         # Build 3dLMEr options
         final_name = os.path.basename(out_path).split("+")[0]
-        lmer_body = [
+        lmer_opts = [
             f"-mask {self._mask_path}",
             f"-prefix {final_name}",
             "-jobs 12",
             "-SS_type 3",
             "-bounds -3 3",
             "-model 'emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)'",
-            " ".join(self._glt_code()),
+        ]
+
+        # Build gltCodes and datatable
+        glt_opts = self._glt_code()
+        data_head = [
             "-dataTable",
             "Subj task emotion InputFile",
         ]
+        data_input = self._build_datatable()
+        return lmer_head + lmer_opts + glt_opts + data_head + data_input
 
     def _glt_code(self) -> list:
-        """Title."""
+        """Build gltCode options."""
         glt_code = []
         for emo in self._emo_list:
-            glt_code.append(f"-gltCode {emo}")
-            glt_code.append(f"'emotion : 1*{emo}'")
 
+            # Main effect of emo
+            emo_short = helper.emo_switch()[emo]
+            glt_code.append(f"-gltCode {emo_short}")
+            glt_code.append(f"'emotion : 1*{emo_short}'")
+
+            # Task x emo
             for task in self._decon_dict.keys():
-                task_short = task.split("-")[1]
-                glt_code.append(f"-gltCode {emo}-{task_short}")
-                glt_code.append(f"'task : 1*{task_short} emotion : 1*{emo}'")
+                task_short = task.split("-")[1][:3]
+                glt_code.append(f"-gltCode {emo_short}.{task_short}")
+                glt_code.append(
+                    f"'task : 1*{task_short} emotion : 1*{emo_short}'"
+                )
         return glt_code
 
     def _build_datatable(self) -> list:
-        """Title."""
+        """Build datatable input."""
         data_list = []
-        for self._task, decon_list in self._decon_dict.items():
-            task_short = self._task.split("-")[1]
-            for self._decon_path in decon_list:
-                subj = (
-                    os.path.basename(self._decon_path)
-                    .split("_")[0]
-                    .split("-")[1]
-                )
+        # Lines for subj, task, emo
+        for self._task, subj_dict in self._decon_dict.items():
+            task_short = self._task.split("-")[1][:3]
+            for subj, self._decon_path in subj_dict.items():
                 for emo in self._emo_list:
-                    self._sub_label = self._sub_label(emo)
+
+                    # Determine subbrick name, get ID
+                    self._sub_label = make_subbrick_label(
+                        self._task, emo, self._model_name, self._blk_coef
+                    )
                     label_int = self._get_label_int()
-                    data_list.append(f"{subj} {task_short} {emo}")
+                    if not label_int:
+                        continue
+
+                    # Add input line
+                    emo_short = helper.emo_switch()[emo]
+                    data_list.append(f"{subj} {task_short} {emo_short}")
                     data_list.append(f"{self._decon_path}'[{label_int}]'")
+        return data_list
 
-    def _sub_label(self, emo: str) -> str:
-        """Title."""
-        task_short = self._task.split("-")[1][:3]
-        if task_short not in ["mov", "sce"]:
-            raise ValueError("Problem splitting task name")
-        emo_short = helper.emo_switch()[emo]
-        sub_label = (
-            f"blk{task_short.title()[0]}{emo_short}#0_Coef"
-            if self._blk_coef
-            else f"{task_short}{emo_short}#0_Coef"
-        )
-        return sub_label
+    def write_exec(self, model_name, decon_dict, emo_list, blk_coef, log_dir):
+        """Generate and execute 3dlMEr command.
 
-    def write_exec(self, decon_dict, emo_list, blk_coef):
-        """Title."""
+        Parameters
+        ----------
+        model_name : str
+            Deconvolution model name
+        decon_dict : dict
+            Paths to decon files organized by task, subj.
+            {"task-movies": {"sub-1": "/path/to/decon+tlrc.HEAD"}}
+        emo_list : list
+            List of emotions
+        blk_coef : bool
+            Use block instead of task coefficient when model_name=mixed
+        log_dir : str, os.PathLike
+            Location of logging directory
+
+        Returns
+        -------
+        str, os.PathLike
+            Location of final HEAD file
+
+        """
         for chk_task in decon_dict.keys():
             if chk_task not in ["task-movies", "task-scenarios"]:
                 raise KeyError()
+        self._model_name = model_name
         self._decon_dict = decon_dict
         self._emo_list = emo_list
         self._blk_coef = blk_coef
+
+        # Identify output prefix, make output dir
+        model = (
+            f"model-{self._model_name}Block"
+            if blk_coef
+            else f"model-{self._model_name}"
+        )
+        out_pref = f"stat-lmer_{model}"
+        model_dir = os.path.join(self._out_dir, out_pref)
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
+        # Determine, check for output file
+        out_path = os.path.join(model_dir, f"{out_pref}+tlrc.HEAD")
+        if os.path.exists(out_path):
+            return
+
+        # Build and write LMEr command
+        lmer_cmd = " ".join(self._lmer_cmd(out_path))
+        lmer_script = out_path.replace("+tlrc.HEAD", ".sh")
+        with open(lmer_script, "w") as script:
+            script.write(lmer_cmd)
+
+        # Execute LMEr script (command too long for subprocess)
+        submit.submit_sbatch(
+            f"source {lmer_script}",
+            "jLMEr",
+            log_dir,
+            num_hours=75,
+            num_cpus=12,
+            mem_gig=32,
+        )
+
+        # Check for output
+        if not os.path.exists(out_path):
+            raise FileNotFoundError(f"Missing expected file : {out_path}")
+        return out_path
 
 
 class MvmTest:

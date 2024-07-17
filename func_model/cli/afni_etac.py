@@ -22,14 +22,16 @@ Example
         --model-name mixed
 
 2. Identify sub-brick labels
-    afni_etac --get-subbricks \
+    afni_etac \
+        --get-subbricks \
         --stat paired \
         --task movies \
         --model-name mixed \
         --block-coef
 
 3. Conduct T-testing
-    afni_etac --run-etac \
+    afni_etac \
+        --run-etac \
         --stat paired \
         --task movies \
         --model-name mixed \
@@ -133,11 +135,15 @@ def main():
     # Setup work directory, for intermediates
     work_deriv = os.path.join("/work", os.environ["USER"], "EmoRepTest")
     now_time = datetime.now()
-    log_name = (
-        "func-afni_setup"
-        if args.run_setup
-        else f"func-afni_stat-{stat}_{task}_model-{model_name}"
-    )
+    if args.run_setup:
+        log_name = "func-afni_setup"
+    elif get_subs:
+        log_name = "func-afni_subbricks"
+    elif args.run_etac:
+        log_name = f"func-afni_stat-{stat}_{task}_model-{model_name}"
+    else:
+        raise ValueError()
+
     log_dir = os.path.join(
         work_deriv,
         "logs",

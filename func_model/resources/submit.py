@@ -4,6 +4,11 @@ submit_subprocess : submit and check for output of bash command
 submit_sbatch : schedule bash command with Slurm
 schedule_afni : schedule AFNI workflow with Slurm
 schedule_fsl : schedule FSL workflow with Slurm
+schedule_afni_group_setup : download data from Keoki
+schedule_afni_group_subbrick : mine deconvolve files for subbrick IDs
+schedule_afni_group_etac : conduct t-testing via ETAC (3dttest++)
+schedule_afni_group_lmer : conduct linear mixed effects models via 3dLMEr
+schedule_afni_group_mvm : conduct ANOVA-style analysis via 3dMVM
 
 """
 
@@ -271,8 +276,7 @@ def schedule_fsl(
             #SBATCH --output={log_dir}/par{subj_short}s{sess_short}.txt
             #SBATCH --time=30:00:00
             #SBATCH --mem=8G
-            import os
-            import sys
+
             from func_model.workflows import wf_fsl
         """
 
@@ -347,8 +351,6 @@ def schedule_afni_group_setup(
         #SBATCH --time=10:00:00
         #SBATCH --mem=8G
 
-        import os
-        import sys
         from func_model.resources import helper
         from func_model.resources import masks
 
@@ -388,6 +390,7 @@ def schedule_afni_group_subbrick(
 ):
     """Coordinate setup for group-level AFNI modelling."""
     # Write parent python script
+    get_wash = True if stat == "paired" else False
     sbatch_cmd = f"""\
         #!/bin/env {sys.executable}
 
@@ -396,21 +399,23 @@ def schedule_afni_group_subbrick(
         #SBATCH --time=10:00:00
         #SBATCH --mem=8G
 
-        import os
-        import sys
         from func_model.workflows import wf_afni
+        from func_model.resources import helper
+
+        # Setup working dirs
+        sync_data = helper.SyncGroup("{work_deriv}")
+        model_indiv, _ = sync_data.setup_group()
 
         # Identify decon subbricks
-        afni_ttest = wf_afni.AfniTtest(
+        dcn_sub = wf_afni.DeconSubbrick(
             "{model_name}",
-            "{stat}",
-            "{work_deriv}",
-            "{log_dir}",
+            model_indiv,
         )
-        afni_ttest.find_subbricks(
+        dcn_sub.find_subbricks(
             "{task}",
             {emo_list},
             {blk_coef},
+            {get_wash},
         )
 
     """
@@ -449,21 +454,17 @@ def schedule_afni_group_etac(
         #SBATCH --time=80:00:00
         #SBATCH --mem=4G
 
-        import os
-        import sys
         from func_model.workflows import wf_afni
 
         # Conduct group-level test
-        afni_ttest = wf_afni.AfniTtest(
+        wf_afni.afni_ttest(
+            "{task}",
             "{model_name}",
             "{stat}",
-            "{work_deriv}",
-            "{log_dir}",
-        )
-        afni_ttest.run_etac(
-            "{task}",
             "{emo_name}",
             {blk_coef},
+            "{work_deriv}",
+            "{log_dir}",
         )
 
     """
@@ -489,6 +490,54 @@ def schedule_afni_group_etac(
     print(f"{job_num}\tfor emo : {emo_name}")
 
 
+def schedule_afni_group_lmer(
+    model_name: str,
+    emo_list: list,
+    work_deriv: Union[str, os.PathLike],
+    log_dir: Union[str, os.PathLike],
+    blk_coef: bool,
+):
+    """Schedule 3dMVM."""
+    # Write parent python script
+    sbatch_cmd = f"""\
+        #!/bin/env {sys.executable}
+
+        #SBATCH --job-name=pLMEr
+        #SBATCH --output={log_dir}/parLMEr.txt
+        #SBATCH --time=80:00:00
+        #SBATCH --mem=4G
+
+        from func_model.workflows import wf_afni
+
+        # Conduct group-level test
+        wf_afni.afni_lmer(
+            "{model_name}",
+            {emo_list},
+            {blk_coef},
+            "{work_deriv}",
+            "{log_dir}",
+        )
+
+    """
+    sbatch_cmd = textwrap.dedent(sbatch_cmd)
+    suff = "_block.py" if blk_coef else ".py"
+    py_script = f"{log_dir}/run-afni_lmer-{model_name}{suff}"
+    with open(py_script, "w") as ps:
+        ps.write(sbatch_cmd)
+
+    # Execute script
+    h_sp = subprocess.Popen(
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    h_out, _ = h_sp.communicate()
+
+    # Communicate to user
+    print(h_out.decode("utf-8"))
+
+
 def schedule_afni_group_mvm(
     model_name: str,
     stat: str,
@@ -508,8 +557,6 @@ def schedule_afni_group_mvm(
         #SBATCH --mem=12G
         #SBATCH -c 10
 
-        import os
-        import sys
         from func_model.workflows import wf_afni
 
         # Conduct group-level test

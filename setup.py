@@ -13,6 +13,7 @@ setup(
             "afni_extract=func_model.cli.afni_extract:main",
             "afni_etac=func_model.cli.afni_etac:main",
             "afni_mvm=func_model.cli.afni_mvm:main",
+            "afni_lmer=func_model.cli.afni_lmer:main",
             "fsl_model=func_model.cli.fsl_model:main",
             "fsl_extract=func_model.cli.fsl_extract:main",
             "fsl_map=func_model.cli.fsl_map:main",

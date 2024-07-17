@@ -3,7 +3,9 @@
 afni_task       : GLM task data via AFNI
 afni_rest       : deprecated, GLM rest data via AFNI
 afni_extract    : deprecated, extract task beta-coefficients from AFNI GLM
-afni_ttest      : conduct Student's T via ETAC method
+DeconSubbrick   : download decon files from Keoki, find subbrick IDs
+afni_ttest      : conduct T-testing via ETAC method
+afni_lmer       : conduct linear mixed effects model via 3dLMEr
 afni_mvm        : conduct ANOVA-style analyses via 3dMVM
 
 """
@@ -506,34 +508,66 @@ def afni_extract(
         _ = group.comb_matrices(subj_list, model_name, proj_deriv, out_dir)
 
 
-class AfniTtest:
-    """Title."""
+class DeconSubbrick:
+    """Find AFNI deconvolve files and their subbricks.
 
-    def __init__(self, model_name, stat, work_deriv, log_dir):
-        """Title."""
-        if not helper.valid_univ_test(stat):
-            raise ValueError(f"Unexpected stat test name : {stat}")
+    Parameters
+    ----------
+    model_name : str
+        {"mixed", "task", "block"}
+        Deconvolution model name
+    model_indiv : str, os.PathLike, helper.SyncGroup.setup_group()[0]
+        Parent directory of subject deconvultions
 
+    Attributes
+    ----------
+    decon_dict : dict
+        Paths to decon files organized by subject
+        {"sub-1": "/path/to/decon+tlrc.HEAD"}
+
+    Methods
+    -------
+    find_decons(task)
+        Find decon files for specified task, build attr decon_dict
+    find_subbricks()
+        Write txt files with sub-brick label ID
+
+    Example
+    -------
+    sync_data = helper.SyncGroup(*args)
+    model_indiv, _ = sync_data.setup_group()
+    dcn_sub = DeconSubbrick("task", model_indiv)
+    dcn_sub.find_decons("task-movies")
+    dcn_sub.find_subbricks(*args)
+
+    """
+
+    def __init__(self, model_name, model_indiv):
+        """Initialize DeconSubbrick."""
+        if model_name not in ["task", "block", "mixed"]:
+            raise ValueError()
         self._model_name = model_name
-        self._stat = stat
-        self._work_deriv = work_deriv
-        self._log_dir = log_dir
+        self._model_indiv = model_indiv
 
-    def _setup(self):
-        """Title."""
-        #
-        self._sync_data = helper.SyncGroup(self._work_deriv)
-        self._model_indiv, self._model_group = self._sync_data.setup_group()
+    def find_decons(self, task):
+        """Find all decon files of task and model name.
 
-    def _find_decons(self):
-        """Title."""
-        if not hasattr(self, "_model_indiv"):
-            self._setup()
+        Parameters
+        ----------
+        task : str
+            BIDs task ID
 
+        Attributes
+        ----------
+        decon_dict : dict
+            Paths to decon files organized by subject
+            {"sub-1": "/path/to/decon+tlrc.HEAD"}
+
+        """
         # Find all decon files for requested task, model_name
         search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
         search_decon = (
-            f"*{self._task}_desc-decon_model-{self._model_name}_"
+            f"*{task}_desc-decon_model-{self._model_name}_"
             + "stats_REML+tlrc.HEAD"
         )
         decon_list = sorted(glob.glob(f"{search_path}/{search_decon}"))
@@ -543,126 +577,194 @@ class AfniTtest:
             )
 
         # Build dict needed by group.EtacTest.write_exec
-        self._decon_dict = {}
+        self.decon_dict = {}
         for decon_path in decon_list:
             subj = os.path.basename(decon_path).split("_")[0]
-            self._decon_dict[subj] = decon_path
+            self.decon_dict[subj] = decon_path
 
-    def _make_sub_label(self) -> str:
-        """Title."""
-        # Build coefficient name to match sub-brick, recreate name
-        # specified by resources.deconvolve.TimingFiles.session_events,
-        # and append AFNI coefficient title.
-        task_short = self._task.split("-")[1][:3]
-        if task_short not in ["mov", "sce"]:
-            raise ValueError("Problem splitting task name")
-        emo_short = helper.emo_switch()[self._emo_name]
+    def find_subbricks(self, task, emo_list, blk_coef, get_wash):
+        """Write files with subbrick ID to subj directory.
 
-        # Account for task/stim or block coefficient
-        if self._blk_coef or self._model_name == "block":
-            return f"blk{task_short.title()[0]}{emo_short}#0_Coef"
-        elif self._model_name == "task":
-            return f"{task_short}{emo_short}#0_Coef"
+        Parameters
+        ----------
+        task : str
+            BIDS task ID
+        emo_list : list
+            List of emotions
+        blk_coef : bool
+            Extract block instead of task coefficient when
+            model_name=mixed
+        get_wash : bool
+            Extract washout subbrick ID, for use when
+            ttest stat=paired.
+        decon_dict : dict, optional
+            Dict of {"sub-1": "/path/to/decon+tlrc.HEAD"}
 
-    def _valid_emo(self, emo_name):
-        """Title."""
-        emo_valid = [x for x in helper.emo_switch().keys()]
-        if emo_name not in emo_valid:
-            raise ValueError(f"Unexpected emo : {emo_name}")
-
-    def find_subbricks(self, task, emo_list, blk_coef, decon_dict=None):
-        """Title."""
-        # Validate
-        if not helper.valid_task(task):
-            raise ValueError(f"Unexpected task value : {task}")
-        self._task = task
-        for emo_name in emo_list:
-            self._valid_emo(emo_name)
-        self._blk_coef = blk_coef
+        """
+        if blk_coef and self._model_name != "mixed":
+            raise ValueError(
+                "Option blk_coef only available when model_name=mixed"
+            )
 
         # Identify decon files
-        if decon_dict:
-            self._decon_dict = decon_dict
-        else:
-            self._find_decons()
+        if not hasattr(self, "decon_dict"):
+            self.find_decons(task)
 
         # Coordinate subbrick finding
-        for _subj, decon_path in self._decon_dict.items():
-            for self._emo_name in emo_list:
+        for _subj, decon_path in self.decon_dict.items():
+            for emo_name in emo_list:
+                sub_label = group.make_subbrick_label(
+                    task,
+                    emo_name,
+                    self._model_name,
+                    blk_coef,
+                )
                 group.get_subbrick_label(
-                    self._make_sub_label(),
-                    self._task,
+                    sub_label,
+                    task,
                     self._model_name,
                     decon_path,
                 )
-            if self._stat == "paired":
+            if get_wash:
                 group.get_subbrick_label(
                     "comWas#0_Coef", self._task, self._model_name, decon_path
                 )
 
-    def run_etac(self, task, emo_name, blk_coef):
-        """Title."""
-        if not helper.valid_task(task):
-            raise ValueError(f"Unexpected task value : {task}")
-        self._task = task
-        self._valid_emo(emo_name)
-        self._emo_name = emo_name
-        self._blk_coef = blk_coef
-        self._find_decons()
 
-        # Generate, execute ETAC command
-        mask_path = masks.tpl_gm(self._model_group)
-        run_etac = group.EtacTest(self._model_group, mask_path)
-        out_path = run_etac.write_exec(
-            self._task,
-            self._model_name,
-            self._stat,
-            self._emo_name,
-            self._decon_dict,
-            self._make_sub_label(),
-            self._log_dir,
-            blk_coef,
-        )
+def afni_ttest(
+    task, model_name, stat, emo_name, blk_coef, work_deriv, log_dir
+):
+    """Conduct T-test via AFNI's ETAC method.
 
-        # Send output to Keoki, clean
-        out_dir = os.path.dirname(out_path)
-        self._sync_data.send_etac(out_dir)
-        shutil.rmtree(out_dir)
+    Parameters
+    ----------
+    task : str
+        BIDS task ID
+    model_name : str
+        {"mixed", "task", "block"}
+        Deconvolution model name
+    stat : str
+        {"paired", "student"}
+        Type of t-test, paired uses washout as contrast
+    emo_name : str
+        Emotion name
+    blk_coef : bool
+        Extract block coefficient when model_name=mixed
+    work_deriv : str, os.PathLike
+        Location of output derivaitves directory
+    log_dir : str, os.PathLike
+        Location of logging directory
+
+    """
+    # Validate
+    if not helper.valid_task(task):
+        raise ValueError(f"Unexpected task value : {task}")
+    if not helper.valid_univ_test(stat):
+        raise ValueError(f"Unexpected stat test name : {stat}")
+    if model_name not in ["task", "block", "mixed"]:
+        raise ValueError()
+
+    # Setup directory structure
+    sync_data = helper.SyncGroup(work_deriv)
+    model_indiv, model_group = sync_data.setup_group()
+
+    # Identify (and possibly download) decons
+    dcn_sub = DeconSubbrick(model_name, model_indiv)
+    try:
+        dcn_sub.find_decons(task)
+    except FileNotFoundError:
+        sync_data.get_model_afni(task, model_name)
+        dcn_sub.find_decons(task)
+
+    # Make template mask, determine relevant subbrick label
+    mask_path = masks.tpl_gm(model_group)
+    sub_label = group.make_subbrick_label(
+        task,
+        emo_name,
+        model_name,
+        blk_coef,
+    )
+
+    # Execute ETAC
+    run_etac = group.EtacTest(model_group, mask_path)
+    out_path = run_etac.write_exec(
+        task,
+        model_name,
+        stat,
+        emo_name,
+        dcn_sub.decon_dict,
+        sub_label,
+        log_dir,
+        blk_coef,
+    )
+
+    # Send output to Keoki, clean
+    out_dir = os.path.dirname(out_path)
+    sync_data.send_etac(out_dir)
+    shutil.rmtree(out_dir)
 
 
-class AfniLmer(AfniTtest):
+def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
+    """Conduct linear mixed effect model via AFNI's 3dLMEr method.
+
+    Y = emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)
+
+    Parameters
+    ----------
+    model_name : str
+        {"mixed", "task", "block"}
+        Deconvolution model name
+    emo_list : list
+        Emotion list
+    blk_coef : bool
+        Extract block coefficient when model_name=mixed
+    work_deriv : str, os.PathLike
+        Location of output derivaitves directory
+    log_dir : str, os.PathLike
+        Location of logging directory
+
+    """
+    if model_name not in ["task", "block", "mixed"]:
+        raise ValueError()
+    #
+    sync_data = helper.SyncGroup(work_deriv)
+    model_indiv, model_group = sync_data.setup_group()
+
+    # Build decon_dict
+    decon_dict = {}
+    dcn_sub = DeconSubbrick(model_name, model_indiv)
+    for task in ["task-movies", "task-scenarios"]:
+
+        # Download data if necessary
+        try:
+            dcn_sub.find_decons(task)
+        except FileNotFoundError:
+            sync_data.get_model_afni(task, model_name)
+            dcn_sub.find_decons(task)
+
+        dcn_sub.find_decons(task)
+        decon_dict[task] = dcn_sub.decon_dict
+
+    # Execute LMEr
+    mask_path = masks.tpl_gm(model_group)
+    lmer_test = group.LmerTest(model_group, mask_path)
+    out_path = lmer_test.write_exec(
+        model_name, decon_dict, emo_list, blk_coef, log_dir
+    )
+
+    # Send output to Keoki, clean
+    out_dir = os.path.dirname(out_path)
+    sync_data.send_etac(out_dir)
+    return
+    shutil.rmtree(out_dir)
+
+
+class AfniMvm:
     """Title."""
 
     def __init__(self, model_name, mvm_stat, work_deriv, log_dir):
         """Title."""
-        if model_name != "mixed":
-            raise ValueError("Expected model_name mixed")
         self._mvm_stat = mvm_stat
-        super().__init__(model_name, "student", work_deriv, log_dir)
-
-    def run_lmer(self, emo_list, blk_coef):
-        """Title."""
-        self._blk_coef = blk_coef
-        self._setup()
-        mask_path = masks.tpl_gm(self._model_group)
-
-        # TODO blur, acf, clustsim?
-
-        #
-        # Find input files
-        decon_dict = {}
-        for self._task in ["task-movies", "task-scenarios"]:
-            self._find_decons()
-            decon_dict[self._task] = self._decon_dict
-
-
-class AfniMvm(AfniTtest):
-    """Title."""
-
-    def __init__(self, model_name, mvm_stat, work_deriv, log_dir):
-        """Title."""
-        self._mvm_stat = mvm_stat
-        super().__init__(model_name, "paired", work_deriv, log_dir)
 
     def run_mvm(self, emo_list, blk_coef):
         """Title."""
@@ -680,7 +782,7 @@ class AfniMvm(AfniTtest):
         # Find input files
         decon_dict = {}
         for self._task in ["task-movies", "task-scenarios"]:
-            self._find_decons()
+            self.find_decons()
             decon_dict[self._task] = self._decon_dict
 
         # Extract sub-bricks

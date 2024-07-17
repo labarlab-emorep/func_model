@@ -1581,7 +1581,7 @@ class RunReml(_WriteDecon):
             f"rml{self._subj[6:]}s{self._sess[-1]}",
             self._log_dir,
             num_hours=wall_time,
-            num_cpus=6,
+            num_cpus=10,
             mem_gig=24,
         )
         if not os.path.exists(out_path):

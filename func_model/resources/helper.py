@@ -58,7 +58,7 @@ def valid_models(model_name: str) -> bool:
 
 def valid_univ_test(test_name: str) -> bool:
     """Return bool of whether test_name is supported."""
-    return test_name in ["student", "paired", "amodal"]
+    return test_name in ["student", "paired"]
 
 
 def valid_mvm_test(test_name: str) -> bool:
