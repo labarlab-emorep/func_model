@@ -217,7 +217,7 @@ optional arguments:
 Triggering this sub-package will execute the following workflow:
 
 1. Generate a mask and identify non-zero coordinates
-1. Identify subjects with the desired `fsl_model` output
+1. Identify subjects with the desired [fsl_model](#fsl_model)  output
 1. Iterate serially through subjects, spawn parallel processes for each session
     1. (Sessions for model `lss` are executed serially)
 1. Check database `db_emorep.tbl_betas_*` for existing data, determine whether to overwrite from user options
@@ -239,13 +239,102 @@ Triggering this sub-package will execute the following workflow:
 
 
 ## fsl_map
+This sub-package is written to be executed on labarserv2 and serves to generate a file in MNI coordinate space from an array of values. Specifically, the output of [fsl_extract](#fsl_extract)  is used as the input for classification, which in turn generates a binary table where 1 indicates the coordinate/voxel/feature contributed significantly to classification. This table is stored at `db_emorep.tbl_plsda_binary_*` and is used to reconstruct a binary cluster map in MNI space.
+
+Maps can be made for different task names:
+* `movies`: Generate a map from the classifier trained on the movie task
+* `scenarios`: Same as `movies`, but for the scenario task
+* `all`: Generate a map from the classifier trained on both the movies and scenarios tasks
+
+Maps can also be made for different FSL models:
+* `sep`: Generate a map from the classifier trained on data modeled with stimulus and replay loading on separate coefficients
+* `tog`: Deprecated. Generate a map from the classifier trained on data modeled with stimulus and replay loading together on the same coefficient
+
+Additionally, maps can be made from different task coefficients/contrasts:
+* `stim`: Geneate a map from the classifier trained on only the stimulus (movie or task) portion of a trial
+* `replay`: Same as `stim`, but from only the replay portion of the trial
+* `tog`: Deprecated. Generate a map from from the classifier trained on the entire trial
+
+
+### Setup
+* Set the global variable `SQL_PASS` to contain the user password for `db_emorep`
+* Verify that the global variable `SINGULARITY_TEMPLATEFLOW_HOME` exists and holds the path to a clone of the [templateflow repository](https://www.templateflow.org/)
+* Verify that `tpl-MNI152NLin6Asym/tpl-MNI152NLin6Asym_res-02_T1w.nii.gz` exists within the templateflow repository
+* Check for relevant classifier output in `db_emorep.tbl_plsda_binary_*`
+
+
+### Usage
+The CLI `$fsl_map` allows the user to trigger map building in MNI space for specific classifier output. Trigger sub-package help and usage via `$fsl_map`:
+
+```
+(emorep)[nmm51-vm: ~]$fsl_map
+usage: fsl_map [-h] [--contrast-name {stim,replay,tog}] [--model-level {first}] [--model-name {sep,tog}] [--proj-dir PROJ_DIR] -t
+               {movies,scenarios,all}
+
+Generate NIfTI masks from classifier output.
+
+Written for the local labarserv2 environment.
+
+Convert data from db_emorep.tbl_plsda_binary_gm into
+NIfTI files build in MNI template space. Then generate
+conjunctive analysis maps.
+
+Writes output to:
+    proj_dir/analyses/classify_fMRI_plsda/voxel_importance_maps/name-*_task-*_maps
+
+Examples
+--------
+fsl_map -t movies
+fsl_map -t all
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --contrast-name {stim,replay,tog}
+                        Desired contrast from which coefficients will be extracted,
+                        substring of design.fsf EV Title.
+                        (default : stim)
+  --model-level {first}
+                        FSL model level, for triggering different workflows
+                        (default : first)
+  --model-name {sep,tog}
+                        FSL model name, for triggering different workflows
+                        (default : sep)
+  --proj-dir PROJ_DIR   Path to experiment-specific project directory
+                        (default : /mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion)
+
+Required Arguments:
+  -t {movies,scenarios,all}, --task-name {movies,scenarios,all}
+                        Name of EmoRep stimulus type, corresponds to BIDS task field
+                        (default : None)
+
+```
+
+
+### Functionality
+Triggering this sub-package will execute the following workflow:
+
+1. Extract header data from MNI template
+1. Select requested data from `db_emorep.tbl_plsda_binary_*`
+1. Generate 3D binary map for each emotion
+1. Apply MNI metadata to 3D map
+1. Generate conjunction maps
+    1. Cluster-thresholded maps
+    1. High, low arousal maps
+    1. High, low valence maps
+
+
+### Considerations
+* Coordinates for 3D map construction are derived from [fsl_extract](#fsl_extract)
+* The workflow also supports generating importance (and not just binary) masks, but this is not implemented at the CLI
+
 
 ## fsl_group
+Deprecated.
+This sub-package generates required files for third- and fourth-level analyses, where:
 
+* first-level: collapse across trial generate coefficients
+* second-level: collapse across runs
+* third-level: collapse across tasks
+* fourth-level: collapse across participants
 
-<!-- ## Diagrams
-
-
-### Module Imports
-Diagram of imports.
-![Imports](diagrams/imports.png) -->
+Unfortunately, third- and particularly fourth-level are breaking the FSL GUI needed to generate the design and contrast files.
