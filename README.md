@@ -1,5 +1,7 @@
 # func_model
-This package contains workflows for modeling and extracting data from fMRI data. It contains two main divisions, resources for FSL-based pipelines (detailed below) and resources for AFNI-based pipelines (largely deprecated, not detailed here).
+This package contains workflows for modeling and extracting data from fMRI files. It contains two main divisions:
+1. resources for FSL-based pipelines (detailed below), and
+1. resources for AFNI-based pipelines (largely deprecated, not detailed here).
 
 Sub-package/workflow navigation:
 - [fsl_model](#fsl_model) : Conduct FSL-style first- and second-level regressions
@@ -7,12 +9,10 @@ Sub-package/workflow navigation:
 - [fsl_map](#fsl_map) : Make binary masks from classifier output
 - [fsl_group](#fsl_group) : Generate required input for group-level analyses
 
-Additionally, the workflow `fsl_model` is written to be executed on the Duke Compute Cluster (DCC) while the remaining three are written for labarserv2.
-
 
 ## General Usage
 - Install package into project environment (on DCC or labarserv2) via `$python setup.py install`.
-- Trigger general pakcage help and usage via entrypoint `$func_model`:
+- Trigger general package help and usage via entrypoint `$func_model`:
 
 ```
 (emorep)[nmm51-dcc: ~]$func_model
@@ -38,16 +38,17 @@ Sub-packages written for labarserv2:
     - fsl_group
 
 ```
+Note that [fsl_model](#fsl_model) is written for execution on the Duke Compute Cluster (DCC) while the remaining three sub-packages/workflows are written for execution on labarserv2.
 
 
 ## General Requirements
-- The `fsl_model` workflow requires the global variable `RSA_LS2` to contain a path to an RSA key for labarserv2.
-- The workflows `fsl_extract` and `fsl_map` require the global variabel `SQL_PASS` to hold the user password for the MySQL database `db_emorep`.
+- The [fsl_model](#fsl_model) workflow requires the global variable `RSA_LS2` to contain a path to an RSA key for labarserv2.
+- The workflows [fsl_extract](#fsl_extract) and [fsl_map](#fsl_map) require the global variable `SQL_PASS` to hold the user password for the MySQL database `db_emorep`.
 
 Example:
 
 ```bash
-$echo "export SQL_PASS=foobar" >> ~/.bashrc
+$echo "export SQL_PASS=foobar" >> ~/.bashrc && source ~/.bashrc
 ```
 
 
@@ -55,10 +56,10 @@ $echo "export SQL_PASS=foobar" >> ~/.bashrc
 This sub-package is written to be executed on the DCC and conducts first- and second-level modeling using an FSL-based pipeline. It requires that preprocessed data already exists and is available on Keoki using the EmoRep derivatives structure (see [func_preprocess](https://github.com/labarlab-emorep/func_preprocess)).
 
 A number of different models are supported:
-* `sep` : Model the emotion stimulus and replay events separately
-* `tog` : Model the emotion stimulus and replay events together
-* `rest` : Model effects-of-no-interest in rsfMRI to produce cleaned residuals
-* `lss` : Similar to `tog`, but each trial (emotion stimulus + replay) are modeled separately
+* `sep`: Model the emotion stimulus and replay events separately
+* `tog`: Model the emotion stimulus and replay events together
+* `rest`: Model effects-of-no-interest in rsfMRI to produce cleaned residuals
+* `lss`: Similar to `tog`, but each trial (emotion stimulus + replay) are modeled separately
 
 Additionally, second-level modeling is possible for `sep` and `tog`, once first-level modeling has been conducted.
 
@@ -143,12 +144,49 @@ Required Arguments:
     1. Second-level models: first-level feat derivatives
 2. (Second-level models) Bypass registration requirement
 3. Generate required files for modeling:
-    1. First-level models, task designs: Condition files for the specified model by mining BIDS rawdata `func/*_events.tsv` files.
-    2. First-level models: Confound files by mining fMRIPrep `*_desc-confounds_timeseries.tsv` files.
-    2. All-models: Design FSF files by populating pre-generated templates found at `func_model.reference_files.design_template_<model-level>_<model-name>_desc-*.fsf`. For first-level models, `desc-full` designs are for runs 1-3, 5-7 while `desc-short` designs are for runs 4, 8.
+    1. First-level models, task designs: Condition files for the specified model by mining BIDS rawdata func/*_events.tsv files.
+    2. First-level models: Confound files by mining fMRIPrep *_desc-confounds_timeseries.tsv files.
+    2. All-models: Design FSF files by populating pre-generated templates found at `func_model.reference_files.design_template_<model-level>_<model-name>_desc-*.fsf`. For first-level models, desc-full designs are for runs 1-3, 5-7 while desc-short designs are for runs 4, 8.
 4. Schedule child jobs to parallelize executing each design file via FSL's `feat`.
 5. Upload output data to Keoki via labarserv2
 6. Clean up session directories on DCC.
+
+Modeled output is organized in the derivatives sub-directory 'model_fsl':
+
+```
+derivatives/model_fsl/
+└── sub-ER0009
+    └── ses-day2
+        └── func
+            ├── condition_files
+            │   ├── sub-ER0009_ses-day2_task-movies_run-01_desc-emoIntensity_events.txt
+            │   └── many_other_events.txt
+            ├── confounds_files
+            │   ├── sub-ER0009_ses-day2_task-movies_run-01_desc-confounds_timeseries.txt
+            ..  ..
+            │   └── sub-ER0009_ses-day2_task-movies_run-08_desc-confounds_timeseries.txt
+            ├── confounds_proportions
+            │   ├── sub-ER0009_ses-day2_task-movies_run-01_desc-confounds_proportion.json
+            ..  ..
+            │   └── sub-ER0009_ses-day2_task-movies_run-08_desc-confounds_proportion.json
+            ├── design_files
+            │   ├── run-01_level-first_name-sep_design.fsf
+            ..  ..
+            │   └── run-08_level-first_name-sep_design.fsf
+            ├── run-01_level-first_name-sep.feat
+                └── various_fsl_directories
+            ..
+            ├── run-08_level-first_name-sep.feat
+                └── various_fsl_directories
+            └── level-second_name-sep.gfeat
+                └── various_fsl_directories
+```
+Output is organized within the BIDS func directory, using a number of directories:
+- **condition_files** contains task condition files generated from rawdata events files, where the description field becomes then name of the coefficient.
+- **confounds_files** contain confound information derived from fMRIPrep *desc-confound_timeseries.tsv files
+- **confound_proportions** contain a JSON for each run detailing the number and proportion of volumes that were censored
+- **design_files** contain the generated design.fsf files
+- **feat directories** are named according to the run, model name, and level
 
 
 ### Considerations
@@ -228,6 +266,7 @@ Triggering this sub-package will execute the following workflow:
 1. Concatenate transposed cope 1D arrays into dataframe
 1. Concatenate dataframes across runs
 1. Update database `db_emorep.tbl_betas_*` with beta-coefficients
+1. Write dataframes to fsl_model subject's func directory (deprecated)
 
 
 ### Considerations
@@ -235,11 +274,11 @@ Triggering this sub-package will execute the following workflow:
 * This workflow is resource intensive over many hours due to the need to maintain coordinate information
 * Utilizing a gray matter mask reduces the number of voxels from over 900K to 137K
 * Runs with a proportion of censored volumes >20% are skipped, and beta-values >9999 or <-9999 are censored
-* The FSL file `design.con` is used to identify successful run modeling, and the file strucutre of FSL's `feat` output is assumed. The `design.con` file is also read to identify the task label of each stats cope.
+* The FSL file design.con is used to identify successful run modeling, and the file strucutre of FSL's `feat` output is assumed. The design.con file is also read to identify the task label of each stats cope.
 
 
 ## fsl_map
-This sub-package is written to be executed on labarserv2 and serves to generate a file in MNI coordinate space from an array of values. Specifically, the output of [fsl_extract](#fsl_extract)  is used as the input for classification, which in turn generates a binary table where 1 indicates the coordinate/voxel/feature contributed significantly to classification. This table is stored at `db_emorep.tbl_plsda_binary_*` and is used to reconstruct a binary cluster map in MNI space.
+This sub-package is written to be executed on labarserv2 and serves to generate a file in MNI coordinate space from an array of values. Specifically, the output of [fsl_extract](#fsl_extract)  is used as the input for classification, which in turn generates a binary table where 1 indicates the coordinate/voxel/feature contributed significantly to classification. This table is stored at `db_emorep.tbl_plsda_binary_*` and the selected values are used to reconstruct a binary cluster map in MNI space.
 
 Maps can be made for different task names:
 * `movies`: Generate a map from the classifier trained on the movie task
@@ -257,7 +296,7 @@ Additionally, maps can be made from different task coefficients/contrasts:
 
 
 ### Setup
-* Set the global variable `SQL_PASS` to contain the user password for `db_emorep`
+* Set the global variable `SQL_PASS` to contain the user password for the MySQL database `db_emorep`
 * Verify that the global variable `SINGULARITY_TEMPLATEFLOW_HOME` exists and holds the path to a clone of the [templateflow repository](https://www.templateflow.org/)
 * Verify that `tpl-MNI152NLin6Asym/tpl-MNI152NLin6Asym_res-02_T1w.nii.gz` exists within the templateflow repository
 * Check for relevant classifier output in `db_emorep.tbl_plsda_binary_*`
@@ -318,10 +357,52 @@ Triggering this sub-package will execute the following workflow:
 1. Generate 3D binary map for each emotion
 1. Apply MNI metadata to 3D map
 1. Generate conjunction maps
-    1. Cluster-thresholded maps
     1. High, low arousal maps
     1. High, low valence maps
+    1. Cluster-thresholded maps and write survival table
 
+Generated maps are written to the parent directory experiments2/EmoRep/Exp2_Compute_Emotion/analyses/classify_fMRI_plsda/voxel_importance_maps and organized by model name and task:
+
+```
+classify_fMRI_plsda/voxel_importance_maps/
+├── name-sep_task-both_maps
+├── name-sep_task-movies_maps
+└── name-sep_task-scenarios_maps
+```
+
+Individual maps are found within their respective model-task directory. Unprocessed emotion maps are identifed by the 'emo-' field:
+
+```
+name-sep_task-movies_maps/
+├── binary_model-sep_task-movies_con-stim_emo-amusement_map.nii.gz
+├── binary_model-sep_task-movies_con-stim_emo-anger_map.nii.gz
+├── binary_model-sep_task-movies_con-stim_emo-anxiety_map.nii.gz
+..
+└── binary_model-sep_task-movies_con-stim_emo-surprise_map.nii.gz
+```
+
+Similarly, conjuction maps are identified by the 'con-' field:
+
+```
+name-sep_task-movies_maps/
+├── binary_model-sep_task-movies_con-stim_conj-aroHigh_map.nii.gz
+├── binary_model-sep_task-movies_con-stim_conj-aroLow_map.nii.gz
+├── binary_model-sep_task-movies_con-stim_conj-aroMed_map.nii.gz
+├── binary_model-sep_task-movies_con-stim_conj-omni_map.nii.gz
+├── binary_model-sep_task-movies_con-stim_conj-valNeg_map.nii.gz
+├── binary_model-sep_task-movies_con-stim_conj-valNeu_map.nii.gz
+└── binary_model-sep_task-movies_con-stim_conj-valPos_map.nii.gz
+```
+
+Finally, clustered maps have a file name starting with 'Clust_' and a corresponding table saved as a TXT file:
+```
+name-sep_task-movies_maps/
+├── Clust_binary_model-sep_task-movies_con-stim_conj-aroHigh_map.nii.gz
+├── Clust_binary_model-sep_task-movies_con-stim_conj-aroHigh_map.txt
+..
+├── Clust_binary_model-sep_task-movies_con-stim_emo-surprise_map.nii.gz
+└── Clust_binary_model-sep_task-movies_con-stim_emo-surprise_map.txt
+```
 
 ### Considerations
 * Coordinates for 3D map construction are derived from [fsl_extract](#fsl_extract)
@@ -337,4 +418,4 @@ This sub-package generates required files for third- and fourth-level analyses, 
 * third-level: collapse across tasks
 * fourth-level: collapse across participants
 
-Unfortunately, third- and particularly fourth-level are breaking the FSL GUI needed to generate the design and contrast files.
+Unfortunately, third- and particularly fourth-level are breaking the FSL GUI needed to generate the design and contrast files. The current plan is to utilize AFNI methods if group-level univariate analyses are needed.
