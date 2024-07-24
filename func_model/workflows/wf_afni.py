@@ -627,7 +627,7 @@ class DeconSubbrick:
                 )
             if get_wash:
                 group.get_subbrick_label(
-                    "comWas#0_Coef", self._task, self._model_name, decon_path
+                    "comWas#0_Coef", task, self._model_name, decon_path
                 )
 
 

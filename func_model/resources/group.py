@@ -83,7 +83,7 @@ def make_subbrick_label(
     # Account for task/stim or block coefficient
     if blk_coef or model_name == "block":
         return f"blk{task_short.title()[0]}{emo_short}#0_Coef"
-    elif model_name == "task":
+    else:
         return f"{task_short}{emo_short}#0_Coef"
 
 
@@ -826,6 +826,8 @@ class LmerTest(EtacTest):
         for self._task, subj_dict in self._decon_dict.items():
             task_short = self._task.split("-")[1][:3]
             for subj, self._decon_path in subj_dict.items():
+                subj_short = subj.split("-")[-1]
+                decon_pref = os.path.splitext(self._decon_path)[0]
                 for emo in self._emo_list:
 
                     # Determine subbrick name, get ID
@@ -838,8 +840,8 @@ class LmerTest(EtacTest):
 
                     # Add input line
                     emo_short = helper.emo_switch()[emo]
-                    data_list.append(f"{subj} {task_short} {emo_short}")
-                    data_list.append(f"{self._decon_path}'[{label_int}]'")
+                    data_list.append(f"{subj_short} {task_short} {emo_short}")
+                    data_list.append(f"'{decon_pref}[{label_int}]'")
         return data_list
 
     def write_exec(self, model_name, decon_dict, emo_list, blk_coef, log_dir):
@@ -902,7 +904,7 @@ class LmerTest(EtacTest):
             log_dir,
             num_hours=75,
             num_cpus=12,
-            mem_gig=32,
+            mem_gig=94,
         )
 
         # Check for output
