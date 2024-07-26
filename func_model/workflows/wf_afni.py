@@ -726,7 +726,8 @@ def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
     """
     if model_name not in ["task", "block", "mixed"]:
         raise ValueError()
-    #
+
+    # Setup work dirs
     sync_data = helper.SyncGroup(work_deriv)
     model_indiv, model_group = sync_data.setup_group()
 
@@ -755,7 +756,6 @@ def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
     # Send output to Keoki, clean
     out_dir = os.path.dirname(out_path)
     sync_data.send_etac(out_dir)
-    return
     shutil.rmtree(out_dir)
 
 

@@ -13,9 +13,8 @@ def main():
     from their respective entrypoints:
 
         afni_model   : Conduct AFNI-style deconvolution
-        afni_extract : Extract emotion betas from deconvolve AFNI as a matrix
         afni_etac    : Conduct T-tests in AFNI via ETAC
-        afni_mvm     : Conduct multivariate tests in AFNI
+        afni_lmer    : Conduct linear mixed effects in AFNI
 
         fsl_model    : Conduct FSL-style first- and second-level regressions
         fsl_extract  : Extract emotion betas from FSL first-level as a matrix
@@ -26,12 +25,11 @@ def main():
 
         - afni_model
         - afni_etac
-        - afni_mvm
+        - afni_lmer
         - fsl_model
 
     Sub-packages written for labarserv2:
 
-        - afni_extract
         - fsl_extract
         - fsl_map
         - fsl_group

@@ -904,7 +904,7 @@ class LmerTest(EtacTest):
             log_dir,
             num_hours=75,
             num_cpus=12,
-            mem_gig=94,
+            mem_gig=164,
         )
 
         # Check for output

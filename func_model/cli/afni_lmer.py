@@ -1,6 +1,32 @@
-r"""Title.
+r"""Conduct linear mixed effects testing via AFNI's 3dLMEr.
 
-Desc.
+Test for main effects of emotions, tasks, and emotion x task interactions
+treating subjects as random effects via:
+    Y = emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)
+
+Three steps are involved in setting up and executing this analysis:
+downloading data from keoki, determining subbrick IDs, and the
+actual LME model (see Example below).
+
+Model names correspond to afni_model output:
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
+
+When using --model-name=mixed, the default behavior is to
+extract the task/stimulus subbricks. The block subbrick is
+available by including the option --block-coef.
+
+Requires
+--------
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+
+Notes
+-----
+Validated on AFNI Version: Precompiled binary linux_ubuntu_24_64: Jul 16 2024
+(Version AFNI_24.2.01 'Macrinus') AFNI_24.2.01 'Macrinus', see
+https://hub.docker.com/r/nmuncy/afni_ub24
 
 Example
 -------
@@ -95,6 +121,8 @@ def main():
     # Validate env
     if "dcc" not in platform.uname().node:
         raise EnvironmentError("afni_mvm is written for execution on DCC")
+
+    # Get args
     args = _get_args().parse_args()
     model_name = args.model_name
     blk_coef = args.block_coef
@@ -103,8 +131,8 @@ def main():
     run_lmer = args.run_lmer
     emo_list = args.emo_list
 
-    #
-    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRepTest")
+    # Setup log dirs
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
     if run_setup:
         log_name = "func-afni_setup"
     elif get_sub:
@@ -114,12 +142,12 @@ def main():
     else:
         raise ValueError()
 
-    # now_time = datetime.now()
-    # log_dir = os.path.join(
-    #     work_deriv,
-    #     "logs",
-    #     f"{log_name}_{now_time.strftime('%Y-%m-%d_%H:%M')}",
-    # )
+    now_time = datetime.now()
+    log_dir = os.path.join(
+        work_deriv,
+        "logs",
+        f"{log_name}_{now_time.strftime('%Y-%m-%d_%H:%M')}",
+    )
     log_dir = os.path.join(work_deriv, "logs", log_name)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -134,7 +162,7 @@ def main():
         )
         return
 
-    #
+    # Validate opts
     if blk_coef and model_name != "mixed":
         raise ValueError("--block-coef only available when model-name=mixed")
 
@@ -160,7 +188,7 @@ def main():
         )
         return
 
-    #
+    # Run LMEr
     if run_lmer:
         submit.schedule_afni_group_lmer(
             model_name, emo_list, work_deriv, log_dir, blk_coef
