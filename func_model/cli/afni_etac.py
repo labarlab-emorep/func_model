@@ -1,27 +1,41 @@
-"""Conduct univariate testing using AFNI-based methods.
-
-Written for the local labarserv2 environment.
-
-Construct and execute simple univariate tests for sanity checking
-pipeline output. Student and paired tests are organized by task
-stimulus type (movies, scenarios). Output is written to:
-    <proj-dir>/analyses/model_afni/ttest_<model-name>
+r"""Conduct T-Testing using AFNI's ETAC methods.
 
 Model names:
-    - student  = Student's T-test, comparing each task emotion against zero
-    - paired = Paired T-test, comparing each task emotion against washout
+    - task
+    - block
+    - mixed
 
-Examples
---------
-afni_univ --run-setup
-afni_univ --get-subbricks \\
-    --stat paired \\
-    --task scenarios \\
-    --block-coef
-afni_univ \\
-    --stat paired \\
-    --task movies \\
-    --block-coef
+Stat names:
+    - student = Student's T-test, compare each task emotion against zero
+    - paired = Paired T-test, compare each task emotion against washout
+
+Notes
+-----
+- Option --block-coef only available for --model-name=mixed.
+
+Example
+-------
+1. Get necessary data
+    afni_etac \
+        --run-setup \
+        --task movies \
+        --model-name mixed
+
+2. Identify sub-brick labels
+    afni_etac \
+        --get-subbricks \
+        --stat paired \
+        --task movies \
+        --model-name mixed \
+        --block-coef
+
+3. Conduct T-testing
+    afni_etac \
+        --run-etac \
+        --stat paired \
+        --task movies \
+        --model-name mixed \
+        --block-coef
 
 """
 
@@ -46,7 +60,8 @@ def _get_args():
     parser.add_argument(
         "--block-coef",
         action="store_true",
-        help="Test block coefficients instead of event for mixed models",
+        help="Test block (instead of event) coefficients "
+        + "when model-name=mixed",
     )
     parser.add_argument(
         "--emo-name",
@@ -61,15 +76,20 @@ def _get_args():
     )
     parser.add_argument(
         "--model-name",
-        choices=["mixed", "univ"],
+        choices=["mixed", "task", "block"],
         type=str,
-        default="mixed",
+        default="task",
         help=textwrap.dedent(
             """\
             AFNI deconv name
             (default : %(default)s)
             """
         ),
+    )
+    parser.add_argument(
+        "--run-etac",
+        action="store_true",
+        help="Conduct t-testing via AFNI's ETAC",
     )
     parser.add_argument(
         "--run-setup",
@@ -101,7 +121,7 @@ def main():
     """Setup working environment."""
     # Validate env
     if "dcc" not in platform.uname().node:
-        raise EnvironmentError("afni_univ is written for execution on DCC")
+        raise EnvironmentError("afni_etac is written for execution on DCC")
 
     # Catch args
     args = _get_args().parse_args()
@@ -113,13 +133,17 @@ def main():
     get_subs = args.get_subbricks
 
     # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRepTest")
     now_time = datetime.now()
-    log_name = (
-        "func-afni_setup"
-        if args.run_setup
-        else f"func-afni_stat-{stat}_{task}_model-{model_name}"
-    )
+    if args.run_setup:
+        log_name = "func-afni_setup"
+    elif get_subs:
+        log_name = "func-afni_subbricks"
+    elif args.run_etac:
+        log_name = f"func-afni_stat-{stat}_{task}_model-{model_name}"
+    else:
+        raise ValueError()
+
     log_dir = os.path.join(
         work_deriv,
         "logs",
@@ -130,7 +154,7 @@ def main():
 
     # Get data
     if args.run_setup:
-        submit.schedule_afni_group_setup(work_deriv, log_dir)
+        submit.schedule_afni_group_setup(task, model_name, work_deriv, log_dir)
         return
 
     # Validate args
@@ -150,11 +174,12 @@ def main():
         return
 
     # Schedule model for each task, emotion
-    for emo in emo_list:
-        submit.schedule_afni_group_univ(
-            task, model_name, stat, emo, work_deriv, log_dir, blk_coef
-        )
-        time.sleep(3)
+    if args.run_etac:
+        for emo in emo_list:
+            submit.schedule_afni_group_etac(
+                task, model_name, stat, emo, work_deriv, log_dir, blk_coef
+            )
+            time.sleep(3)
 
 
 if __name__ == "__main__":

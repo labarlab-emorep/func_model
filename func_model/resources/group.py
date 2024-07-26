@@ -1,7 +1,11 @@
 """Methods for group-level analyses.
 
+get_subbrick_label : identify subbrick label ID from AFNI decon files
+make_subbrick_label : construct label string for AFNI decon
 AfniExtractBetas : mine AFNI deconvolve output for betas estimates
+comb_matrices : combine beta matrices into large dataframe
 EtacTest : conduct AFNI group-level test via 3dttest++
+LmerTest : conduct AFNI group-level test via 3dLMEr
 MvmTest : conduct AFNI group-level test via 3dMVM
 ExtractTaskBetas : mine FSL first-level output for beta estimates
 ImportanceMask : generate mask in template space from classifier output
@@ -10,10 +14,12 @@ ConjunctAnalysis : generate conjunction maps from ImportanceMask output
 """
 
 import os
+import sys
 import re
 import json
 import glob
 import time
+import textwrap
 from typing import Union, Tuple
 import numpy as np
 import pandas as pd
@@ -39,14 +45,19 @@ def _cmd_sub_int(
 
 
 def get_subbrick_label(
-    sub_label: str, decon_path: Union[str, os.PathLike], out_txt=None
+    sub_label: str,
+    task: str,
+    model_name: str,
+    decon_path: Union[str, os.PathLike],
+    out_txt: Union[str, os.PathLike] = None,
 ):
-    """Title."""
+    """Write subbrick label ID to out_txt."""
     subj_work = os.path.dirname(decon_path)
     sing_head = helper.prepend_afni_sing(subj_work, subj_work)
     if not out_txt:
         out_txt = os.path.join(
-            subj_work, f"subbrick_{sub_label.split('#')[0]}.txt"
+            subj_work,
+            f"subbrick_{task}_{model_name}_{sub_label.split('#')[0]}.txt",
         )
     sub_cmd = _cmd_sub_int(sub_label, decon_path, out_txt=out_txt)
     bash_cmd = " ".join(sing_head + sub_cmd)
@@ -55,6 +66,25 @@ def get_subbrick_label(
     sub_job.wait()
     if not os.path.exists(out_txt):
         time.sleep(3)
+
+
+def make_subbrick_label(
+    task: str, emo_name: str, model_name: str, blk_coef: bool
+) -> str:
+    """Make subbrick label str set by deconvolve.TimingFiles."""
+    # Build coefficient name to match sub-brick, recreate name
+    # specified by resources.deconvolve.TimingFiles.session_events,
+    # and append AFNI coefficient title.
+    task_short = task.split("-")[1][:3]
+    if task_short not in ["mov", "sce"]:
+        raise ValueError("Problem splitting task name")
+    emo_short = helper.emo_switch()[emo_name]
+
+    # Account for task/stim or block coefficient
+    if blk_coef or model_name == "block":
+        return f"blk{task_short.title()[0]}{emo_short}#0_Coef"
+    else:
+        return f"{task_short}{emo_short}#0_Coef"
 
 
 class AfniExtractTaskBetas(matrix.NiftiArray):
@@ -414,35 +444,6 @@ def comb_matrices(subj_list, model_name, proj_deriv, out_dir):
     return out_path
 
 
-class _SetupTest:
-    """Helper class for AFNI group-level tests classes."""
-
-    def __init__(self, out_dir: Union[str, os.PathLike]):
-        """Initialize."""
-        self._out_dir = out_dir
-        if not os.path.exists(self._out_dir):
-            os.makedirs(self._out_dir)
-
-    def _write_script(self, final_name: str, bash_cmd: str):
-        """Write BASH command to shell script."""
-        etac_script = os.path.join(self._out_dir, f"{final_name}.sh")
-        with open(etac_script, "w") as script:
-            script.write(bash_cmd)
-
-    def _setup_output(
-        self, stat: str, emo_short: str, blk_coef: bool
-    ) -> tuple:
-        """Setup, return final filename and location."""
-        print(f"\tBuilding {stat} test for {emo_short}")
-        final_name = (
-            f"FINAL_{stat}_block_{emo_short}"
-            if blk_coef
-            else f"FINAL_{stat}_event_{emo_short}"
-        )
-        out_path = os.path.join(self._out_dir, f"{final_name}+tlrc.HEAD")
-        return (final_name, out_path)
-
-
 # %%
 class EtacTest:
     """Build and execute ETAC tests.
@@ -507,12 +508,12 @@ class EtacTest:
     def _setup_output(self, blk_coef: bool) -> Union[str, os.PathLike]:
         """Setup, return final filename and location."""
         # Make identifier string
-        id_str = (
-            f"stat-{self._stat}_{self._task}_"
-            + f"model-{self._model_name}_emo-{self._emo_name}"
+        model = (
+            f"model-{self._model_name}Block"
+            if blk_coef
+            else f"model-{self._model_name}"
         )
-        if blk_coef:
-            id_str += "_block"
+        id_str = f"stat-{self._stat}_{self._task}_{model}_emo-{self._emo_name}"
 
         # Setup output directory
         test_dir = os.path.join(self._out_dir, id_str)
@@ -520,7 +521,7 @@ class EtacTest:
             os.makedirs(test_dir)
 
         # Setup expected output
-        return os.path.join(test_dir, f"FINAL_{id_str}+tlrc.HEAD")
+        return os.path.join(test_dir, f"{id_str}+tlrc.HEAD")
 
     def write_exec(
         self,
@@ -546,7 +547,7 @@ class EtacTest:
             {"task-movies", "task-scenarios"}
             BIDS task identifier
         model_name : str
-            {"univ", "mixed"}
+            {"task", "block", "mixed"}
             Type of AFNI deconvolution
         stat : str
             {"student", "paired"}
@@ -643,7 +644,8 @@ class EtacTest:
         """Return sub-brick num given label."""
         subbrick_txt = os.path.join(
             os.path.dirname(self._decon_path),
-            f"subbrick_{self._sub_label.split('#')[0]}.txt",
+            f"subbrick_{self._task}_{self._model_name}_"
+            + f"{self._sub_label.split('#')[0]}.txt",
         )
 
         # Extract sub-brick label num if needed
@@ -652,7 +654,11 @@ class EtacTest:
             or os.stat(subbrick_txt).st_size == 0
         ):
             get_subbrick_label(
-                self._sub_label, self._decon_path, out_txt=subbrick_txt
+                self._sub_label,
+                self._task,
+                self._model_name,
+                self._decon_path,
+                out_txt=subbrick_txt,
             )
         if not os.path.exists(subbrick_txt):
             return None
@@ -673,13 +679,248 @@ class EtacTest:
         return last_line
 
 
-class MvmTest(_SetupTest):
+def _blur_decon(model_indiv, mask_path, blur, decon_list):
+    """Title."""
+    try:
+        arr_id = os.environ["SLURM_ARRAY_TASK_ID"]
+    except KeyError:
+        raise EnvironmentError(
+            "group._blur_decon intended for execution by SLURM array"
+        )
+
+    decon_path = decon_list[int(arr_id)]
+    out_path = decon_path.replace("+tlrc", f"_blur-{blur}+tlrc")
+    if os.path.exists(out_path):
+        return
+
+    sing_cmd = helper.prepend_afni_sing(
+        os.path.dirname(mask_path), model_indiv
+    )
+    afni_blur = [
+        "3dmerge",
+        f"-prefix {out_path}",
+        f"-1blur_fwhm {blur}",
+        "-doall",
+        decon_path,
+    ]
+    afni_cmd = " ".join(sing_cmd + afni_blur)
+    _ = submit.submit_subprocess(afni_cmd, out_path, "blur")
+
+
+def _calc_acf(model_indiv, mask_path, errts_list, out_txt):
+    """Title."""
+    try:
+        arr_id = os.environ["SLURM_ARRAY_TASK_ID"]
+    except KeyError:
+        raise EnvironmentError(
+            "group._calc_acf intended for execution by SLURM array"
+        )
+
+    #
+    errts_path = errts_list[int(arr_id)]
+    out_path = os.path.join(os.path.dirname(errts_path), out_txt)
+    if os.path.exists(out_path):
+        return
+
+    #
+    sing_cmd = helper.prepend_afni_sing(
+        os.path.dirname(mask_path), os.path.dirname(errts_path)
+    )
+    afni_blur = [
+        "3dFWHMx",
+        f"-mask {mask_path}",
+        f"-input {errts_path}",
+        "-acf",
+        f"> {out_path}",
+    ]
+    afni_cmd = " ".join(sing_cmd + afni_blur)
+    # _ = submit.submit_subprocess(afni_cmd, out_path, "3dfwhmx")
+    job_sp = subprocess.Popen(
+        afni_cmd,
+        shell=True,
+        # stdout=subprocess.PIPE,
+        # stderr=subprocess.PIPE,
+    )
+    # job_out, job_err = job_sp.communicate()
+    job_sp.wait()
+
+
+class LmerTest(EtacTest):
+    """Build and execute 3dLMEr command.
+
+    Parameters
+    ----------
+    out_dir : str, os.PathLike
+        Location of output directory
+    mask_path : str, os.PathLike
+        Location of template mask
+
+    Methods
+    -------
+    write_exec()
+        Write and then execute 3dLMEr command
+
+    """
+
+    def __init__(self, out_dir, mask_path):
+        """Initialize LmerTest."""
+        self._out_dir = out_dir
+        self._mask_path = mask_path
+        super().__init__(out_dir, mask_path)
+
+    def _lmer_cmd(
+        self,
+        out_path: Union[str, os.PathLike],
+    ) -> list:
+        """Return 3dLMEr options."""
+        # Build 3dLMEr for singularity
+        work_dir = os.path.dirname(out_path)
+        sing_cmd = helper.prepend_afni_sing(
+            os.path.dirname(self._out_dir), work_dir
+        )
+        lmer_head = [f"cd {work_dir};"] + sing_cmd + ["3dLMEr"]
+
+        # Build 3dLMEr options
+        final_name = os.path.basename(out_path).split("+")[0]
+        lmer_opts = [
+            f"-mask {self._mask_path}",
+            f"-prefix {final_name}",
+            "-jobs 12",
+            "-SS_type 3",
+            "-bounds -3 3",
+            "-model 'emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)'",
+        ]
+
+        # Build gltCodes and datatable
+        glt_opts = self._glt_code()
+        data_head = [
+            "-dataTable",
+            "Subj task emotion InputFile",
+        ]
+        data_input = self._build_datatable()
+        return lmer_head + lmer_opts + glt_opts + data_head + data_input
+
+    def _glt_code(self) -> list:
+        """Build gltCode options."""
+        glt_code = []
+        for emo in self._emo_list:
+
+            # Main effect of emo
+            emo_short = helper.emo_switch()[emo]
+            glt_code.append(f"-gltCode {emo_short}")
+            glt_code.append(f"'emotion : 1*{emo_short}'")
+
+            # Task x emo
+            for task in self._decon_dict.keys():
+                task_short = task.split("-")[1][:3]
+                glt_code.append(f"-gltCode {emo_short}.{task_short}")
+                glt_code.append(
+                    f"'task : 1*{task_short} emotion : 1*{emo_short}'"
+                )
+        return glt_code
+
+    def _build_datatable(self) -> list:
+        """Build datatable input."""
+        data_list = []
+        # Lines for subj, task, emo
+        for self._task, subj_dict in self._decon_dict.items():
+            task_short = self._task.split("-")[1][:3]
+            for subj, self._decon_path in subj_dict.items():
+                subj_short = subj.split("-")[-1]
+                decon_pref = os.path.splitext(self._decon_path)[0]
+                for emo in self._emo_list:
+
+                    # Determine subbrick name, get ID
+                    self._sub_label = make_subbrick_label(
+                        self._task, emo, self._model_name, self._blk_coef
+                    )
+                    label_int = self._get_label_int()
+                    if not label_int:
+                        continue
+
+                    # Add input line
+                    emo_short = helper.emo_switch()[emo]
+                    data_list.append(f"{subj_short} {task_short} {emo_short}")
+                    data_list.append(f"'{decon_pref}[{label_int}]'")
+        return data_list
+
+    def write_exec(self, model_name, decon_dict, emo_list, blk_coef, log_dir):
+        """Generate and execute 3dlMEr command.
+
+        Parameters
+        ----------
+        model_name : str
+            Deconvolution model name
+        decon_dict : dict
+            Paths to decon files organized by task, subj.
+            {"task-movies": {"sub-1": "/path/to/decon+tlrc.HEAD"}}
+        emo_list : list
+            List of emotions
+        blk_coef : bool
+            Use block instead of task coefficient when model_name=mixed
+        log_dir : str, os.PathLike
+            Location of logging directory
+
+        Returns
+        -------
+        str, os.PathLike
+            Location of final HEAD file
+
+        """
+        for chk_task in decon_dict.keys():
+            if chk_task not in ["task-movies", "task-scenarios"]:
+                raise KeyError()
+        self._model_name = model_name
+        self._decon_dict = decon_dict
+        self._emo_list = emo_list
+        self._blk_coef = blk_coef
+
+        # Identify output prefix, make output dir
+        model = (
+            f"model-{self._model_name}Block"
+            if blk_coef
+            else f"model-{self._model_name}"
+        )
+        out_pref = f"stat-lmer_{model}"
+        model_dir = os.path.join(self._out_dir, out_pref)
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
+        # Determine, check for output file
+        out_path = os.path.join(model_dir, f"{out_pref}+tlrc.HEAD")
+        if os.path.exists(out_path):
+            return
+
+        # Build and write LMEr command
+        lmer_cmd = " ".join(self._lmer_cmd(out_path))
+        lmer_script = out_path.replace("+tlrc.HEAD", ".sh")
+        with open(lmer_script, "w") as script:
+            script.write(lmer_cmd)
+
+        # Execute LMEr script (command too long for subprocess)
+        submit.submit_sbatch(
+            f"source {lmer_script}",
+            "jLMEr",
+            log_dir,
+            num_hours=75,
+            num_cpus=12,
+            mem_gig=164,
+        )
+
+        # Check for output
+        if not os.path.exists(out_path):
+            raise FileNotFoundError(f"Missing expected file : {out_path}")
+        return out_path
+
+
+class MvmTest:
     """Build and execute 3dMVM tests.
 
     Construct a two-factor repeated-measures ANOVA for sanity checking.
     3dMVM scripts and output are written to <out_dir>.
 
-    Inherits _SetupTest.
+    Parameters
+    ----------
 
     Methods
     --------
@@ -696,28 +937,29 @@ class MvmTest(_SetupTest):
 
     """
 
-    def __init__(self, proj_dir, out_dir, mask_path):
-        """Initialize.
-
-        Parameters
-        ----------
-        proj_dir : path
-            Location of project directory
-        out_dir : path
-            Output location for generated files
-        mask_path : path
-            Location of group mask
-
-        """
-        print("Initializing MvmTest")
-        super().__init__(proj_dir, out_dir, mask_path)
+    def __init__(
+        self,
+        model_indiv,
+        model_group,
+        mask_path,
+        log_dir,
+        use_blur=True,
+        blur=4,
+    ):
+        """Initialize."""
+        self._model_indiv = model_indiv
+        self._model_group = model_group
+        self._mask_path = mask_path
+        self._log_dir = log_dir
+        self._use_blur = use_blur
+        self._blur = blur
 
     def _build_row(self, row_dict: dict):
         """Write single row of datatable."""
         # Identify sub-brick integer from label
         for _, info_dict in row_dict.items():
             self._get_subbrick.decon_path = info_dict["decon_path"]
-            self._get_subbrick.subj_out_dir = self._out_dir
+            self._get_subbrick.subj_out_dir = self._model_group
             label_int = self._get_subbrick.get_label_int(
                 info_dict["sub_label"]
             )
@@ -734,7 +976,7 @@ class MvmTest(_SetupTest):
         """Build the datatable of 3dMVM."""
         # Initialize ExtractTaskBetas, subset group_dict for
         # individual subjects, sessions
-        self._get_subbrick = ExtractTaskBetas(self._proj_dir)
+        self._get_subbrick = ExtractTaskBetas(self._model_indiv)
         self._table_list = []
         for subj in self._group_dict:
             for task, info_dict in self._group_dict[subj].items():
@@ -788,22 +1030,9 @@ class MvmTest(_SetupTest):
                     },
                 }
         model_name : str
-            [rm]
             Model identifier
         emo_short : str
             Shortened (AFNI) emotion name
-
-        Returns
-        -------
-        path
-            Output directory location
-
-        Raises
-        ------
-        KeyError
-            Unexpected group_dict organization
-        ValueError
-            Unexpected model name
 
         """
         # Validate
@@ -831,7 +1060,7 @@ class MvmTest(_SetupTest):
         print("\tBuilding 3dMVM command")
         mvm_head = [
             "3dMVM",
-            f"-prefix {self._out_dir}/{final_name}",
+            f"-prefix {self._model_group}/{final_name}",
             "-jobs 12",
             "-bsVars 1",
             "-wsVars 'sesslabel*stimlabel'",
@@ -850,38 +1079,193 @@ class MvmTest(_SetupTest):
 
         print("\tExecuting 3dMVM command")
         submit.submit_subprocess(mvm_cmd, out_path, f"mvm{emo_short}")
-        return self._out_dir
 
-    def clustsim(self):
-        """Conduct mask-based Monte Carlo simulations.
+    def _submit_subproc(self, job_cmd: str):
+        """Title."""
+        job_sp = subprocess.Popen(
+            job_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        job_out, job_err = job_sp.communicate()
+        job_sp.wait()
+        return (job_out, job_err)
 
-        Does not incorporate ACF, but will if used for formal analyses
-        and not simple sanity-checking. Output file written to the
-        same directory as the group mask, and title
-        montecarlo_simulations.txt.
+    def blur_decon(self, model_name: str):
+        """Title.
 
-        Returns
-        -------
-        path
-            Location of output file
+        Attributes
+        ----------
+        blur_dict : dict
 
         """
-        sim_out = os.path.join(
-            os.path.dirname(self._mask_path), "montecarlo_simulations.txt"
+        # Manually build decon_list to avoid resubmitting entire array
+        # for every single file update.
+        search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
+        decon_list = []
+        func_dirs = sorted(glob.glob(search_path))
+        for func_path in func_dirs:
+            for file_type in ["stats", "errts"]:
+
+                #
+                chk_stat = (
+                    f"{func_path}/decon_{model_name}_"
+                    + f"{file_type}_REML+tlrc.HEAD"
+                )
+                chk_blur = chk_stat.replace(
+                    "+tlrc", f"_blur-{self._blur}+tlrc"
+                )
+                if os.path.exists(chk_stat) and not os.path.exists(chk_blur):
+                    decon_list.append(chk_stat)
+
+        if not decon_list:
+            return
+
+        #
+        sbatch_cmd = f"""\
+            #!/bin/env {sys.executable}
+
+            #SBATCH --output={self._log_dir}/blur_decon_%a.txt
+            #SBATCH --array=0-{len(decon_list) - 1}%20
+            #SBATCH --time=06:00:00
+            #SBATCH --mem=24G
+            #SBATCH --wait
+
+            from func_model.resources import group
+            group._blur_decon(
+                "{self._model_indiv}",
+                "{self._mask_path}",
+                {self._blur},
+                {decon_list},
+            )
+
+        """
+        sbatch_cmd = textwrap.dedent(sbatch_cmd)
+
+        #
+        py_script = f"{self._log_dir}/run_blur_decon.py"
+        with open(py_script, "w") as ps:
+            ps.write(sbatch_cmd)
+        self._submit_subproc(f"sbatch {py_script}")
+
+    def noise_acf(self, model_name):
+        """Title."""
+        #
+        search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
+        search_str = (
+            f"decon_{model_name}_errts_REML_blur-{self._blur}+tlrc.HEAD"
+            if self._use_blur
+            else f"decon_{model_name}_errts_REML+tlrc.HEAD"
         )
+        errts_all = sorted(glob.glob(f"{search_path}/{search_str}"))
+        if not errts_all:
+            raise FileNotFoundError(
+                f"Glob failed at finding : {search_path}/{search_str}"
+            )
+
+        # Build errts_list to avoid submitting large array for few
+        # needed files.
+        errts_list = []
+        self._acf_name = (
+            f"ACF_raw_blur{self._blur}.txt"
+            if self._use_blur
+            else "ACF_raw.txt"
+        )
+        for errts_path in errts_all:
+            chk_out = os.path.join(os.path.dirname(errts_path), self._acf_name)
+            if not os.path.exists(chk_out):
+                errts_list.append(errts_path.split(".")[0])
+
+        if not errts_list:
+            return
+
+        #
+        sbatch_cmd = f"""\
+            #!/bin/env {sys.executable}
+
+            #SBATCH --output={self._log_dir}/acf_errts_%a.txt
+            #SBATCH --array=0-{len(errts_list) - 1}%20
+            #SBATCH --time=06:00:00
+            #SBATCH --mem=24G
+            #SBATCH --wait
+
+            from func_model.resources import group
+            group._calc_acf(
+                "{self._model_indiv}",
+                "{self._mask_path}",
+                {errts_list},
+                "{self._acf_name}",
+            )
+
+        """
+        sbatch_cmd = textwrap.dedent(sbatch_cmd)
+
+        #
+        py_script = f"{self._log_dir}/run_calc_acf.py"
+        with open(py_script, "w") as ps:
+            ps.write(sbatch_cmd)
+        self._submit_subproc(f"sbatch {py_script}")
+
+    def clustsim(self):
+        """Conduct mask-based Monte Carlo simulations."""
+        sim_out = os.path.join(self._model_group, "montecarlo_simulations.txt")
         if os.path.exists(sim_out):
             return sim_out
 
-        print("\tConducting Monte Carlo simulations")
+        # Calculate average ACF
+        self._get_acf()
+        mean_acf = list(self._df_acf.mean())
+
+        # Build and submit cluststim
+        afni_prep = helper.prepend_afni_sing(
+            self._model_group, self._model_indiv
+        )
         bash_list = [
             "3dClustSim",
             f"-mask {self._mask_path}",
             "-LOTS",
             "-iter 10000",
+            "-pthr 0.001",
+            "-athr 0.05",
+            f"-acf {mean_acf[0]} {mean_acf[1]} {mean_acf[2]}",
             f"> {sim_out}",
         ]
-        submit.submit_subprocess(" ".join(bash_list), sim_out, "MCsim")
-        return sim_out
+        submit.submit_subprocess(
+            " ".join(afni_prep + bash_list), sim_out, "MCsim"
+        )
+
+    def _get_acf(self):
+        """Title."""
+        search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
+        acf_list = sorted(glob.glob(f"{search_path}/{self._acf_name}"))
+        if not acf_list:
+            raise FileNotFoundError(
+                f"Glob failed at finding : {search_path}/{self._acf_name}"
+            )
+
+        #
+        with Pool(processes=8) as pool:
+            items = [(x) for x in acf_list]
+            acf_values = pool.map(self._mine_acf, items)
+        self._df_acf = pd.DataFrame(
+            acf_values, columns=["x", "y", "z", "comb"]
+        )
+
+        # Write out for
+        out_acf = os.path.join(self._model_group, "acf_all.csv")
+        self._df_acf.to_csv(out_acf)
+
+    def _mine_acf(self, acf_path) -> list:
+        """Title."""
+        with open(acf_path) as f:
+            for line in f:
+                pass
+            last_line = line
+
+        acf_values = [float(x) for x in last_line.strip().split()]
+        if len(acf_values) == 4:
+            return acf_values
 
 
 # %%

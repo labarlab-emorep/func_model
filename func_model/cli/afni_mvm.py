@@ -1,30 +1,22 @@
-"""Conduct multivariate testing using AFNI-based methods.
+"""Conduct ANOVA-style testing using AFNI's 3dMVM.
 
-Written for the local labarserv2 environment.
-
-Construct and execute simple multivariate tests for sanity checking
-pipeline output. Output is written to:
-    <proj-dir>/analyses/model_afni/mvm_<model-name>
-
-Model names:
-    - rm = repeated-measures ANOVA using two within-subject factors.
-            Factor A is session stimulus (movies, scenarios), and
-            Factor B is stimulus type (emotion, washout). Main and
-            interactive effects are generated as well as an
-            emotion-washout T-stat.
+MVM names:
+    - amodal =
 
 Examples
 --------
-afni_mvm -n rm
-afni_mvm -n rm --emo-name fear disgust
+afni_mvm
 
 """
 
 # %%
+import os
 import sys
 import textwrap
+from datetime import datetime
+import platform
 from argparse import ArgumentParser, RawTextHelpFormatter
-from func_model.workflows import wf_afni
+from func_model.resources import submit
 from func_model.resources import helper
 
 
@@ -35,43 +27,42 @@ def _get_args():
         description=__doc__, formatter_class=RawTextHelpFormatter
     )
     parser.add_argument(
-        "--proj-dir",
+        "--block-coef",
+        action="store_true",
+        help="Test block (instead of event) coefficients "
+        + "when model-name=mixed",
+    )
+    parser.add_argument(
+        "--emo-list",
+        choices=list(helper.emo_switch().keys()),
         type=str,
-        default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
+        nargs="+",
+        default=list(helper.emo_switch().keys()),
+        help="Run tests for specified emotion(s), instead of all",
+    )
+    parser.add_argument(
+        "--model-name",
+        choices=["mixed"],
+        type=str,
+        default="mixed",
         help=textwrap.dedent(
             """\
-            Path to experiment-specific project directory
+            AFNI deconv name
             (default : %(default)s)
             """
         ),
     )
     parser.add_argument(
-        "--emo-name",
-        nargs="+",
-        help=textwrap.dedent(
-            """\
-            List of emotions to test specifically
-            (default : None -- all emotions tested)
-            """
-        ),
+        "--run-setup",
+        action="store_true",
+        help="Download model_afni data and make template mask",
+    )
+    parser.add_argument(
+        "--run-mvm",
+        choices=["amodal"],
+        help="MVM model name",
         type=str,
     )
-
-    required_args = parser.add_argument_group("Required Arguments")
-    required_args.add_argument(
-        "-n",
-        "--model-name",
-        help=textwrap.dedent(
-            """\
-            [rm]
-            Name of model, for organizing output and triggering
-            differing workflows.
-            """
-        ),
-        type=str,
-        required=True,
-    )
-
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
         sys.exit(0)
@@ -82,25 +73,44 @@ def _get_args():
 # %%
 def main():
     """Capture, validate arguments and submit workflow."""
+    # Validate env
+    if "dcc" not in platform.uname().node:
+        raise EnvironmentError("afni_mvm is written for execution on DCC")
     args = _get_args().parse_args()
-    proj_dir = args.proj_dir
+
+    # Setup work directory, for intermediates
+    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    now_time = datetime.now()
+    log_name = "func-afni_setup" if args.run_setup else "func-afni_mvm"
+    # log_dir = os.path.join(
+    #     work_deriv,
+    #     "logs",
+    #     f"{log_name}_{now_time.strftime('%Y-%m-%d_%H:%M')}",
+    # )
+    log_dir = os.path.join(work_deriv, "logs", log_name)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    # Get data
+    if args.run_setup:
+        submit.schedule_afni_group_setup(work_deriv, log_dir)
+        return
+
+    #
+    stat = args.run_mvm
+    if not stat:
+        return
+
+    # # Submit workflow for each emotion
+    # emo_iter = emo_list if emo_list else emo_dict.keys()
+    # for emo_name in emo_iter:
+    #     wf_afni.afni_mvm(proj_dir, model_name, emo_name)
+    emo_list = args.emo_list
+    blk_coef = args.block_coef
     model_name = args.model_name
-    emo_list = args.emo_name
-    if not helper.valid_mvm_test(model_name):
-        print(f"Unsupported model name : {model_name}")
-        sys.exit(1)
-
-    # Get, validate emotion list
-    emo_dict = helper.emo_switch()
-    if emo_list:
-        for emo in emo_list:
-            if emo not in emo_dict.keys():
-                raise ValueError(f"Invalid emotion specified : {emo}")
-
-    # Submit workflow for each emotion
-    emo_iter = emo_list if emo_list else emo_dict.keys()
-    for emo_name in emo_iter:
-        wf_afni.afni_mvm(proj_dir, model_name, emo_name)
+    submit.schedule_afni_group_mvm(
+        model_name, stat, emo_list, work_deriv, log_dir, blk_coef
+    )
 
 
 if __name__ == "__main__":
