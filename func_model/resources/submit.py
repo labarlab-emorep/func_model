@@ -19,6 +19,8 @@ import textwrap
 from typing import Union
 from func_model.resources import helper
 
+# TODO refactor schedule_afni_group_* methods into class
+
 
 def submit_subprocess(bash_cmd, chk_path, job_name, force_cont=False):
     """Submit bash command as subprocess.
@@ -522,6 +524,50 @@ def schedule_afni_group_lmer(
     sbatch_cmd = textwrap.dedent(sbatch_cmd)
     suff = "_block.py" if blk_coef else ".py"
     py_script = f"{log_dir}/run-afni_lmer-{model_name}{suff}"
+    with open(py_script, "w") as ps:
+        ps.write(sbatch_cmd)
+
+    # Execute script
+    h_sp = subprocess.Popen(
+        f"sbatch {py_script}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    h_out, _ = h_sp.communicate()
+
+    # Communicate to user
+    print(h_out.decode("utf-8"))
+
+
+def schedule_afni_group_mc(
+    model_name: str,
+    work_deriv: Union[str, os.PathLike],
+    log_dir: Union[str, os.PathLike],
+):
+    """Schedule monte carlo."""
+    # Write parent python script
+    sbatch_cmd = f"""\
+        #!/bin/env {sys.executable}
+
+        #SBATCH --job-name=pMC
+        #SBATCH --output={log_dir}/parMC.txt
+        #SBATCH --time=80:00:00
+        #SBATCH --mem=12G
+        #SBATCH -c 10
+
+        from func_model.workflows import wf_afni
+
+        # Conduct monte carlo sims
+        wf_afni.afni_montecarlo(
+            "{model_name}",
+            "{work_deriv}",
+            "{log_dir}",
+        )
+
+    """
+    sbatch_cmd = textwrap.dedent(sbatch_cmd)
+    py_script = f"{log_dir}/run-afni_mc-{model_name}.py"
     with open(py_script, "w") as ps:
         ps.write(sbatch_cmd)
 

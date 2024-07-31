@@ -1,5 +1,6 @@
 """Methods for additional preprocessing.
 
+smooth_epi : Spatially smooth EPI file
 extra_preproc : Conduct extra preprocessing to prep for AFNI deconvolution
 
 """
@@ -13,7 +14,7 @@ from func_model.resources import masks
 from func_model.resources import submit
 
 
-def _smooth_epi(
+def smooth_epi(
     subj_work: Union[str, os.PathLike],
     work_deriv: Union[str, os.PathLike],
     func_preproc: list,
@@ -246,7 +247,7 @@ def extra_preproc(subj, sess, subj_work, work_deriv, do_rest=False):
     sess_anat["mask-min"] = make_masks.minimum()
 
     # Smooth and scale EPI data
-    smooth_epi = _smooth_epi(subj_work, work_deriv, sess_func["func-preproc"])
+    smooth_epi = smooth_epi(subj_work, work_deriv, sess_func["func-preproc"])
     sess_func["func-scaled"] = _scale_epi(
         subj_work,
         work_deriv,

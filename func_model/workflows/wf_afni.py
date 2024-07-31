@@ -704,6 +704,36 @@ def afni_ttest(
     shutil.rmtree(out_dir)
 
 
+def afni_montecarlo(model_name, work_deriv, log_dir):
+    """Conduct Monte Carlo simulations to cluster thresholding.
+
+    Parameters
+    ----------
+    model_name : str
+        {"mixed", "task", "block"}
+        Deconvolution model name
+    work_deriv : str, os.PathLike
+        Location of output derivaitves directory
+    log_dir : str, os.PathLike
+        Location of logging directory
+
+    """
+    if model_name not in ["task", "block", "mixed"]:
+        raise ValueError()
+
+    # Setup work dirs
+    sync_data = helper.SyncGroup(work_deriv)
+    model_indiv, model_group = sync_data.setup_group()
+    mask_path = masks.tpl_gm(model_group)
+
+    # Conduct Monte Carlo Simulations
+    mon_car = group.MonteCarlo(
+        model_indiv, model_group, model_name, mask_path, log_dir
+    )
+    mon_car.noise_acf()
+    mon_car.clustsim()
+
+
 def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
     """Conduct linear mixed effect model via AFNI's 3dLMEr method.
 

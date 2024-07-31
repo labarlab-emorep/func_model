@@ -47,6 +47,11 @@ Example
         --model-name mixed \
         --block-coef
 
+4. Conduct Monte Carlo simulations
+    afni_lmer \
+        --run-mc \
+        --model-name mixed
+
 """
 
 # %%
@@ -98,9 +103,14 @@ def _get_args():
         ),
     )
     parser.add_argument(
+        "--run-mc",
+        action="store_true",
+        help="Conduct monte carlo simulations",
+    )
+    parser.add_argument(
         "--run-lmer",
         action="store_true",
-        help="Conduct linear mixed effect model via AFNI",
+        help="Conduct linear mixed effect model",
     )
     parser.add_argument(
         "--run-setup",
@@ -126,9 +136,10 @@ def main():
     args = _get_args().parse_args()
     model_name = args.model_name
     blk_coef = args.block_coef
-    run_setup = args.run_setup
     get_sub = args.get_subbricks
     run_lmer = args.run_lmer
+    run_setup = args.run_setup
+    run_mc = args.run_mc
     emo_list = args.emo_list
 
     # Setup log dirs
@@ -139,6 +150,8 @@ def main():
         log_name = "func-afni_subbricks"
     elif run_lmer:
         log_name = "func-afni_lmer"
+    elif run_mc:
+        log_name = "func-afni_montecarlo"
     else:
         raise ValueError()
 
@@ -148,12 +161,12 @@ def main():
         "logs",
         f"{log_name}_{now_time.strftime('%Y-%m-%d_%H:%M')}",
     )
-    log_dir = os.path.join(work_deriv, "logs", log_name)
+    log_dir = os.path.join(work_deriv, "logs", log_dir)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
     # Get data
-    if args.run_setup:
+    if run_setup:
         submit.schedule_afni_group_setup(
             "task-movies", model_name, work_deriv, log_dir
         )
@@ -161,6 +174,10 @@ def main():
             "task-scenarios", model_name, work_deriv, log_dir
         )
         return
+
+    # Run MC
+    if run_mc:
+        submit.schedule_afni_group_mc(model_name, work_deriv, log_dir)
 
     # Validate opts
     if blk_coef and model_name != "mixed":
