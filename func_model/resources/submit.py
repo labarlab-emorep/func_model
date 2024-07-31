@@ -8,7 +8,6 @@ schedule_afni_group_setup : download data from Keoki
 schedule_afni_group_subbrick : mine deconvolve files for subbrick IDs
 schedule_afni_group_etac : conduct t-testing via ETAC (3dttest++)
 schedule_afni_group_lmer : conduct linear mixed effects models via 3dLMEr
-schedule_afni_group_mvm : conduct ANOVA-style analysis via 3dMVM
 
 """
 
@@ -568,59 +567,6 @@ def schedule_afni_group_mc(
     """
     sbatch_cmd = textwrap.dedent(sbatch_cmd)
     py_script = f"{log_dir}/run-afni_mc-{model_name}.py"
-    with open(py_script, "w") as ps:
-        ps.write(sbatch_cmd)
-
-    # Execute script
-    h_sp = subprocess.Popen(
-        f"sbatch {py_script}",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    h_out, _ = h_sp.communicate()
-
-    # Communicate to user
-    print(h_out.decode("utf-8"))
-
-
-def schedule_afni_group_mvm(
-    model_name: str,
-    stat: str,
-    emo_list: list,
-    work_deriv: Union[str, os.PathLike],
-    log_dir: Union[str, os.PathLike],
-    blk_coef: bool,
-):
-    """Schedule 3dMVM."""
-    # Write parent python script
-    sbatch_cmd = f"""\
-        #!/bin/env {sys.executable}
-
-        #SBATCH --job-name=pMvm
-        #SBATCH --output={log_dir}/parMvm.txt
-        #SBATCH --time=80:00:00
-        #SBATCH --mem=12G
-        #SBATCH -c 10
-
-        from func_model.workflows import wf_afni
-
-        # Conduct group-level test
-        afni_mvm = wf_afni.AfniMvm(
-            "{model_name}",
-            "{stat}",
-            "{work_deriv}",
-            "{log_dir}",
-        )
-        afni_mvm.run_mvm(
-            {emo_list},
-            {blk_coef},
-        )
-
-    """
-    sbatch_cmd = textwrap.dedent(sbatch_cmd)
-    suff = "_block.py" if blk_coef else ".py"
-    py_script = f"{log_dir}/run-afni_{stat}-{model_name}{suff}"
     with open(py_script, "w") as ps:
         ps.write(sbatch_cmd)
 
