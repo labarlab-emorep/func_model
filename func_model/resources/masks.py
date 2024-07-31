@@ -12,6 +12,8 @@ from func_model.resources import helper
 from func_model.resources import submit
 from func_model.resources import matrix
 
+# TODO refactor so methods are more modular
+
 
 class MakeMasks:
     """Generate masks for AFNI-style analyses.
