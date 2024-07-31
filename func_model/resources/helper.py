@@ -282,8 +282,8 @@ class SyncGroup(wf_fsl._SupportFsl):
             print(h_err)
             raise FileNotFoundError("model_afni download failed")
 
-    def send_etac(self, test_dir: Union[str, os.PathLike]):
-        """Send etac output to Keoki."""
+    def send_group(self, test_dir: Union[str, os.PathLike]):
+        """Send group output to Keoki."""
         keoki_dst = os.path.join(
             os.path.dirname(self._keoki_path), "analyses", "model_afni_group"
         )

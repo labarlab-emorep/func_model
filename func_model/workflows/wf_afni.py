@@ -700,7 +700,7 @@ def afni_ttest(
 
     # Send output to Keoki, clean
     out_dir = os.path.dirname(out_path)
-    sync_data.send_etac(out_dir)
+    sync_data.send_group(out_dir)
     shutil.rmtree(out_dir)
 
 
@@ -731,7 +731,12 @@ def afni_montecarlo(model_name, work_deriv, log_dir):
         model_indiv, model_group, model_name, mask_path, log_dir
     )
     mon_car.noise_acf()
-    mon_car.clustsim()
+    out_path = mon_car.clustsim()
+
+    # Send output to Keoki, clean
+    out_dir = os.path.dirname(out_path)
+    sync_data.send_group(out_dir)
+    shutil.rmtree(out_dir)
 
 
 def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
@@ -785,5 +790,5 @@ def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
 
     # Send output to Keoki, clean
     out_dir = os.path.dirname(out_path)
-    sync_data.send_etac(out_dir)
+    sync_data.send_group(out_dir)
     shutil.rmtree(out_dir)

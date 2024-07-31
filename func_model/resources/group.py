@@ -927,13 +927,19 @@ class MonteCarlo:
             ps.write(sbatch_cmd)
         self._submit_subproc(f"sbatch {py_script}")
 
-    def clustsim(self):
+    def clustsim(self) -> Union[str, os.PathLike]:
         """Conduct mask-based Monte Carlo simulations."""
+        # Setup output location, check for previous work
+        out_dir = os.path.join(
+            self._model_group, f"stat-lmer_model-{self._model_name}"
+        )
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
         sim_out = os.path.join(
-            self._model_group, f"montecarlo_simulations_{self._model_name}.txt"
+            out_dir, f"montecarlo_simulations_{self._model_name}.txt"
         )
         if os.path.exists(sim_out):
-            return
+            return sim_out
 
         # Calculate average ACF
         self._get_acf()
@@ -955,9 +961,10 @@ class MonteCarlo:
         ]
         self._submit_subproc(" ".join(afni_prep + bash_list))
 
-        # Check
+        # Check for output
         if not os.path.exists(sim_out):
             raise FileNotFoundError()
+        return sim_out
 
     def _get_acf(self):
         """Multiprocess ACF aggregation."""
