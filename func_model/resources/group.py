@@ -1092,7 +1092,9 @@ class LmerTest(EtacTest):
                     data_list.append(f"'{decon_pref}[{label_int}]'")
         return data_list
 
-    def write_exec(self, model_name, decon_dict, emo_list, blk_coef, log_dir):
+    def write_exec(
+        self, model_name, decon_dict, emo_list, blk_coef, log_dir, mem=164
+    ):
         """Generate and execute 3dlMEr command.
 
         Parameters
@@ -1108,6 +1110,8 @@ class LmerTest(EtacTest):
             Use block instead of task coefficient when model_name=mixed
         log_dir : str, os.PathLike
             Location of logging directory
+        mem : int, optional
+            Amount of RAM to request
 
         Returns
         -------
@@ -1152,7 +1156,7 @@ class LmerTest(EtacTest):
             log_dir,
             num_hours=75,
             num_cpus=12,
-            mem_gig=164,
+            mem_gig=mem,
         )
 
         # Check for output

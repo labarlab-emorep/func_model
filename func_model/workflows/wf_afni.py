@@ -705,7 +705,7 @@ def afni_ttest(
 
 
 def afni_montecarlo(model_name, work_deriv, log_dir):
-    """Conduct Monte Carlo simulations to cluster thresholding.
+    """Conduct Monte Carlo simulations for cluster thresholding.
 
     Parameters
     ----------

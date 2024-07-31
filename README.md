@@ -664,6 +664,7 @@ optional arguments:
                         Task name
 
 ```
+When specifying `--model-name`, the input parameter should correspond to the model name selected in `afni_model` (see [above](#afni_etac)). That is, the output of `$afni_model --model-name task [OPTS]` would be called for by `$afni_etac --model-name task [OPTS]`.
 
 
 ### Functionality
@@ -671,8 +672,8 @@ First, downloading data from Keoki is available with the `--run-setup` option, f
 
 Second, the deconvolved sub-brick labels are extracted with the `--get-subbricks` option. A unique file for each sub-brick of interest will be written to the subject's 'func' directory, and a washout file will also be written if `--stat paired` is used. When using `mixed` models, the task sub-brick named [mov|sce]Emo for a movie or scenario emotion, respectively, while the block sub-brick is named blk[M|S]Emo.
 
-Third, the T-test workflow will run with the following steps:
-1. Find all deconvolved files
+Third, the T-test workflow is available via `--run-etac`, which will run with the following steps:
+1. Find all deconvolved files for the specified task, model name
 1. Make/find the template mask
 1. Identify all extracted sub-bricks
 1. For each emotion and task:
@@ -684,7 +685,7 @@ Third, the T-test workflow will run with the following steps:
     1. Execute `3dttest++`
 1. Upload output to Keoki and clean up DCC
 
-T-test output can be found an the model_afni_group directory of experiments2/EmoRep/Exp2_Compute_Emotion/analyses that corresponds to the type of statistic, task, model, and emotion:
+T-test output can be found in the model_afni_group directory of experiments2/EmoRep/Exp2_Compute_Emotion/analyses that corresponds to the type of statistic, task, model, and emotion:
 
 ```
 analyses/model_afni_group/stat-paired_task-movies_model-task_emo-anger/
@@ -704,10 +705,148 @@ While many files are written (see [here](https://afni.nimh.nih.gov/afni/communit
 
 
 ### Considerations
+- The data download step can take many hours.
+- When using `--model-name mixed`, the default behavior is to extract the task coefficients. Use `--block-coef` to access the block coeffcients from mixed models.
+- Clean up of model_afni is not conducted, only model_afni_group.
+- T-tests are only written for testing within a task (e.g. movies, scenarios) and not across
 
 
 ## afni_lmer
+This sub-package is written to be executed on the DCC and functions to conduct a linear mixed effect model via AFNI's `3dLMEr`, where Y = emotion*task+(1|subj)+(1|subj:emotion)+(1|subj:task).
+
+
 ### Setup
+- Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+- Set the global variable `SING_AFNI` to hold the path to an AFNI singularity image.
+    - *NOTE*: This approach requires a version of AFNI released after 2022, and the singularity needs to have functional R packages brms, lmerTest, phia, and afex among others. These packages are not working in the current (2024-07-31) AFNI docker container, accordingly we are using an in-house container hosted at https://hub.docker.com/r/nmuncy/afni_ub24.
+
+
 ### Usage
+A CLI is accesible at `$afni_lmer` which provides a help, options, and examples. This workflow has four steps which are indpendently accessible through the CLI:
+
+1. Download necessary data
+1. Extract sub-brick labels
+1. Conduct linear mixed effect model analysis
+1. Conduct Monte Carlo simulations
+
+These steps should be conduct in order (Monte Carlo simulations can be done after downloading the data), and the user is able to specify the relevant model name and/or coefficient type for each step:
+
+```
+(emorep)[nmm51-dcc: func_model]$afni_lmer
+usage: afni_lmer [-h] [--block-coef] [--get-subbricks]
+                 [--emo-list {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} [{amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} ...]]
+                 [--model-name {mixed,task,block}] [--run-mc] [--run-lmer] [--run-setup]
+
+Conduct linear mixed effects testing via AFNI's 3dLMEr.
+
+Test for main effects of emotions, tasks, and emotion x task interactions
+treating subjects as random effects via:
+    Y = emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)
+
+Three steps are involved in setting up and executing this analysis:
+downloading data from keoki, determining subbrick IDs, and the
+actual LME model (see Example below).
+
+Model names correspond to afni_model output:
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
+
+When using --model-name=mixed, the default behavior is to
+extract the task/stimulus subbricks. The block subbrick is
+available by including the option --block-coef.
+
+Requires
+--------
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+
+Notes
+-----
+Validated on AFNI Version: Precompiled binary linux_ubuntu_24_64: Jul 16 2024
+(Version AFNI_24.2.01 'Macrinus') AFNI_24.2.01 'Macrinus', see
+https://hub.docker.com/r/nmuncy/afni_ub24
+
+Example
+-------
+1. Get necessary data
+    afni_lmer \
+        --run-setup \
+        --model-name mixed
+
+2. Identify sub-brick labels
+    afni_lmer \
+        --get-subbricks \
+        --model-name mixed \
+        --block-coef
+
+3. Conduct LME
+    afni_lmer \
+        --run-lmer \
+        --model-name mixed \
+        --block-coef
+
+4. Conduct Monte Carlo simulations
+    afni_lmer \
+        --run-mc \
+        --model-name mixed
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --block-coef          Test block (instead of event) coefficients when model-name=mixed
+  --get-subbricks       Identify sub-brick labels for emotions
+  --emo-list {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} [{amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} ...]
+                        Run tests for specified emotion(s), instead of all
+  --model-name {mixed,task,block}
+                        AFNI deconv name
+                        (default : mixed)
+  --run-mc              Conduct monte carlo simulations
+  --run-lmer            Conduct linear mixed effect model
+  --run-setup           Download model_afni data and make template mask
+```
+When specifying `--model-name`, the input parameter should correspond to the model name selected in `afni_model` (see [above](#afni_etac)). That is, the output of `$afni_model --model-name task [OPTS]` would be called for by `$afni_lmer --model-name task [OPTS]`.
+
+
 ### Functionality
+The first and second steps are identical to [afni_etac](#afni_etac).
+
+First, downloading data from Keoki is available with the `--run-setup` option, for which the user will also specify the desired task and model name (see, [afni_model](#afni_model)). Running setup will build the directory structure on the DCC and then download the requested data from Keoki. Downloaded subject will be found at '/work/user/EmoRep/model_afni', and a directory for group analyses will be found at '/work/user/EmoRep/model_afni_group'.
+
+Second, the deconvolved sub-brick labels are extracted with the `--get-subbricks` option. A unique file for each sub-brick of interest will be written to the subject's 'func' directory, and a washout file will also be written if `--stat paired` is used. When using `mixed` models, the task sub-brick named [mov|sce]Emo for a movie or scenario emotion, respectively, while the block sub-brick is named blk[M|S]Emo.
+
+Third, the stat workflow is available via `--run-lmer`, which will run the following workflow:
+
+1. Find all deconvolved files for the model name
+1. Make/find the template mask
+1. Identify all the extracted sub-bricks
+1. Build `3dLMEr` command and write to script
+    1. The model includes main effects for each emotion and emotion.task interactions
+1. Execute `3dLMEr` command
+1. Upload data to Keoki and clean up DCC
+
+
+Fourth, cluster thresholding parameters can be calculated via Monte Carlo simulations (`3dClustSim`) via the `--run-mc` option, which runs the workflow:
+
+1. Make/find the template mask
+1. For each subject:
+    1. (Optional) Blur deconvolution residuals
+    1. Calculate the autocorrelation function
+1. Conduct Monte Carlo simulations for:
+    1. template gray matter voxels
+    1. pthr=.001, athr=.05, iter=10000
+1. Upload data to Keoki and clean up DCC
+
+The LMEr output, corresponding script, and simulations can be found in the model_afni_group directory of experiments2/EmoRep/Exp2_Compute_Emotion/analyses that reflects the type of statistic and model name:
+
+```
+analyses/model_afni_group/stat-lmer_model-task/
+├── montecarlo_simulations_task.txt
+├── stat-lmer_model-task.sh
+├── stat-lmer_model-task+tlrc.BRIK
+└── stat-lmer_model-task+tlrc.HEAD
+```
+
+
 ### Considerations
+- The `3dLMEr` requires a signficant amount of memory (currently 164GB). This can be updated via the `mem` option of `resources.group.LmerTest.write_exec`
+- Clean up of model_afni is not conducted, only model_afni_group.
