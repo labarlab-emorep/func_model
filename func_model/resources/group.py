@@ -778,11 +778,16 @@ class MonteCarlo:
     clustsim()
         Run monte carlo cluster simulations
 
+
+    Notes
+    -----
+    Option use_blur=True required for noise_acf() if blur_resid() is used
+
     Example
     -------
     mon_car = group.MonteCarlo(*args)
     mon_car.blur_resid()
-    mon_car.noice_acf(use_blur=True)
+    mon_car.noise_acf(use_blur=True)
     mon_car.clustsim()
 
     """
@@ -902,7 +907,7 @@ class MonteCarlo:
             #SBATCH --output={self._log_dir}/acf_errts_%a.txt
             #SBATCH --array=0-{len(errts_list) - 1}%20
             #SBATCH --time=06:00:00
-            #SBATCH --mem=8G
+            #SBATCH --mem=16G
             #SBATCH --wait
 
             from func_model.resources import group

@@ -247,11 +247,11 @@ def extra_preproc(subj, sess, subj_work, work_deriv, do_rest=False):
     sess_anat["mask-min"] = make_masks.minimum()
 
     # Smooth and scale EPI data
-    smooth_epi = smooth_epi(subj_work, work_deriv, sess_func["func-preproc"])
+    blur_epi = smooth_epi(subj_work, work_deriv, sess_func["func-preproc"])
     sess_func["func-scaled"] = _scale_epi(
         subj_work,
         work_deriv,
         sess_anat["mask-min"],
-        smooth_epi,
+        blur_epi,
     )
     return (sess_func, sess_anat)
