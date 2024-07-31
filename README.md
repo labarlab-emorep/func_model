@@ -541,8 +541,6 @@ model_afni/sub-ER0009
         │   ├── sub-ER0009_ses-day2_task-movies_desc-censor_timeseries.1D
         │   ├── sub-ER0009_ses-day2_task-movies_desc-deriv_timeseries.1D
         │   └── sub-ER0009_ses-day2_task-movies_desc-mean_timeseries.1D
-        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_cbucket_REML+tlrc.BRIK
-        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_cbucket_REML+tlrc.HEAD
         ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_errts_REML+tlrc.BRIK
         ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_errts_REML+tlrc.HEAD
         ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_reml.sh
@@ -550,8 +548,6 @@ model_afni/sub-ER0009
         ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_stats.REML_cmd
         ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_stats_REML+tlrc.BRIK
         ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_stats_REML+tlrc.HEAD
-        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_stats_REMLvar+tlrc.BRIK
-        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_stats_REMLvar+tlrc.HEAD
         ├── sub-ER0009_ses-day2_task-movies_desc-intersect_mask.nii.gz
         ├── timing_files
         │   ├── sub-ER0009_ses-day2_task-movies_desc-comJud_events.1D
@@ -567,7 +563,7 @@ model_afni/sub-ER0009
         └── X.sub-ER0009_ses-day2_task-movies_desc-decon_model-task.xmat.1D
 
 ```
-The modeled output found in the 'func' directory is the '\*_stats_REML+tlrc.[BRIK|HEAD]' files, with the accompanying residual '\*_errts_REML+tlrc.[BRIK|HEAD]' files. Also available are the 3dDeconvolve and 3dREMLfit commands used as shell scripts, and the design X-files.
+The modeled output found in the 'func' directory is the '\*_stats_REML+tlrc.[BRIK|HEAD]' files, with the accompanying residual '\*_errts_REML+tlrc.[BRIK|HEAD]' files. Also available are the 3dDeconvolve and 3dREMLfit commands used as shell scripts, and the design X-files. Separate models (task, block, mixed) are organized according to the 'model' key. Finally, the intersection mask used in modeling the data is provided.
 
 The directory 'func/motion_files' contains the motion input 1D files as well as a JSON detailing the number and proportion of volumes excluded. Likewise, the directory 'func/timing_files' contain AFNI-style timing files.
 
@@ -577,9 +573,136 @@ The directory 'func/motion_files' contains the motion input 1D files as well as 
 
 
 ## afni_etac
+This sub-package is written to be executed on the DCC and functions to conduct A vs B (paired) or A vs 0 (student) T-tests at the group level. Additionally, the [ETAC](https://afni.nimh.nih.gov/pub/dist/edu/data/CD.expanded/afni_handouts/afni07_ETAC.pdf) options are used, allowing for a denser sampling of significant space by using multiple cluster and threshold values.
+
+
 ### Setup
+- Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+- Set the global variable `SING_AFNI` to hold the path to an AFNI singularity image.
+
+
 ### Usage
+A CLI is accessible at `$afni_etac` which provides a help, options, and examples. This workflow has three steps which are independently accessible through the CLI:
+1. Download necessary data
+1. Extract sub-brick labels
+1. Conduct T-testing
+
+These steps should be executed in order, and the user is able to specify the task, model name, statistic, and/or coefficient relevant for the step:
+
+
+```
+(emorep)[nmm51-dcc: func_model]$afni_etac
+usage: afni_etac [-h] [--block-coef]
+                 [--emo-name {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise}]
+                 [--get-subbricks] [--model-name {mixed,task,block}] [--run-etac] [--run-setup] [--stat {student,paired}]
+                 [--task {movies,scenarios}]
+
+Conduct T-Testing using AFNI's ETAC methods.
+
+Conduct testing with 3dttest++ using the -etac_opts option. This
+controls the number and value of thresholds and blurs, nearest
+neighbor and alpha values, among other parameters.
+
+Model names correspond to afni_model output:
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
+
+Stat names:
+    - student = Student's T-test, compare each task emotion against zero
+    - paired = Paired T-test, compare each task emotion against washout
+
+Requires
+--------
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+
+Notes
+-----
+When using --model-name=mixed, the default behavior is to
+extract the task/stimulus subbricks. The block subbrick is
+available by including the option --block-coef.
+
+Example
+-------
+1. Get necessary data
+    afni_etac \
+        --run-setup \
+        --task movies \
+        --model-name mixed
+
+2. Identify sub-brick labels
+    afni_etac \
+        --get-subbricks \
+        --stat paired \
+        --task movies \
+        --model-name mixed \
+        --block-coef
+
+3. Conduct T-testing
+    afni_etac \
+        --run-etac \
+        --stat paired \
+        --task movies \
+        --model-name mixed \
+        --block-coef
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --block-coef          Test block (instead of event) coefficients when model-name=mixed
+  --emo-name {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise}
+                        Use emotion (instead of all) for workflow
+  --get-subbricks       Identify sub-brick labels for emotions and washout
+  --model-name {mixed,task,block}
+                        AFNI deconv name
+                        (default : task)
+  --run-etac            Conduct t-testing via AFNI's ETAC
+  --run-setup           Download model_afni data and make template mask
+  --stat {student,paired}
+                        T-test type
+  --task {movies,scenarios}
+                        Task name
+
+```
+
+
 ### Functionality
+First, downloading data from Keoki is available with the `--run-setup` option, for which the user will also specify the desired task and model name (see, [afni_model](#afni_model)). Running setup will build the directory structure on the DCC and then download the requested data from Keoki. Downloaded subject will be found at '/work/user/EmoRep/model_afni', and a directory for group analyses will be found at '/work/user/EmoRep/model_afni_group'.
+
+Second, the deconvolved sub-brick labels are extracted with the `--get-subbricks` option. A unique file for each sub-brick of interest will be written to the subject's 'func' directory, and a washout file will also be written if `--stat paired` is used. When using `mixed` models, the task sub-brick named [mov|sce]Emo for a movie or scenario emotion, respectively, while the block sub-brick is named blk[M|S]Emo.
+
+Third, the T-test workflow will run with the following steps:
+1. Find all deconvolved files
+1. Make/find the template mask
+1. Identify all extracted sub-bricks
+1. For each emotion and task:
+    1. Build the `3dttest++` command, including the ETAC options:
+        1. Blur sizes = 0, 2, 4
+        1. Nearest neighbor = 2
+        1. H power = 0
+        1. P threshold = 0.01, 0.005, 0.002, 0.001
+    1. Execute `3dttest++`
+1. Upload output to Keoki and clean up DCC
+
+T-test output can be found an the model_afni_group directory of experiments2/EmoRep/Exp2_Compute_Emotion/analyses that corresponds to the type of statistic, task, model, and emotion:
+
+```
+analyses/model_afni_group/stat-paired_task-movies_model-task_emo-anger/
+..
+├── stat-paired_task-movies_model-task_emo-anger_clustsim.etac.ETACmaskALL.global.2sid.05perc.nii.gz
+├── stat-paired_task-movies_model-task_emo-anger_clustsim.etac.ETACmask.global.2sid.05perc.nii.gz
+├── stat-paired_task-movies_model-task_emo-anger.sh
+├── stat-paired_task-movies_model-task_emo-anger+tlrc.BRIK
+└── stat-paired_task-movies_model-task_emo-anger+tlrc.HEAD
+
+```
+While many files are written (see [here](https://afni.nimh.nih.gov/afni/community/board/read.php?1,164803,164803#msg-164803) for explanations), those illustrated above are the most relevant:
+- stat-\*_cluststim.etac.ETACmask.global.\*, which contains the final output binary masks
+- stat-\*_cluststim.etac.ETACmaskALL.global.\*, which contains binary masks for each blur and P threshold
+- stat-\*.sh, the script used to execute `3dttest++`
+- stat-\*+tlrc.[BRIK|HEAD], which contains the original Z-stat matrix
+
+
 ### Considerations
 
 

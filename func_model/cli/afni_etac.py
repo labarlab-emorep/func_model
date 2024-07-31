@@ -1,17 +1,28 @@
 r"""Conduct T-Testing using AFNI's ETAC methods.
 
-Model names:
-    - task
-    - block
-    - mixed
+Conduct testing with 3dttest++ using the -etac_opts option. This
+controls the number and value of thresholds and blurs, nearest
+neighbor and alpha values, among other parameters.
+
+Model names correspond to afni_model output:
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
 
 Stat names:
     - student = Student's T-test, compare each task emotion against zero
     - paired = Paired T-test, compare each task emotion against washout
 
+Requires
+--------
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+
 Notes
 -----
-- Option --block-coef only available for --model-name=mixed.
+When using --model-name=mixed, the default behavior is to
+extract the task/stimulus subbricks. The block subbrick is
+available by including the option --block-coef.
 
 Example
 -------
