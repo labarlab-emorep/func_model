@@ -1,5 +1,4 @@
-#!/bin/env /hpc/group/labarlab/research_bin/miniconda3/envs/dev-nate_emorep/bin/python
-# TODO update interpreter for project environment
+#!/bin/env /hpc/group/labarlab/research_bin/conda_envs/emorep/bin/python
 """
 Run AFNI deconvolution workflow for subj, sess, model.
 
