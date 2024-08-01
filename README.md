@@ -1,26 +1,45 @@
 # func_model
 This package contains workflows for modeling and extracting data from fMRI files. It contains two main divisions:
-1. resources for FSL-based pipelines (detailed below), and
-1. resources for AFNI-based pipelines (largely deprecated, not detailed here).
+1. FSL-based pipelines which support classification of EPI signal, including:
+    1. Modeling data
+    1. Beta-coefficient extraction
+    1. Converting classifier output into MNI coordinates
+    1. Group-level models
+1. AFNI-based pipelines which support univariate group-level analyses, including:
+    1. Extra preprocessing
+    1. Modeling data
+    1. T-testing
+    1. Linear mixed effects modeling
 
-Sub-package/workflow navigation:
+FSL-based sub-package/workflow navigation:
 - [fsl_model](#fsl_model) : Conduct FSL-style first- and second-level regressions
 - [fsl_extract](#fsl_extract) : Extract emotion betas from FSL first-level as a matrix
 - [fsl_map](#fsl_map) : Make binary masks from classifier output
 - [fsl_group](#fsl_group) : Generate required input for group-level analyses
 
+AFNI-based sub-package/workflow navigation:
+- [afni_model](#afni_model) : Conduct AFNI-style deconvultions
+- [afni_etac](#afni_etac) : Conduct student or paired T-testing using the ETAC approach
+- [afni_lmer](#afni_lmer) : Conduct a linear mixed effects analysis
+
+These various workflows are written for either the DCC or labarserv2. Specifically, all AFNI and the fsl_model workflows are written for the DCC, while the fsl_extract, fsl_map, and fsl_group are written for labarserv2.
+
 
 ## General Usage
-- Install package into project environment (on DCC or labarserv2) via `$python setup.py install`.
+- Install package into the appropriate project environment (on DCC or labarserv2) given desired workflow via `$python setup.py install`.
 - Trigger general package help and usage via entrypoint `$func_model`:
 
 ```
 (emorep)[nmm51-dcc: ~]$func_model
 
-Version : 4.3.0
+Version : 4.3.2
 
 The package func_model consists of sub-packages that can be accessed
 from their respective entrypoints:
+
+    afni_model   : Conduct AFNI-style deconvolution
+    afni_etac    : Conduct T-tests in AFNI via ETAC
+    afni_lmer    : Conduct linear mixed effects in AFNI
 
     fsl_model    : Conduct FSL-style first- and second-level regressions
     fsl_extract  : Extract emotion betas from FSL first-level as a matrix
@@ -29,6 +48,9 @@ from their respective entrypoints:
 
 Sub-packages written for Duke Compute Cluster (DCC):
 
+    - afni_model
+    - afni_etac
+    - afni_lmer
     - fsl_model
 
 Sub-packages written for labarserv2:
@@ -36,7 +58,6 @@ Sub-packages written for labarserv2:
     - fsl_extract
     - fsl_map
     - fsl_group
-
 ```
 Note that [fsl_model](#fsl_model) is written for execution on the Duke Compute Cluster (DCC) while the remaining three sub-packages/workflows are written for execution on labarserv2.
 
@@ -419,3 +440,413 @@ This sub-package generates required files for third- and fourth-level analyses, 
 * fourth-level: collapse across participants
 
 Unfortunately, third- and particularly fourth-level are breaking the FSL GUI needed to generate the design and contrast files. The current plan is to utilize AFNI methods if group-level univariate analyses are needed.
+
+
+## afni_model
+This subpackage is written to be executed on the DCC. It serves to model the session EPI data via AFNI's `3dDeconvolve` and `3dREMLfit`, and requires that [preprocessed](https://github.com/labarlab-emorep/func_preprocess) exists and is available on Keoki using the EmoRep derivative structure. These models collapse across runs, modeling the entire session.
+
+A number of different models are available:
+- `task`: Model the task stimuli for each emotion, not including replay, to produce a coefficient reflective of 10 stimulus presentations
+- `block`: Model the task block, after accounting for replay and orienting responses to produce a coefficient reflective of two blocks
+- `mixed`: Use a mixed model to combine `task` and `block`, used to test if any variance is unexplained by the task coefficient and can load on the block coefficient. For instance, the `task` coefficient may be driven largely by the stimulus type (watching a video) and including the `block` may capture variance associated with an emergent emotion (anger).
+
+
+### Setup
+- Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+- Set the global variable `SING_AFNI` to hold the path to an AFNI singularity image.
+- Verify that `c3d` is executable in the shell
+
+
+### Usage
+A CLI supplies available options, and their defaults, which allow the user to specify the subject, session and model name. Trigger the CLI via `$afni_model`:
+
+```
+(emorep)[nmm51-dcc: freesurfer]$afni_model
+usage: afni_model [-h] [--model-name {mixed,task,block,rest}] [--sess {ses-day2,ses-day3} [{ses-day2,ses-day3} ...]] -s SUBJ [SUBJ ...]
+
+Conduct AFNI-based models of EPI run files.
+
+Written for the remote Duke Compute Cluster (DCC) environment.
+
+Utilizing output of fMRIPrep, construct needed files for deconvolution. Write
+the 3dDeconvolve script, and use it to generate the matrices and 3dREMLfit
+script. Execute 3dREMLfit, and save output files to group location.
+A workflow is submitted for each session found in subject's fmriprep
+directory.
+
+Model names:
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
+    - rest = Deprecated. Conduct a resting-state analysis referencing
+        example 11 of afni_proc.py.
+
+Requires
+--------
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+- c3d executable from PATH
+
+Examples
+--------
+afni_model -s sub-ER0009
+afni_model \
+    -s sub-ER0009 sub-ER0016 \
+    --sess ses-day2 \
+    --model-name mixed
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --model-name {mixed,task,block,rest}
+                        AFNI model name/type, for triggering different workflows
+                        (default : task)
+  --sess {ses-day2,ses-day3} [{ses-day2,ses-day3} ...]
+                        List of session BIDS IDs
+                        (default : ['ses-day2', 'ses-day3'])
+
+Required Arguments:
+  -s SUBJ [SUBJ ...], --subj SUBJ [SUBJ ...]
+                        List of subject BIDS IDs
+
+```
+
+
+### Functionality
+`afni_model` spawns a parent sbatch job for each subject x session specified, each of which runs the following workflow:
+
+1. Download fMRIPrep output and rawdata events files from Keoki
+1. Conduct extra preprocessing starting with fMRIPrep preorcessed files:
+    1. Make a func-anat intersection mask
+    1. Make eroded WM, CSF masks
+    1. Make a minimum-signal mask
+    1. Spatially smooth the preprocessed EPI
+    1. Scale the smoothed EPI
+1. Generate AFNI-style motion and censor files from fMRIPrep timeseries.tsv files:
+1. Make AFNI-style timing files from rawdata events
+1. Model data
+    1. Build a `3dDeconvolve` command with `-x1D_stop` option
+    1. Execute `3dDeconvolve` command to generate `3dREMLfit` command
+    1. Build a noise estimation file from WM signal
+    1. Execute `3dREMLfit`
+1. Upload data to Keoki and clean up
+
+Modeled output is organized in the derivatives sub-directory 'model_afni':
+
+```
+model_afni/sub-ER0009
+└── ses-day2
+    └── func
+        ├── motion_files
+        │   ├── info_censored_volumes.json
+        │   ├── sub-ER0009_ses-day2_task-movies_desc-censor_timeseries.1D
+        │   ├── sub-ER0009_ses-day2_task-movies_desc-deriv_timeseries.1D
+        │   └── sub-ER0009_ses-day2_task-movies_desc-mean_timeseries.1D
+        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_errts_REML+tlrc.BRIK
+        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_errts_REML+tlrc.HEAD
+        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_reml.sh
+        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task.sh
+        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_stats.REML_cmd
+        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_stats_REML+tlrc.BRIK
+        ├── sub-ER0009_ses-day2_task-movies_desc-decon_model-task_stats_REML+tlrc.HEAD
+        ├── sub-ER0009_ses-day2_task-movies_desc-intersect_mask.nii.gz
+        ├── timing_files
+        │   ├── sub-ER0009_ses-day2_task-movies_desc-comJud_events.1D
+        │   ├── sub-ER0009_ses-day2_task-movies_desc-comRep_events.1D
+        │   ├── sub-ER0009_ses-day2_task-movies_desc-comWas_events.1D
+        │   ├── sub-ER0009_ses-day2_task-movies_desc-movAmu_events.1D
+        ..  ..
+        │   ├── sub-ER0009_ses-day2_task-movies_desc-movSur_events.1D
+        │   ├── sub-ER0009_ses-day2_task-movies_desc-selEmo_events.1D
+        │   └── sub-ER0009_ses-day2_task-movies_desc-selInt_events.1D
+        ├── X.sub-ER0009_ses-day2_task-movies_desc-decon_model-task.jpg
+        ├── X.sub-ER0009_ses-day2_task-movies_desc-decon_model-task.jpg.xmat.1D
+        └── X.sub-ER0009_ses-day2_task-movies_desc-decon_model-task.xmat.1D
+
+```
+The modeled output found in the 'func' directory is the '\*_stats_REML+tlrc.[BRIK|HEAD]' files, with the accompanying residual '\*_errts_REML+tlrc.[BRIK|HEAD]' files. Also available are the 3dDeconvolve and 3dREMLfit commands used as shell scripts, and the design X-files. Separate models (task, block, mixed) are organized according to the 'model' key. Finally, the intersection mask used in modeling the data is provided.
+
+The directory 'func/motion_files' contains the motion input 1D files as well as a JSON detailing the number and proportion of volumes excluded. Likewise, the directory 'func/timing_files' contain AFNI-style timing files.
+
+
+### Considerations
+- The modeled sub-brick will be named according to the description field of the timing file. For instance, the information for the amusement movie is held in the file '\*_desc-movAmu_events.1D' and the resulting sub-brick containig the beta-coefficient will be named 'movAmu'. These description values are necessarily short given the number of characters AFNI allows to name a sub-brick.
+
+
+## afni_etac
+This sub-package is written to be executed on the DCC and functions to conduct A vs B (paired) or A vs 0 (student) T-tests at the group level. Additionally, the [ETAC](https://afni.nimh.nih.gov/pub/dist/edu/data/CD.expanded/afni_handouts/afni07_ETAC.pdf) options are used, allowing for a denser sampling of significant space by using multiple cluster and threshold values.
+
+
+### Setup
+- Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+- Set the global variable `SING_AFNI` to hold the path to an AFNI singularity image.
+
+
+### Usage
+A CLI is accessible at `$afni_etac` which provides a help, options, and examples. This workflow has three steps which are independently accessible through the CLI:
+1. Download necessary data
+1. Extract sub-brick labels
+1. Conduct T-testing
+
+These steps should be executed in order, and the user is able to specify the task, model name, statistic, and/or coefficient relevant for the step:
+
+
+```
+(emorep)[nmm51-dcc: func_model]$afni_etac
+usage: afni_etac [-h] [--block-coef]
+                 [--emo-name {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise}]
+                 [--get-subbricks] [--model-name {mixed,task,block}] [--run-etac] [--run-setup] [--stat {student,paired}]
+                 [--task {movies,scenarios}]
+
+Conduct T-Testing using AFNI's ETAC methods.
+
+Conduct testing with 3dttest++ using the -etac_opts option. This
+controls the number and value of thresholds and blurs, nearest
+neighbor and alpha values, among other parameters.
+
+Model names correspond to afni_model output:
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
+
+Stat names:
+    - student = Student's T-test, compare each task emotion against zero
+    - paired = Paired T-test, compare each task emotion against washout
+
+Requires
+--------
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+
+Notes
+-----
+When using --model-name=mixed, the default behavior is to
+extract the task/stimulus subbricks. The block subbrick is
+available by including the option --block-coef.
+
+Example
+-------
+1. Get necessary data
+    afni_etac \
+        --run-setup \
+        --task movies \
+        --model-name mixed
+
+2. Identify sub-brick labels
+    afni_etac \
+        --get-subbricks \
+        --stat paired \
+        --task movies \
+        --model-name mixed \
+        --block-coef
+
+3. Conduct T-testing
+    afni_etac \
+        --run-etac \
+        --stat paired \
+        --task movies \
+        --model-name mixed \
+        --block-coef
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --block-coef          Test block (instead of event) coefficients when model-name=mixed
+  --emo-name {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise}
+                        Use emotion (instead of all) for workflow
+  --get-subbricks       Identify sub-brick labels for emotions and washout
+  --model-name {mixed,task,block}
+                        AFNI deconv name
+                        (default : task)
+  --run-etac            Conduct t-testing via AFNI's ETAC
+  --run-setup           Download model_afni data and make template mask
+  --stat {student,paired}
+                        T-test type
+  --task {movies,scenarios}
+                        Task name
+
+```
+When specifying `--model-name`, the input parameter should correspond to the model name selected in `afni_model` (see [above](#afni_etac)). That is, the output of `$afni_model --model-name task [OPTS]` would be called for by `$afni_etac --model-name task [OPTS]`.
+
+
+### Functionality
+First, downloading data from Keoki is available with the `--run-setup` option, for which the user will also specify the desired task and model name (see, [afni_model](#afni_model)). Running setup will build the directory structure on the DCC and then download the requested data from Keoki. Downloaded subject will be found at '/work/user/EmoRep/model_afni', and a directory for group analyses will be found at '/work/user/EmoRep/model_afni_group'.
+
+Second, the deconvolved sub-brick labels are extracted with the `--get-subbricks` option. A unique file for each sub-brick of interest will be written to the subject's 'func' directory, and a washout file will also be written if `--stat paired` is used. When using `mixed` models, the task sub-brick named [mov|sce]Emo for a movie or scenario emotion, respectively, while the block sub-brick is named blk[M|S]Emo.
+
+Third, the T-test workflow is available via `--run-etac`, which will run with the following steps:
+1. Find all deconvolved files for the specified task, model name
+1. Make/find the template mask
+1. Identify all extracted sub-bricks
+1. For each emotion and task:
+    1. Build the `3dttest++` command, including the ETAC options:
+        1. Blur sizes = 0, 2, 4
+        1. Nearest neighbor = 2
+        1. H power = 0
+        1. P threshold = 0.01, 0.005, 0.002, 0.001
+    1. Execute `3dttest++`
+1. Upload output to Keoki and clean up DCC
+
+T-test output can be found in the model_afni_group directory of experiments2/EmoRep/Exp2_Compute_Emotion/analyses that corresponds to the type of statistic, task, model, and emotion:
+
+```
+analyses/model_afni_group/stat-paired_task-movies_model-task_emo-anger/
+..
+├── stat-paired_task-movies_model-task_emo-anger_clustsim.etac.ETACmaskALL.global.2sid.05perc.nii.gz
+├── stat-paired_task-movies_model-task_emo-anger_clustsim.etac.ETACmask.global.2sid.05perc.nii.gz
+├── stat-paired_task-movies_model-task_emo-anger.sh
+├── stat-paired_task-movies_model-task_emo-anger+tlrc.BRIK
+└── stat-paired_task-movies_model-task_emo-anger+tlrc.HEAD
+
+```
+While many files are written (see [here](https://afni.nimh.nih.gov/afni/community/board/read.php?1,164803,164803#msg-164803) for explanations), those illustrated above are the most relevant:
+- stat-\*_cluststim.etac.ETACmask.global.\*, which contains the final output binary masks
+- stat-\*_cluststim.etac.ETACmaskALL.global.\*, which contains binary masks for each blur and P threshold
+- stat-\*.sh, the script used to execute `3dttest++`
+- stat-\*+tlrc.[BRIK|HEAD], which contains the original Z-stat matrix
+
+
+### Considerations
+- The data download step can take many hours.
+- When using `--model-name mixed`, the default behavior is to extract the task coefficients. Use `--block-coef` to access the block coeffcients from mixed models.
+- Clean up of model_afni is not conducted, only model_afni_group.
+- T-tests are only written for testing within a task (e.g. movies, scenarios) and not across
+
+
+## afni_lmer
+This sub-package is written to be executed on the DCC and functions to conduct a linear mixed effect model via AFNI's `3dLMEr`, where Y = emotion*task+(1|subj)+(1|subj:emotion)+(1|subj:task).
+
+
+### Setup
+- Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+- Set the global variable `SING_AFNI` to hold the path to an AFNI singularity image.
+    - *NOTE*: This approach requires a version of AFNI released after 2022, and the singularity needs to have functional R packages brms, lmerTest, phia, and afex among others. These packages are not working in the current (2024-07-31) AFNI docker container, accordingly we are using an in-house container hosted at https://hub.docker.com/r/nmuncy/afni_ub24.
+
+
+### Usage
+A CLI is accesible at `$afni_lmer` which provides a help, options, and examples. This workflow has four steps which are indpendently accessible through the CLI:
+
+1. Download necessary data
+1. Extract sub-brick labels
+1. Conduct linear mixed effect model analysis
+1. Conduct Monte Carlo simulations
+
+These steps should be conduct in order (Monte Carlo simulations can be done after downloading the data), and the user is able to specify the relevant model name and/or coefficient type for each step:
+
+```
+(emorep)[nmm51-dcc: func_model]$afni_lmer
+usage: afni_lmer [-h] [--block-coef] [--get-subbricks]
+                 [--emo-list {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} [{amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} ...]]
+                 [--model-name {mixed,task,block}] [--run-mc] [--run-lmer] [--run-setup]
+
+Conduct linear mixed effects testing via AFNI's 3dLMEr.
+
+Test for main effects of emotions, tasks, and emotion x task interactions
+treating subjects as random effects via:
+    Y = emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)
+
+Three steps are involved in setting up and executing this analysis:
+downloading data from keoki, determining subbrick IDs, and the
+actual LME model (see Example below).
+
+Model names correspond to afni_model output:
+    - task = Model stimulus for each emotion
+    - block = Model block for each emotion
+    - mixed = Model stimulus + block for each emotion
+
+When using --model-name=mixed, the default behavior is to
+extract the task/stimulus subbricks. The block subbrick is
+available by including the option --block-coef.
+
+Requires
+--------
+- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'SING_AFNI' which has path to AFNI singularity image
+
+Notes
+-----
+Validated on AFNI Version: Precompiled binary linux_ubuntu_24_64: Jul 16 2024
+(Version AFNI_24.2.01 'Macrinus') AFNI_24.2.01 'Macrinus', see
+https://hub.docker.com/r/nmuncy/afni_ub24
+
+Example
+-------
+1. Get necessary data
+    afni_lmer \
+        --run-setup \
+        --model-name mixed
+
+2. Identify sub-brick labels
+    afni_lmer \
+        --get-subbricks \
+        --model-name mixed \
+        --block-coef
+
+3. Conduct LME
+    afni_lmer \
+        --run-lmer \
+        --model-name mixed \
+        --block-coef
+
+4. Conduct Monte Carlo simulations
+    afni_lmer \
+        --run-mc \
+        --model-name mixed
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --block-coef          Test block (instead of event) coefficients when model-name=mixed
+  --get-subbricks       Identify sub-brick labels for emotions
+  --emo-list {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} [{amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} ...]
+                        Run tests for specified emotion(s), instead of all
+  --model-name {mixed,task,block}
+                        AFNI deconv name
+                        (default : mixed)
+  --run-mc              Conduct monte carlo simulations
+  --run-lmer            Conduct linear mixed effect model
+  --run-setup           Download model_afni data and make template mask
+```
+When specifying `--model-name`, the input parameter should correspond to the model name selected in `afni_model` (see [above](#afni_etac)). That is, the output of `$afni_model --model-name task [OPTS]` would be called for by `$afni_lmer --model-name task [OPTS]`.
+
+
+### Functionality
+The first and second steps are identical to [afni_etac](#afni_etac).
+
+First, downloading data from Keoki is available with the `--run-setup` option, for which the user will also specify the desired task and model name (see, [afni_model](#afni_model)). Running setup will build the directory structure on the DCC and then download the requested data from Keoki. Downloaded subject will be found at '/work/user/EmoRep/model_afni', and a directory for group analyses will be found at '/work/user/EmoRep/model_afni_group'.
+
+Second, the deconvolved sub-brick labels are extracted with the `--get-subbricks` option. A unique file for each sub-brick of interest will be written to the subject's 'func' directory, and a washout file will also be written if `--stat paired` is used. When using `mixed` models, the task sub-brick named [mov|sce]Emo for a movie or scenario emotion, respectively, while the block sub-brick is named blk[M|S]Emo.
+
+Third, the stat workflow is available via `--run-lmer`, which will run the following workflow:
+
+1. Find all deconvolved files for the model name
+1. Make/find the template mask
+1. Identify all the extracted sub-bricks
+1. Build `3dLMEr` command and write to script
+    1. The model includes main effects for each emotion and emotion.task interactions
+1. Execute `3dLMEr` command
+1. Upload data to Keoki and clean up DCC
+
+
+Fourth, cluster thresholding parameters can be calculated via Monte Carlo simulations (`3dClustSim`) via the `--run-mc` option, which runs the workflow:
+
+1. Make/find the template mask
+1. For each subject:
+    1. (Optional) Blur deconvolution residuals
+    1. Calculate the autocorrelation function
+1. Conduct Monte Carlo simulations for:
+    1. template gray matter voxels
+    1. pthr=.001, athr=.05, iter=10000
+1. Upload data to Keoki and clean up DCC
+
+The LMEr output, corresponding script, and simulations can be found in the model_afni_group directory of experiments2/EmoRep/Exp2_Compute_Emotion/analyses that reflects the type of statistic and model name:
+
+```
+analyses/model_afni_group/stat-lmer_model-task/
+├── montecarlo_simulations_task.txt
+├── stat-lmer_model-task.sh
+├── stat-lmer_model-task+tlrc.BRIK
+└── stat-lmer_model-task+tlrc.HEAD
+```
+
+
+### Considerations
+- The `3dLMEr` requires a signficant amount of memory (currently 164GB). This can be updated via the `mem` option of `resources.group.LmerTest.write_exec`
+- Clean up of model_afni is not conducted, only model_afni_group.

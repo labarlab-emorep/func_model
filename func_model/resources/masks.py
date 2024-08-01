@@ -1,8 +1,18 @@
-"""Methods for mask construction."""
+"""Methods for mask construction.
+
+MakeMasks : Generate masks for AFNI-based analyses
+group_mask : Generate a group intersection mask
+tpl_gm : Generate gray matter mask from template priors
+
+"""
+
 import os
 import glob
-from func_model.resources.afni import helper as afni_helper
-from func_model.resources.general import submit, matrix
+from func_model.resources import helper
+from func_model.resources import submit
+from func_model.resources import matrix
+
+# TODO refactor so methods are more modular
 
 
 class MakeMasks:
@@ -26,20 +36,18 @@ class MakeMasks:
     def __init__(
         self,
         subj_work,
-        proj_deriv,
+        work_deriv,
         anat_dict,
         func_dict,
-        sing_afni,
     ):
         """Initialize object.
 
         Parameters
         ----------
-        subj_work : path
+        subj_work : str, os.PathLike
             Location of working directory for intermediates
-        proj_deriv : path
-            Location of project derivatives, containing fmriprep
-            and fsl_denoise sub-directories
+        work_deriv : str, os.PathLike
+            Location of intermediate derivatives
         anat_dict : dict
             Contains reference names (key) and paths (value) to
             preprocessed anatomical files.
@@ -52,8 +60,6 @@ class MakeMasks:
             preprocessed functional files.
             Required keys:
             -   [func-preproc] = list of fmriprep preprocessed EPI paths
-        sing_afni : path
-            Location of AFNI singularity file
 
         Attributes
         ----------
@@ -79,13 +85,9 @@ class MakeMasks:
 
         # Set attributes
         self._subj_work = subj_work
-        self._proj_deriv = proj_deriv
         self._anat_dict = anat_dict
         self._func_dict = func_dict
-        self._sing_afni = sing_afni
-        self._sing_prep = afni_helper.prepend_afni_sing(
-            self._proj_deriv, self._subj_work, self._sing_afni
-        )
+        self._sing_prep = helper.prepend_afni_sing(work_deriv, self._subj_work)
 
         try:
             _file_name = os.path.basename(func_dict["func-preproc"][0])
@@ -110,21 +112,14 @@ class MakeMasks:
 
         Parameters
         ----------
-        c_fract : float, optional
+        c_frac : float, optional
             Clip level fraction for AFNI's 3dAutomask
         nbr_type : str, optional
-            [NN1 | NN2 | NN3]
+            {"NN1", "NN2", "NN3"}
             Nearest-neighbor type for AFNI's 3dAautomask
         nbr_num : int, optional
             Number of neibhors needed to avoid eroding in
             AFNI's 3dAutomask.
-
-        Raises
-        ------
-        TypeError
-            Invalid types for optional args
-        ValueError
-            Invalid parameters for optional args
 
         Returns
         -------

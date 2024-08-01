@@ -12,8 +12,7 @@ Writes output to:
 Examples
 --------
 fsl_map -t movies
-fsl_map -t all
-fsl_map -t movies \
+fsl_map -t both \
     --contrast-name tog \
     --model-name tog
 
@@ -26,7 +25,7 @@ import textwrap
 import platform
 from argparse import ArgumentParser, RawTextHelpFormatter
 from func_model.workflows import wf_fsl
-from func_model.resources.fsl import helper as fsl_helper
+from func_model.resources import helper
 
 
 # %%
@@ -89,11 +88,13 @@ def _get_args():
         "-t",
         "--task-name",
         type=str,
-        choices=["movies", "scenarios", "all"],
+        choices=["movies", "scenarios", "both"],
         required=True,
         help=textwrap.dedent(
             """\
-            Name of EmoRep stimulus type, corresponds to BIDS task field
+            Name of EmoRep stimulus type, corresponds to BIDS task field.
+            Used to identify data used for classifier, 'both' = classifier
+            trained on movies + scenarios data.
             (default : %(default)s)
             """
         ),
@@ -123,10 +124,10 @@ def main():
     task_name = args.task_name
 
     # Check user input
-    if not fsl_helper.valid_level(model_level):
+    if not helper.valid_level(model_level):
         print(f"Unsupported model level : {model_level}")
         sys.exit(1)
-    if not fsl_helper.valid_contrast(con_name):
+    if not helper.valid_contrast(con_name):
         print(f"Unsupported contrast name : {con_name}")
         sys.exit(1)
 

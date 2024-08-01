@@ -1,39 +1,241 @@
-"""Pipelines supporting AFNI and FSL.
+"""AFNI-based workflows.
 
 afni_task       : GLM task data via AFNI
-afni_rest       : GLM rest data via AFNI
-afni_extract    : extract task beta-coefficients from AFNI GLM
-afni_ttest      : conduct Student's T via ETAC method
-afni_mvm        : conduct ANOVA-style analyses via 3dMVM
+afni_rest       : deprecated, GLM rest data via AFNI
+afni_extract    : deprecated, extract task beta-coefficients from AFNI GLM
+DeconSubbrick   : download decon files from Keoki, find subbrick IDs
+afni_ttest      : conduct T-testing via ETAC method
+afni_montecarlo : conduct Monte Carlo simulations
+afni_lmer       : conduct linear mixed effects model via 3dLMEr
 
 """
-# %%
+
 import os
 import glob
-from pathlib import Path
-from func_model.resources.afni import preprocess
-from func_model.resources.afni import deconvolve
-from func_model.resources.afni import masks
-from func_model.resources.afni import helper as afni_helper
-from func_model.resources.afni import group as afni_group
+import shutil
+from typing import Union
+from func_model.resources import preprocess
+from func_model.resources import deconvolve
+from func_model.resources import masks
+from func_model.resources import helper
+from func_model.resources import group
+from func_model.workflows import wf_fsl
 
 
-# %%
+class _SyncData(wf_fsl._SupportFsl):
+    """Coordinate setup, data download, output upload."""
+
+    def __init__(
+        self, subj: str, sess: str, work_deriv: Union[str, os.PathLike]
+    ):
+        """Initialize."""
+        self._subj = subj
+        self._sess = sess
+        self._work_deriv = work_deriv
+        self._keoki_path = (
+            "/mnt/keoki/experiments2/EmoRep/"
+            + "Exp2_Compute_Emotion/data_scanner_BIDS"
+        )
+        super().__init__(self._keoki_path)
+
+    def setup_indiv(self) -> tuple:
+        """Setup working directories for individual models.
+
+        Returns
+        -------
+        tuple
+            - [0] = work_deriv/model_afni/subj/sess/func
+            - [1] = work_deriv/fmriprep/subj/sess
+            - [2] = work_deriv/rawdata/subj/sess
+
+        """
+        # Make fmriprep dir, manage conflict between sessions
+        self._work_fp = os.path.join(self._work_deriv, "fmriprep", self._subj)
+        try:
+            os.makedirs(self._work_fp)
+        except FileExistsError:
+            pass
+
+        # make rawdata, work dir
+        self._work_raw = os.path.join(
+            self._work_deriv, "rawdata", self._subj, self._sess, "func"
+        )
+        self._subj_work = os.path.join(
+            self._work_deriv, "model_afni", self._subj, self._sess, "func"
+        )
+        for _dir in [self._work_raw, self._subj_work]:
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+
+        # Return afni, fmriprep, rawdata dir paths
+        return (
+            self._subj_work,
+            os.path.join(self._work_fp, self._sess),
+            os.path.dirname(self._work_raw),
+        )
+
+    @property
+    def _ls2_addr(self) -> str:
+        """Return user@labarserv2."""
+        return os.environ["USER"] + "@" + self._ls2_ip
+
+    def get_fmriprep(self):
+        """Download fMRIPrep for subj, sess."""
+        if not hasattr(self, "_work_fp"):
+            self.setup_indiv()
+
+        # Check for fmriprep output
+        chk_file = os.path.join(
+            self._work_fp,
+            self._sess,
+            "anat",
+            f"{self._subj}_{self._sess}_desc-preproc_T1w.nii.gz",
+        )
+        if os.path.exists(chk_file):
+            return
+
+        # Get fMRIPrep - anat, motion confs, func
+        source_fp = os.path.join(
+            self._keoki_path,
+            "derivatives",
+            "pre_processing",
+            "fmriprep",
+            self._subj,
+            self._sess,
+        )
+        _, _ = self._submit_rsync(
+            f"{self._ls2_addr}:{source_fp}", self._work_fp
+        )
+
+        # Verify download
+        if not os.path.exists(chk_file):
+            raise FileNotFoundError(
+                f"fMRIPrep download failed for {self._subj}, {self._sess}"
+            )
+
+    def get_events(self) -> list:
+        """Download and return list of rawdata events files for subj, sess."""
+        if not hasattr(self, "_work_raw"):
+            self.setup_indiv()
+
+        # Check for existing events files
+        event_list = sorted(glob.glob(f"{self._work_raw}/*events.tsv"))
+        if event_list:
+            return event_list
+
+        # Get rawdata events
+        source_raw = os.path.join(
+            self._keoki_path,
+            "rawdata",
+            self._subj,
+            self._sess,
+            "func",
+            "*events.tsv",
+        )
+        _, _ = self._submit_rsync(
+            f"{self._ls2_addr}:{source_raw}", self._work_raw
+        )
+
+        # Verify download
+        event_list = sorted(glob.glob(f"{self._work_raw}/*events.tsv"))
+        if not event_list:
+            raise ValueError(
+                f"Rsync failure, missing events files at : {self._work_raw}"
+            )
+        return event_list
+
+    def clean_deriv(self, task: str, model_name: str, sess_anat: dict):
+        """Remove unneeded files from model_afni."""
+        self._model_name = model_name
+        self._sess_anat = sess_anat
+        self._task = task
+        if not hasattr(self, "_subj_work"):
+            self.setup_indiv()
+
+        # Identify files to save, remove all others
+        save_list = (
+            self._save_rest() if model_name == "rest" else self._save_task()
+        )
+        for file_name in os.listdir(self._subj_work):
+            wash_path = os.path.join(self._subj_work, file_name)
+            if wash_path not in save_list:
+                os.remove(wash_path)
+
+    def _save_task(self) -> list:
+        """Return list of important task decon files."""
+        # Check for pipeline output
+        decon_name = (
+            f"{self._subj}_{self._sess}_{self._task}_"
+            + f"desc-decon_model-{self._model_name}"
+        )
+        chk_file = os.path.join(
+            self._subj_work, f"{decon_name}_stats_REML+tlrc.HEAD"
+        )
+        if not os.path.exists(chk_file):
+            raise FileNotFoundError(
+                f"Missing expected output file : {chk_file}"
+            )
+
+        # Build return list
+        save_list = glob.glob(f"{self._subj_work}/*{decon_name}*")
+        save_list.append(self._sess_anat["mask-WMe"])
+        save_list.append(self._sess_anat["mask-int"])
+        save_list.append(os.path.join(self._subj_work, "motion_files"))
+        save_list.append(os.path.join(self._subj_work, "timing_files"))
+        return save_list
+
+    def _save_rest(self):
+        """Return list of important rest decon files."""
+        stat_list = glob.glob(f"{self._subj_work}/decon_rest_anaticor*+tlrc.*")
+        if not stat_list:
+            raise FileNotFoundError(
+                f"Missing decon_rest files in {self._subj_work}"
+            )
+
+        # Make return lists
+        seed_list = glob.glob(f"{self._subj_work}/seed_*")
+        x_list = glob.glob(f"{self._subj_work}/X.decon_rest.*")
+        save_list = stat_list + seed_list + x_list
+        save_list.append(self._sess_anat["mask-int"])
+        save_list.append(f"{self._subj_work}/decon_rest.sh")
+        return save_list
+
+    def send_decon(self):
+        """Send decon output to Keoki."""
+        if not hasattr(self, "_subj_work"):
+            self.setup_indiv()
+
+        # Make output destination
+        keoki_dst = os.path.join(
+            self._keoki_path, "derivatives/model_afni", self._subj, self._sess
+        )
+        make_dst = f"""\
+            ssh \
+                -i {self._rsa_key} \
+                {self._ls2_addr} \
+                " command ; bash -c 'mkdir -p {keoki_dst}'"
+        """
+        _, _ = self._quick_sp(make_dst)
+
+        # Send output directory to Keoki
+        _, _ = self._submit_rsync(
+            self._subj_work, f"{self._ls2_addr}:{keoki_dst}"
+        )
+
+
 def afni_task(
     subj,
     sess,
-    proj_rawdata,
-    proj_deriv,
     work_deriv,
-    sing_afni,
     model_name,
     log_dir,
 ):
-    """Conduct AFNI-based deconvolution for sanity checking.
+    """Conduct AFNI-based deconvolution.
 
-    Sanity check - model processing during movie|scenario presenation.
-    Supplies high-level steps, coordinates actual work in afni_pipelines
-    and afni modules.
+    Download data from Keoki, generate timing files from
+    rawdata events, motion files and preprocessed files
+    from fMRIPrep. Then generate deconvultion files,
+    nuissance files, and execute 3dREMLfit.
 
     Parameters
     ----------
@@ -41,106 +243,85 @@ def afni_task(
         BIDS subject identifier
     sess : str
         BIDS session identifier
-    proj_rawdata : path
-        Location of BIDS-organized project rawdata
-    proj_deriv : path
-        Location of project derivatives, containing fmriprep
-        and fsl_denoise sub-directories
-    work_deriv : path
+    work_deriv : str, os.PathLike
         Parent location for writing pipeline intermediates
-    sing_afni : path
-        Location of AFNI singularity file
     model_name : str
-        [univ | mixed]
+        {"mixed", "task", "block"}
         Desired AFNI model, for triggering different workflows
-    log_dir : path
+    log_dir : str, os.PathLike
         Output location for log files and scripts
 
-    Returns
-    -------
-    triple
-        [0] = dictionary of timing files
-        [1] = dictionary of anat files
-        [2] = dictionary of func files
-
-    Raises
-    ------
-    ValueError
-        Model name/type not supported
-
     """
-    # Validate, check session, and setup
-    if model_name not in ["univ", "mixed"]:
+    if model_name not in ["mixed", "task", "block"]:
         raise ValueError(f"Unsupported model name : {model_name}")
-    subj_sess_raw = os.path.join(proj_rawdata, subj, sess)
-    if not os.path.exists(subj_sess_raw):
-        print(f"Directory not detected : {subj_sess_raw}\n\tSkipping.")
-        return
-    subj_work = os.path.join(work_deriv, "model_afni-task", subj, sess, "func")
-    if not os.path.exists(subj_work):
-        os.makedirs(subj_work)
+
+    # Setup, download required files
+    sync_data = _SyncData(subj, sess, work_deriv)
+    subj_work, subj_fp, subj_raw = sync_data.setup_indiv()
+    sync_data.get_fmriprep()
+    sess_events = sync_data.get_events()
+
+    # Get and validate task name
+    task = (
+        "task-"
+        + os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
+    )
+    if not helper.valid_task(task):
+        raise ValueError(f"Expected task name : {task}")
 
     # Extra pre-processing steps
     sess_func, sess_anat = preprocess.extra_preproc(
-        subj, sess, subj_work, proj_deriv, sing_afni
+        subj, sess, subj_work, work_deriv
     )
 
-    # Find events files, get and validate task name
-    sess_events = sorted(glob.glob(f"{subj_sess_raw}/func/*events.tsv"))
-    if not sess_events:
-        raise FileNotFoundError(
-            f"Expected BIDs events files in {subj_sess_raw}"
-        )
-    task = os.path.basename(sess_events[0]).split("task-")[-1].split("_")[0]
-    if not afni_helper.valid_task(f"task-{task}"):
-        raise ValueError(f"Expected task names movies|scenarios, found {task}")
+    # Make AFNI-style motion and censor files
+    make_motion = deconvolve.MotionCensor(
+        subj_work, work_deriv, sess_func["func-motion"]
+    )
+    sess_func["mot-mean"] = make_motion.mean_motion()
+    sess_func["mot-deriv"] = make_motion.deriv_motion()
+    sess_func["mot-cens"] = make_motion.censor_volumes()
+    _ = make_motion.count_motion()
 
-    # Generate, organize timing files
-    make_tf = deconvolve.TimingFiles(subj_work, sess_events)
-    tf_com = make_tf.common_events(subj, sess, task)
-    tf_sess = make_tf.session_events(subj, sess, task)
-    tf_sel = make_tf.select_events(subj, sess, task)
-    tf_all = tf_com + tf_sess + tf_sel
-    if model_name == "mixed":
-        tf_blk = make_tf.session_blocks(subj, sess, task)
-        tf_all = tf_com + tf_sess + tf_sel + tf_blk
+    # Generate and compile timing files
+    make_tf = deconvolve.TimingFiles(subj, sess, task, subj_work, sess_events)
+    tf_list = make_tf.common_events()
+    tf_list += make_tf.select_events()
+    if model_name != "block":
+        tf_list += make_tf.session_events()
+    if model_name != "task":
+        tf_list += make_tf.session_blocks()
 
+    # Organize timing files by description
     sess_timing = {}
-    for tf_path in tf_all:
+    for tf_path in tf_list:
         h_key = os.path.basename(tf_path).split("desc-")[1].split("_")[0]
         sess_timing[h_key] = tf_path
 
     # Generate deconvolution command
-    write_decon = deconvolve.WriteDecon(
+    run_reml = deconvolve.RunReml(
+        subj,
+        sess,
+        task,
+        model_name,
         subj_work,
-        proj_deriv,
-        sess_func,
-        sess_anat,
-        sing_afni,
-    )
-    write_decon.build_decon(model_name, sess_tfs=sess_timing)
-
-    # Use decon command to make REMl command, execute REML
-    make_reml = deconvolve.RunReml(
-        subj_work,
-        proj_deriv,
+        work_deriv,
         sess_anat,
         sess_func,
-        sing_afni,
         log_dir,
     )
-    reml_path = make_reml.generate_reml(
-        subj, sess, write_decon.decon_cmd, write_decon.decon_name
-    )
-    sess_func["func-decon"] = make_reml.exec_reml(
-        subj, sess, reml_path, write_decon.decon_name
-    )
+    run_reml.build_decon(sess_tfs=sess_timing)
 
-    # Clean
-    afni_helper.MoveFinal(
-        subj, sess, proj_deriv, subj_work, sess_anat, model_name
-    )
-    return (sess_timing, sess_anat, sess_func)
+    # Use decon command to make REMl command, execute REML
+    run_reml.generate_reml()
+    _ = run_reml.exec_reml()
+
+    # Send data to Keoki, clean
+    sync_data.clean_deriv(task, model_name, sess_anat)
+    sync_data.send_decon()
+    shutil.rmtree(os.path.dirname(subj_work))
+    shutil.rmtree(subj_fp)
+    shutil.rmtree(subj_raw)
 
 
 def afni_rest(
@@ -149,11 +330,12 @@ def afni_rest(
     proj_rawdata,
     proj_deriv,
     work_deriv,
-    sing_afni,
     model_name,
     log_dir,
 ):
     """Conduct AFNI-styled resting state analysis for sanity checking.
+
+    Deprecated.
 
     Based on example 11 of afni_proc.py and s17.proc.FT.rest.11
     of afni_data6. Use 3ddeconvolve to generate a no-censor matrix,
@@ -174,8 +356,6 @@ def afni_rest(
         and fsl_denoise sub-directories
     work_deriv : path
         Parent location for writing pipeline intermediates
-    sing_afni : path
-        Location of AFNI singularity file
     model_name : str
         [rest]
         Desired AFNI model, for triggering different workflows
@@ -195,6 +375,8 @@ def afni_rest(
         Model name/type not supported
 
     """
+    return
+
     # Validate and check session, setup
     if model_name != "rest":
         raise ValueError(f"Unsupported model name : {model_name}")
@@ -208,20 +390,19 @@ def afni_rest(
 
     # Extra pre-processing steps, generate deconvolution command
     sess_func, sess_anat = preprocess.extra_preproc(
-        subj, sess, subj_work, proj_deriv, sing_afni, do_rest=True
+        subj, sess, subj_work, proj_deriv, do_rest=True
     )
     write_decon = deconvolve.WriteDecon(
         subj_work,
         proj_deriv,
         sess_func,
         sess_anat,
-        sing_afni,
     )
     write_decon.build_decon(model_name)
 
     # Project regression matrix
     proj_reg = deconvolve.ProjectRest(
-        subj, sess, subj_work, proj_deriv, sing_afni, log_dir
+        subj, sess, subj_work, proj_deriv, log_dir
     )
     proj_reg.gen_xmatrix(write_decon.decon_cmd, write_decon.decon_name)
     proj_reg.anaticor(
@@ -233,17 +414,16 @@ def afni_rest(
 
     # Seed (sanity check) and clean
     corr_dict = proj_reg.seed_corr(sess_anat)
-    afni_helper.MoveFinal(
-        subj, sess, proj_deriv, subj_work, sess_anat, model_name
-    )
+    helper.MoveFinal(subj, sess, proj_deriv, subj_work, sess_anat, model_name)
     return (corr_dict, sess_anat, sess_func)
 
 
-# %%
 def afni_extract(
     proj_dir, subj_list, model_name, group_mask="template", comb_all=True
 ):
     """Extract sub-brick betas and generate dataframe.
+
+    Deprecated.
 
     Split AFNI deconvolved files by sub-brick and then extract the
     beta-coefficient for each behavior of interest from each voxel
@@ -279,6 +459,8 @@ def afni_extract(
         Unexpected group_mask value
 
     """
+    return
+
     # Validate and setup
     if model_name != "univ":
         raise ValueError("Unexpected model_name")
@@ -290,7 +472,7 @@ def afni_extract(
         os.makedirs(out_dir)
 
     # Initialize beta extraction
-    get_betas = afni_group.ExtractTaskBetas(proj_dir)
+    get_betas = group.AfniExtractTaskBetas(proj_dir)
 
     # Generate mask and identify censor coordinates
     if group_mask == "template":
@@ -323,229 +505,290 @@ def afni_extract(
 
     # Combine all participant dataframes
     if comb_all:
-        _ = afni_group.comb_matrices(
-            subj_list, model_name, proj_deriv, out_dir
+        _ = group.comb_matrices(subj_list, model_name, proj_deriv, out_dir)
+
+
+class DeconSubbrick:
+    """Find AFNI deconvolve files and their subbricks.
+
+    Parameters
+    ----------
+    model_name : str
+        {"mixed", "task", "block"}
+        Deconvolution model name
+    model_indiv : str, os.PathLike, helper.SyncGroup.setup_group()[0]
+        Parent directory of subject deconvultions
+
+    Attributes
+    ----------
+    decon_dict : dict
+        Paths to decon files organized by subject
+        {"sub-1": "/path/to/decon+tlrc.HEAD"}
+
+    Methods
+    -------
+    find_decons(task)
+        Find decon files for specified task, build attr decon_dict
+    find_subbricks()
+        Write txt files with sub-brick label ID
+
+    Example
+    -------
+    sync_data = helper.SyncGroup(*args)
+    model_indiv, _ = sync_data.setup_group()
+    dcn_sub = DeconSubbrick("task", model_indiv)
+    dcn_sub.find_decons("task-movies")
+    dcn_sub.find_subbricks(*args)
+
+    """
+
+    def __init__(self, model_name, model_indiv):
+        """Initialize DeconSubbrick."""
+        if model_name not in ["task", "block", "mixed"]:
+            raise ValueError()
+        self._model_name = model_name
+        self._model_indiv = model_indiv
+
+    def find_decons(self, task):
+        """Find all decon files of task and model name.
+
+        Parameters
+        ----------
+        task : str
+            BIDs task ID
+
+        Attributes
+        ----------
+        decon_dict : dict
+            Paths to decon files organized by subject
+            {"sub-1": "/path/to/decon+tlrc.HEAD"}
+
+        """
+        # Find all decon files for requested task, model_name
+        search_path = os.path.join(self._model_indiv, "sub-*", "ses-*", "func")
+        search_decon = (
+            f"*{task}_desc-decon_model-{self._model_name}_"
+            + "stats_REML+tlrc.HEAD"
         )
+        decon_list = sorted(glob.glob(f"{search_path}/{search_decon}"))
+        if not decon_list:
+            raise FileNotFoundError(
+                f"Expected decon files {search_path}/{search_decon}"
+            )
+
+        # Build dict needed by group.EtacTest.write_exec
+        self.decon_dict = {}
+        for decon_path in decon_list:
+            subj = os.path.basename(decon_path).split("_")[0]
+            self.decon_dict[subj] = decon_path
+
+    def find_subbricks(self, task, emo_list, blk_coef, get_wash):
+        """Write files with subbrick ID to subj directory.
+
+        Parameters
+        ----------
+        task : str
+            BIDS task ID
+        emo_list : list
+            List of emotions
+        blk_coef : bool
+            Extract block instead of task coefficient when
+            model_name=mixed
+        get_wash : bool
+            Extract washout subbrick ID, for use when
+            ttest stat=paired.
+        decon_dict : dict, optional
+            Dict of {"sub-1": "/path/to/decon+tlrc.HEAD"}
+
+        """
+        if blk_coef and self._model_name != "mixed":
+            raise ValueError(
+                "Option blk_coef only available when model_name=mixed"
+            )
+
+        # Identify decon files
+        if not hasattr(self, "decon_dict"):
+            self.find_decons(task)
+
+        # Coordinate subbrick finding
+        for _subj, decon_path in self.decon_dict.items():
+            for emo_name in emo_list:
+                sub_label = group.make_subbrick_label(
+                    task,
+                    emo_name,
+                    self._model_name,
+                    blk_coef,
+                )
+                group.get_subbrick_label(
+                    sub_label,
+                    task,
+                    self._model_name,
+                    decon_path,
+                )
+            if get_wash:
+                group.get_subbrick_label(
+                    "comWas#0_Coef", task, self._model_name, decon_path
+                )
 
 
-# %%
-def afni_ttest(task, model_name, emo_name, proj_dir):
-    """Conduct T-tests in AFNI using the ETAC method.
-
-    Conduct stimulus-specific (movies, scenarios) t-tests comparing
-    emotion against zero (student) or washout (paired). Output
-    scripts and files are written to:
-        <proj_dir>/analyses/model_afni/ttest_<model_name>/<task>_<emo_name>
+def afni_ttest(
+    task, model_name, stat, emo_name, blk_coef, work_deriv, log_dir
+):
+    """Conduct T-test via AFNI's ETAC method.
 
     Parameters
     ----------
     task : str
-        [task-movies | task-scenarios]
-        BIDS task identifier
+        BIDS task ID
     model_name : str
-        [student | paired]
-        Type of T-test to conduct
-    emo_name : str, key of afni.helper.emo_switch
-        Lower case emotion name
-    proj_dir : path
-        Project directory location, should contain
-        data_scanner_BIDS/derivatives/model_afni
-
-    Raises
-    ------
-    FileNotFoundError
-        Missing required directory
-    ValueError
-        Unexpected argument parameter
+        {"mixed", "task", "block"}
+        Deconvolution model name
+    stat : str
+        {"paired", "student"}
+        Type of t-test, paired uses washout as contrast
+    emo_name : str
+        Emotion name
+    blk_coef : bool
+        Extract block coefficient when model_name=mixed
+    work_deriv : str, os.PathLike
+        Location of output derivaitves directory
+    log_dir : str, os.PathLike
+        Location of logging directory
 
     """
-    # Validate paths
-    if not os.path.exists(proj_dir):
-        raise FileNotFoundError(
-            f"Missing expected project directory : {proj_dir}"
-        )
-    afni_deriv = os.path.join(
-        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
-    )
-    if not os.path.exists(afni_deriv):
-        raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
-
-    # Validate strings
-    if not afni_helper.valid_task(task):
+    # Validate
+    if not helper.valid_task(task):
         raise ValueError(f"Unexpected task value : {task}")
-    if not afni_helper.valid_univ_test(model_name):
-        raise ValueError(f"Unexpected model name : {model_name}")
-    emo_switch = afni_helper.emo_switch()
-    if emo_name not in emo_switch.keys():
-        raise ValueError(f"Unexpected emotion name : {emo_name}")
+    if not helper.valid_univ_test(stat):
+        raise ValueError(f"Unexpected stat test name : {stat}")
+    if model_name not in ["task", "block", "mixed"]:
+        raise ValueError()
 
-    # Setup
-    print(f"\nConducting {model_name} ETAC for {emo_name}")
-    group_dir = os.path.join(proj_dir, "analyses/model_afni")
-    out_dir = os.path.join(
-        group_dir, f"ttest_{model_name}", f"{task}_{emo_name}"
+    # Setup directory structure
+    sync_data = helper.SyncGroup(work_deriv)
+    model_indiv, model_group = sync_data.setup_group()
+
+    # Identify (and possibly download) decons
+    dcn_sub = DeconSubbrick(model_name, model_indiv)
+    try:
+        dcn_sub.find_decons(task)
+    except FileNotFoundError:
+        sync_data.get_model_afni(task, model_name)
+        dcn_sub.find_decons(task)
+
+    # Make template mask, determine relevant subbrick label
+    mask_path = masks.tpl_gm(model_group)
+    sub_label = group.make_subbrick_label(
+        task,
+        emo_name,
+        model_name,
+        blk_coef,
     )
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
 
-    # Identify participant/sessions with desired task from timing file
-    task_subj = sorted(
-        glob.glob(
-            f"{afni_deriv}/**/*_{task}_desc-comWas_events.1D",
-            recursive=True,
-        )
+    # Execute ETAC
+    run_etac = group.EtacTest(model_group, mask_path)
+    out_path = run_etac.write_exec(
+        task,
+        model_name,
+        stat,
+        emo_name,
+        dcn_sub.decon_dict,
+        sub_label,
+        log_dir,
+        blk_coef,
     )
-    if not task_subj:
-        raise ValueError("Failed to detect desc-comWas timing files.")
 
-    # Build dict needed by group.EtacTest.write_exec
-    group_dict = {}
-    for file_path in task_subj:
-        decon_path = os.path.join(
-            Path(file_path).parents[1], "decon_univ_stats_REML+tlrc.HEAD"
-        )
-        if os.path.exists(decon_path):
-            subj, sess, _task, _desc, _suff = os.path.basename(
-                file_path
-            ).split("_")
-            group_dict[subj] = {
-                "sess": sess,
-                "decon_path": decon_path,
-            }
-
-    # Make, get mask
-    mask_path = masks.tpl_gm(group_dir)
-
-    # Build coefficient name to match sub-brick, recreate name
-    # specified by afni.deconvolve.TimingFiles.session_events,
-    # and append AFNI coefficient title.
-    task_short = task.split("-")[1][:3]
-    if task_short not in ["mov", "sce"]:
-        raise ValueError("Problem splitting task name")
-    emo_short = emo_switch[emo_name]
-    sub_label = task_short + emo_short + "#0_Coef"
-
-    # Generate, execute ETAC command
-    run_etac = afni_group.EtacTest(proj_dir, out_dir, mask_path)
-    _ = run_etac.write_exec(model_name, emo_short, group_dict, sub_label)
+    # Send output to Keoki, clean
+    out_dir = os.path.dirname(out_path)
+    sync_data.send_group(out_dir)
+    shutil.rmtree(out_dir)
 
 
-# %%
-def afni_mvm(proj_dir, model_name, emo_name):
-    """Conduct ANOVA-style tests in AFNI via 3dMVM.
-
-    Identify participants with deconvolved files from both sessions
-    and then conduct an ANOVA-styled analysis for the specified emotion.
-    Cluster simulations (Monte Carlo) are written to the same directory
-    as the group-level mask, and 3dMVM scripts and output are written to:
-        <proj_dir>/analyses/model_afni/mvm_<model_name>/<emo_name>_vs_washout
-
-    Currently, only a two-factor repeated-measures ANOVA analysis is
-    supported, with factor A as session stimulus (movies, scenarios), and
-    factor B as stimulus type (emotion, washout). Main, interactive effects
-    are generated as well as an emotion-washout T-stat.
+def afni_montecarlo(model_name, work_deriv, log_dir):
+    """Conduct Monte Carlo simulations for cluster thresholding.
 
     Parameters
     ----------
-    proj_dir : path
-        Project directory location, should contain
-        data_scanner_BIDS/derivatives/model_afni
     model_name : str
-        [rm]
-        Model identifier
-    emo_name : str, key of afni.helper.emo_switch
-        Lower case emotion name
-
-    Raises
-    ------
-    FileNotFoundError
-        Missing expected directories
-    ValueError
-        Unexpected model_name, emo_name
-        Unexpected first three characters of task name
+        {"mixed", "task", "block"}
+        Deconvolution model name
+    work_deriv : str, os.PathLike
+        Location of output derivaitves directory
+    log_dir : str, os.PathLike
+        Location of logging directory
 
     """
-    # Validate paths
-    if not os.path.exists(proj_dir):
-        raise FileNotFoundError(
-            f"Missing expected project directory : {proj_dir}"
-        )
-    afni_deriv = os.path.join(
-        proj_dir, "data_scanner_BIDS/derivatives", "model_afni"
+    if model_name not in ["task", "block", "mixed"]:
+        raise ValueError()
+
+    # Setup work dirs
+    sync_data = helper.SyncGroup(work_deriv)
+    model_indiv, model_group = sync_data.setup_group()
+    mask_path = masks.tpl_gm(model_group)
+
+    # Conduct Monte Carlo Simulations
+    mon_car = group.MonteCarlo(
+        model_indiv, model_group, model_name, mask_path, log_dir
     )
-    if not os.path.exists(afni_deriv):
-        raise FileNotFoundError(f"Missing expected directory : {afni_deriv}")
+    mon_car.noise_acf()
+    out_path = mon_car.clustsim()
 
-    # Validate strings
-    if not afni_helper.valid_mvm_test(model_name):
-        raise ValueError(f"Unexpected model name : {model_name}")
-    emo_switch = afni_helper.emo_switch()
-    if emo_name not in emo_switch.keys():
-        raise ValueError(f"Unexpected emotion name : {emo_name}")
+    # Send output to Keoki, clean
+    out_dir = os.path.dirname(out_path)
+    sync_data.send_group(out_dir)
+    shutil.rmtree(out_dir)
 
-    # Setup output location
-    print(f"\nConducting {model_name} MVM for {emo_name}")
-    group_dir = os.path.join(proj_dir, "analyses/model_afni")
-    out_dir = os.path.join(
-        group_dir, f"mvm_{model_name}", f"{emo_name}_vs_washout"
+
+def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
+    """Conduct linear mixed effect model via AFNI's 3dLMEr method.
+
+    Y = emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)
+
+    Parameters
+    ----------
+    model_name : str
+        {"mixed", "task", "block"}
+        Deconvolution model name
+    emo_list : list
+        Emotion list
+    blk_coef : bool
+        Extract block coefficient when model_name=mixed
+    work_deriv : str, os.PathLike
+        Location of output derivaitves directory
+    log_dir : str, os.PathLike
+        Location of logging directory
+
+    """
+    if model_name not in ["task", "block", "mixed"]:
+        raise ValueError()
+
+    # Setup work dirs
+    sync_data = helper.SyncGroup(work_deriv)
+    model_indiv, model_group = sync_data.setup_group()
+
+    # Build decon_dict
+    decon_dict = {}
+    dcn_sub = DeconSubbrick(model_name, model_indiv)
+    for task in ["task-movies", "task-scenarios"]:
+
+        # Download data if necessary
+        try:
+            dcn_sub.find_decons(task)
+        except FileNotFoundError:
+            sync_data.get_model_afni(task, model_name)
+            dcn_sub.find_decons(task)
+
+        dcn_sub.find_decons(task)
+        decon_dict[task] = dcn_sub.decon_dict
+
+    # Execute LMEr
+    mask_path = masks.tpl_gm(model_group)
+    lmer_test = group.LmerTest(model_group, mask_path)
+    out_path = lmer_test.write_exec(
+        model_name, decon_dict, emo_list, blk_coef, log_dir
     )
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
 
-    # Get AFNI emo name and washout subbrick label
-    emo_short = emo_switch[emo_name]
-    wash_label = "comWas#0_Coef"
-
-    # Make group dictionary required by group.MvmTest.write_exec
-    print("\tBuilding group dictionary")
-    subj_all = [
-        os.path.basename(x) for x in sorted(glob.glob(f"{afni_deriv}/sub-*"))
-    ]
-    group_dict = {}
-    for subj in subj_all:
-        # Only include participants with deconvolved data from both sessions
-        decon_list = sorted(
-            glob.glob(
-                f"{afni_deriv}/{subj}/**/decon_univ_stats_REML+tlrc.HEAD",
-                recursive=True,
-            )
-        )
-        if len(decon_list) != 2:
-            print(
-                "Unexpected number of deconvolved files, excluding "
-                + f"{subj} from group-level model"
-            )
-            continue
-        group_dict[subj] = {}
-
-        # Identify the task name from washout timing file
-        for decon_path in decon_list:
-            search_path = os.path.join(
-                os.path.dirname(decon_path), "timing_files"
-            )
-            wash_path = glob.glob(f"{search_path}/*_desc-comWas_events.1D")[0]
-            wash_file = os.path.basename(wash_path)
-            _subj, sess, task, _desc, _suff = wash_file.split("_")
-
-            # Reconstruct subbrick label for the emotion
-            task_short = task.split("-")[1][:3]
-            if task_short not in ["mov", "sce"]:
-                raise ValueError("Problem splitting task name")
-            emo_label = task_short + emo_short + "#0_Coef"
-
-            # Fill dictionary with required structure, items
-            group_dict[subj][task] = {
-                "sess": sess,
-                "decon_path": decon_path,
-                "emo_label": emo_label,
-                "wash_label": wash_label,
-            }
-
-    # Make, get mask
-    print("\tGetting group mask")
-    mask_path = masks.tpl_gm(group_dir)
-
-    # Generate, execute ETAC command
-    run_mvm = afni_group.MvmTest(proj_dir, out_dir, mask_path)
-    run_mvm.clustsim()
-    _ = run_mvm.write_exec(group_dict, model_name, emo_short)
+    # Send output to Keoki, clean
+    out_dir = os.path.dirname(out_path)
+    sync_data.send_group(out_dir)
+    shutil.rmtree(out_dir)
