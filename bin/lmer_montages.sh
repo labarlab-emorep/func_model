@@ -4,10 +4,12 @@ function Usage {
     cat <<USAGE
     Usage: $0 -s <stat-name> [-g group-path] [-t template]
 
-    Generate montages for emotion main effects of afni_lmer output.
+    Generate montages for emotion main effects of afni_lmer output. PNG files
+    are written to:
+        <group-path>/<stat-name>/subbrick_montages
 
     Requires:
-        - Template file to exist in group directory
+        - Template file to exist in <group-path>
         - Output of func_model's afni_lmer
 
     Optional Arguments:
@@ -74,7 +76,7 @@ fi
 
 # Validate environment
 3dcopy 1>/dev/null 2>&1
-if [ $? != 1 ]; then
+if [ $? != 0 ]; then
     echo "AFNI not exectuable in environment" >&2
     exit 1
 fi
@@ -101,21 +103,22 @@ sub_coef=(3 9 15 21 27 33 39 45 51 57 63 69 75 81 87)
 sub_stat=(4 10 16 22 28 34 40 46 52 58 64 70 76 82 88)
 
 # Validate balanced arrays
-if [ ${#sub_name[@]} != ${#sub_id[@]} ] || [ ${#sub_name[@]} != ${#sub_th[@]} ]; then
+if [ ${#sub_name[@]} != ${#sub_coef[@]} ] || [ ${#sub_name[@]} != ${#sub_stat[@]} ]; then
     echo "Unequal array lengths" >&2
     exit 1
 fi
 
 # Setup output directory
-out_dir=$(dirname $stat_file)/subbrick_montages
+out_dir=$(dirname $stat_path)/subbrick_montages
 mkdir -p $out_dir
 
 # Make montage for each emotion
 c=0
 while [ $c -lt ${#sub_name[@]} ]; do
+    echo -e "\n\nDrawing ${sub_name[$c]}_mont files to:\n\t${out_dir}\n\n" >&1
     @chauffeur_afni \
         -ulay $tpl_path \
-        -olay $stat_file \
+        -olay $stat_path \
         -set_dicom_xyz 0 10 0 \
         -cbar Reds_and_Blues_Inv \
         -func_range 1 \
