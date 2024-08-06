@@ -19,10 +19,9 @@ from func_model.resources import deconvolve
 from func_model.resources import masks
 from func_model.resources import helper
 from func_model.resources import group
-from func_model.workflows import wf_fsl
 
 
-class _SyncData(wf_fsl._SupportFsl):
+class _SyncData(helper.SupportFsl):
     """Coordinate setup, data download, output upload."""
 
     def __init__(
