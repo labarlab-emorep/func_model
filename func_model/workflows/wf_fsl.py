@@ -18,8 +18,7 @@ fsl_classify_mask : generate template mask from classifier output
 import os
 import glob
 import shutil
-from typing import Union, Tuple
-import subprocess
+from typing import Union
 import pandas as pd
 from multiprocessing import Process, Pool
 from natsort import natsorted
@@ -30,71 +29,10 @@ from func_model.resources import helper
 
 
 # %%
-class _SupportFsl:
-    """General helper methods for first- and second-level workflows."""
-
-    def __init__(self, keoki_path: Union[str, os.PathLike]):
-        """Initialize."""
-        try:
-            self._rsa_key = os.environ["RSA_LS2"]
-        except KeyError as e:
-            raise Exception(
-                "Missing required environmental variable RSA_LS2"
-            ) from e
-        self._keoki_path = keoki_path
-
-    @property
-    def _ls2_ip(self):
-        """Return labarserv2 ip addr."""
-        return "ccn-labarserv2.vm.duke.edu"
-
-    def _submit_rsync(self, src: str, dst: str) -> Tuple:
-        """Execute rsync between DCC and labarserv2."""
-        bash_cmd = f"""\
-            rsync \
-            -e "ssh -i {self._rsa_key}" \
-            -rauv {src} {dst}
-        """
-        h_out, h_err = self._quick_sp(bash_cmd)
-        return (h_out, h_err)
-
-    def _quick_sp(self, bash_cmd: str) -> Tuple:
-        """Spawn quick subprocess."""
-        h_sp = subprocess.Popen(
-            bash_cmd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        h_out, h_err = h_sp.communicate()
-        h_sp.wait()
-        return (h_out, h_err)
-
-    def _push_data(self):
-        """Make remote destination and send data there."""
-        keoki_dst = os.path.join(
-            self._keoki_path, "derivatives", self._final_dir, self._subj
-        )
-        make_dst = f"""\
-            ssh \
-                -i {self._rsa_key} \
-                {os.environ["USER"]}@{self._ls2_ip} \
-                " command ; bash -c 'mkdir -p {keoki_dst}'"
-            """
-        _, _ = self._quick_sp(make_dst)
-
-        # Send data
-        dst = os.path.join(
-            self._keoki_proj, "derivatives", self._final_dir, self._subj
-        )
-        _, _ = self._submit_rsync(self._subj_final, dst)
-
-
-# %%
-class _SupportFslFirst(_SupportFsl):
+class _SupportFslFirst(helper.SupportFsl):
     """Offload helper methods from FslFirst.
 
-    Inherits _SupportFsl.
+    Inherits helper.SupportFsl.
 
     """
 
@@ -260,10 +198,10 @@ class _SupportFslFirst(_SupportFsl):
                 shutil.rmtree(rm_dir)
 
 
-class _SupportFslSecond(_SupportFsl):
+class _SupportFslSecond(helper.SupportFsl):
     """Offload helper methods from FslSecond.
 
-    Inherits _SupportFsl.
+    Inherits helper.SupportFsl.
 
     """
 

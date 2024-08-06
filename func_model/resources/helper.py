@@ -15,6 +15,7 @@ get_tr : get TR length
 load_tsv : read tsv as pd.DataFrame
 clean_up : delete unneeded files and copy to group
 emo_switch : supply emotion names
+SupportFsl : helper methods for fsl modeling
 SyncGroup : download all model_afni data
 
 """
@@ -24,11 +25,11 @@ import glob
 import subprocess
 import shutil
 from typing import Union
+from typing import Tuple
 import pandas as pd
 import nibabel as nib
 import importlib.resources as pkg_resources
 from func_model import reference_files
-from func_model.workflows import wf_fsl
 
 
 def prepend_afni_sing(
@@ -203,7 +204,67 @@ def clean_up(subj_work, subj_final, model_name):
     shutil.rmtree(os.path.dirname(subj_work))
 
 
-class SyncGroup(wf_fsl._SupportFsl):
+class SupportFsl:
+    """General helper methods for first- and second-level workflows."""
+
+    def __init__(self, keoki_path: Union[str, os.PathLike]):
+        """Initialize."""
+        try:
+            self._rsa_key = os.environ["RSA_LS2"]
+        except KeyError as e:
+            raise Exception(
+                "Missing required environmental variable RSA_LS2"
+            ) from e
+        self._keoki_path = keoki_path
+
+    @property
+    def _ls2_ip(self):
+        """Return labarserv2 ip addr."""
+        return "ccn-labarserv2.vm.duke.edu"
+
+    def _submit_rsync(self, src: str, dst: str) -> Tuple:
+        """Execute rsync between DCC and labarserv2."""
+        bash_cmd = f"""\
+            rsync \
+            -e "ssh -i {self._rsa_key}" \
+            -rauv {src} {dst}
+        """
+        h_out, h_err = self._quick_sp(bash_cmd)
+        return (h_out, h_err)
+
+    def _quick_sp(self, bash_cmd: str) -> Tuple:
+        """Spawn quick subprocess."""
+        h_sp = subprocess.Popen(
+            bash_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        h_out, h_err = h_sp.communicate()
+        h_sp.wait()
+        return (h_out, h_err)
+
+    def _push_data(self):
+        """Make remote destination and send data there."""
+        keoki_dst = os.path.join(
+            self._keoki_path, "derivatives", self._final_dir, self._subj
+        )
+        make_dst = f"""\
+            ssh \
+                -i {self._rsa_key} \
+                {os.environ["USER"]}@{self._ls2_ip} \
+                " command ; bash -c 'mkdir -p {keoki_dst}'"
+            """
+        _, _ = self._quick_sp(make_dst)
+
+        # Send data
+        dst = os.path.join(
+            self._keoki_proj, "derivatives", self._final_dir, self._subj
+        )
+        _, _ = self._submit_rsync(self._subj_final, dst)
+
+
+class SyncGroup(SupportFsl):
     """Coordinate setup, data download, output upload."""
 
     def __init__(self, work_deriv):
