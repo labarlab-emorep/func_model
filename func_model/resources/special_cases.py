@@ -1,0 +1,86 @@
+"""Methods for resolving issues with subject data.
+
+"""
+
+import os
+from typing import Union
+import pandas as pd
+from func_model.resources import helper
+
+
+class SpecCases:
+    """Manage special cases.
+
+    Example
+    -------
+    spec_case = special_cases.SpecCases("sub-ER1006")
+    if spec_case.spec_subj():
+        cond_dict = spec_case.run_spec("adjust_events", epi_path, cond_dict)
+        use_short = spec_case.run_spec("adjust_short", "run-06", False)
+
+    """
+
+    def __init__(self, subj: str):
+        """Initialize SpecCases."""
+        self._subj = subj
+
+    def spec_subj(self) -> bool:
+        """Check if subject requires special treatment."""
+        return self._subj in self._spec_tx.keys()
+
+    @property
+    def _spec_tx(self) -> dict:
+        """Map subjects to special treatment methods."""
+        return {"sub-ER1006": ["adjust_events", "adjust_short"]}
+
+    def run_spec(self, step, *args):
+        """Run special treatment method for step.
+
+        Parameters
+        ----------
+        step : str
+            {"adjust_events", "adjust_template", "adjust_short"}
+        args
+            Requirements for step method
+
+        """
+        pass_args = list(args)
+        if step not in self._spec_tx[self._subj]:
+            return pass_args
+
+        step_meth = getattr(self, f"_{step}")
+        return step_meth(*pass_args)
+
+    def _adjust_events(
+        self, epi_file: Union[str, os.PathLike], cond_dict: dict
+    ) -> dict:
+        """Adjust condition files for short EPI runs."""
+        # Find length of run
+        num_vol = helper.count_vol(epi_file)
+        len_tr = helper.get_tr(epi_file)
+        len_run = num_vol * len_tr
+
+        # Remove events that occur after run ended
+        for ev_name, ev_path in cond_dict.items():
+            df_cond = pd.read_csv(ev_path, sep="\t", header=None)
+            df_cond = df_cond.drop(df_cond[df_cond[0] >= len_run].index)
+            df_cond.to_csv(ev_path, index=False, header=False, sep="\t")
+        return cond_dict
+
+    def _adjust_short(self, run: str, use_short: bool) -> bool:
+        """Adjust whether to use short template."""
+        tpl_map = {"sub-ER1006": {"run-06": True}}
+        if run not in tpl_map[self._subj].keys():
+            return use_short
+        return tpl_map[self._subj][run]
+
+    def _adjust_template(self, run: str) -> str:
+        """Return name of template for special case."""
+        tpl_map = {
+            "sub-ER1006": {
+                "run-06": "design_template_level-first_name-sep_desc-short.fsf"
+            }
+        }
+        if run not in tpl_map[self._subj].keys():
+            raise KeyError()
+        return tpl_map[self._subj][run]
