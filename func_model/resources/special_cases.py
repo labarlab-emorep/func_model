@@ -1,5 +1,7 @@
 """Methods for resolving issues with subject data.
 
+SpecCases : Connect subject IDs with solutions for idiosyncratic data issues
+
 """
 
 import os
@@ -44,6 +46,7 @@ class SpecCases:
             Requirements for step method
 
         """
+        # Check for planned special treatment
         pass_args = list(args)
         if step not in self._spec_tx[self._subj]:
             return pass_args
@@ -61,10 +64,17 @@ class SpecCases:
         len_run = num_vol * len_tr
 
         # Remove events that occur after run ended
-        for ev_name, ev_path in cond_dict.items():
+        for ev_name in list(cond_dict.keys()):
+            ev_path = cond_dict[ev_name]
             df_cond = pd.read_csv(ev_path, sep="\t", header=None)
             df_cond = df_cond.drop(df_cond[df_cond[0] >= len_run].index)
-            df_cond.to_csv(ev_path, index=False, header=False, sep="\t")
+
+            # Remove empty event files
+            if df_cond.empty:
+                os.remove(ev_path)
+                del cond_dict[ev_name]
+            else:
+                df_cond.to_csv(ev_path, index=False, header=False, sep="\t")
         return cond_dict
 
     def _adjust_short(self, run: str, use_short: bool) -> bool:
