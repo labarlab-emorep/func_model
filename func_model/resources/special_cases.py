@@ -43,7 +43,7 @@ class SpecCases:
         step : str
             {"adjust_events", "adjust_template", "adjust_short"}
         args
-            Requirements for step method
+            Relevant input for step method
 
         """
         # Check for planned special treatment
