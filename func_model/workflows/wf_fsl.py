@@ -19,6 +19,7 @@ import os
 import glob
 import shutil
 from typing import Union
+from typing import Tuple
 import pandas as pd
 from multiprocessing import Process, Pool
 from natsort import natsorted
@@ -26,6 +27,7 @@ from func_model.resources import masks
 from func_model.resources import model
 from func_model.resources import group
 from func_model.resources import helper
+from func_model.resources import special_cases
 
 
 # %%
@@ -395,6 +397,7 @@ class FslFirst(_SupportFslFirst):
         self._keoki_proj = (
             f"{os.environ['USER']}@{self._ls2_ip}:{self._keoki_path}"
         )
+        self._spec_case = special_cases.SpecCases(subj)
 
     def model_rest(self):
         """Run an FSL first-level model for resting EPI data.
@@ -448,19 +451,16 @@ class FslFirst(_SupportFslFirst):
 
         # Generate design files for each run
         design_list = []
-        for preproc_path in self._sess_preproc:
+        for self._preproc_path in self._sess_preproc:
+
             # Set run attr, determine template type
-            self._get_run(os.path.basename(preproc_path))
-            use_short = (
-                True
-                if self._run == "run-04" or self._run == "run-08"
-                else False
-            )
+            self._get_run(os.path.basename(self._preproc_path))
+            use_short = self._det_short()
 
             # Make required condition, confound files
             self._make_cond()
             self._make_conf()
-            if not self._cond_comm and not self._conf_path:
+            if not self._cond_comm or not self._conf_path:
                 continue
 
             # Make task or lss design files
@@ -475,7 +475,7 @@ class FslFirst(_SupportFslFirst):
                 )
                 mult_design = make_fsf.write_task_fsf(
                     self._run,
-                    preproc_path,
+                    self._preproc_path,
                     self._conf_path,
                     self._cond_comm,
                     use_short,
@@ -490,7 +490,7 @@ class FslFirst(_SupportFslFirst):
             else:
                 design_path = make_fsf.write_task_fsf(
                     self._run,
-                    preproc_path,
+                    self._preproc_path,
                     self._conf_path,
                     self._cond_comm,
                     use_short,
@@ -504,6 +504,10 @@ class FslFirst(_SupportFslFirst):
         # Execute design files
         self._run_feat(design_list)
         self._push_data()
+
+        # TODO remove
+        return
+
         self._clean_dcc()
 
     def _make_cond(self):
@@ -516,17 +520,41 @@ class FslFirst(_SupportFslFirst):
             self._cond_comm = None
             return
 
-        # Generate common condition files
+        # Generate and adjust common condition files
         self._make_cf.load_events(sess_events[0])
-        self._cond_comm = self._make_cf.common_events()
+        (self._cond_comm,) = self._adj_cond(self._make_cf.common_events())
 
-        # Generate model-name specific cond files
+        # Generate and adjust model-name specific cond files
         if self._model_name == "sep":
-            _ = self._make_cf.session_separate_events()
+            (_,) = self._adj_cond(self._make_cf.session_separate_events())
         elif self._model_name == "tog":
-            _ = self._make_cf.session_together_events()
+            (_,) = self._adj_cond(self._make_cf.session_together_events())
         elif self._model_name == "lss":
-            self._tog_cond, self._lss_cond = self._make_cf.session_lss_events()
+            self._tog_cond, self._lss_cond = self._adj_cond(
+                self._make_cf.session_lss_events()
+            )
+
+    def _adj_cond(self, *args: Union[dict, Tuple[dict, dict]]) -> tuple:
+        """Adjust condition files if needed."""
+        if not self._spec_case.spec_subj():
+            return args
+
+        for cond_dict in args:
+            _ = self._spec_case.run_spec(
+                "adjust_events", self._preproc_path, cond_dict
+            )
+        return args
+
+    def _det_short(self) -> bool:
+        """Determine whether to use short or full design."""
+        use_short = (
+            True if self._run == "run-04" or self._run == "run-08" else False
+        )
+        if self._spec_case.spec_subj():
+            use_short = self._spec_case.run_spec(
+                "adjust_short", self._run, use_short
+            )
+        return use_short
 
     def _make_conf(self):
         """Generate confounds files from fMRIPrep output for single run."""
