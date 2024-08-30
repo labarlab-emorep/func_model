@@ -13,27 +13,38 @@ from func_model.resources import helper
 class SpecCases:
     """Manage special cases.
 
+    Methods
+    -------
+    spec_subj()
+        Determine if subject, session require special treatment
+    run_spec()
+        Entrypoint, provides access to adjustment methods
+
     Example
     -------
-    spec_case = special_cases.SpecCases("sub-ER1006")
+    spec_case = special_cases.SpecCases("sub-ER1006", "ses-day3")
     if spec_case.spec_subj():
         cond_dict = spec_case.run_spec("adjust_events", epi_path, cond_dict)
         use_short = spec_case.run_spec("adjust_short", "run-06", False)
 
     """
 
-    def __init__(self, subj: str):
+    def __init__(self, subj: str, sess: str):
         """Initialize SpecCases."""
         self._subj = subj
+        self._sess = sess
 
     def spec_subj(self) -> bool:
         """Check if subject requires special treatment."""
-        return self._subj in self._spec_tx.keys()
+        return (
+            self._subj in self._spec_tx.keys()
+            and self._sess in self._spec_tx[self._subj].keys()
+        )
 
     @property
     def _spec_tx(self) -> dict:
-        """Map subjects to special treatment methods."""
-        return {"sub-ER1006": ["adjust_events", "adjust_short"]}
+        """Map subject and session to special treatment methods."""
+        return {"sub-ER1006": {"ses-day3": ["adjust_events", "adjust_short"]}}
 
     def run_spec(self, step, *args):
         """Run special treatment method for step.
@@ -48,7 +59,10 @@ class SpecCases:
         """
         # Check for planned special treatment
         pass_args = list(args)
-        if step not in self._spec_tx[self._subj]:
+        if (
+            not self.spec_subj()
+            or step not in self._spec_tx[self._subj][self._sess]
+        ):
             return pass_args
 
         step_meth = getattr(self, f"_{step}")
@@ -79,18 +93,21 @@ class SpecCases:
 
     def _adjust_short(self, run: str, use_short: bool) -> bool:
         """Adjust whether to use short template."""
-        tpl_map = {"sub-ER1006": {"run-06": True}}
-        if run not in tpl_map[self._subj].keys():
+        tpl_map = {"sub-ER1006": {"ses-day3": {"run-06": True}}}
+        if run not in tpl_map[self._subj][self._sess].keys():
             return use_short
-        return tpl_map[self._subj][run]
+        return tpl_map[self._subj][self._sess][run]
 
     def _adjust_template(self, run: str) -> str:
         """Return name of template for special case."""
         tpl_map = {
             "sub-ER1006": {
-                "run-06": "design_template_level-first_name-sep_desc-short.fsf"
+                "ses-day3": {
+                    "run-06": "design_template_level-first_name-sep_"
+                    + "desc-short.fsf"
+                }
             }
         }
-        if run not in tpl_map[self._subj].keys():
+        if run not in tpl_map[self._subj][self._sess].keys():
             raise KeyError()
-        return tpl_map[self._subj][run]
+        return tpl_map[self._subj][self._sess][run]
