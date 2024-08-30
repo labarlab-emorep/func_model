@@ -397,7 +397,7 @@ class FslFirst(_SupportFslFirst):
         self._keoki_proj = (
             f"{os.environ['USER']}@{self._ls2_ip}:{self._keoki_path}"
         )
-        self._spec_case = special_cases.SpecCases(subj)
+        self._spec_case = special_cases.SpecCases(subj, sess)
 
     def model_rest(self):
         """Run an FSL first-level model for resting EPI data.
@@ -504,10 +504,6 @@ class FslFirst(_SupportFslFirst):
         # Execute design files
         self._run_feat(design_list)
         self._push_data()
-
-        # TODO remove
-        return
-
         self._clean_dcc()
 
     def _make_cond(self):
