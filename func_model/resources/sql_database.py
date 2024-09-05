@@ -9,6 +9,7 @@ DbUpdateBetas : update db_emorep tables
 import os
 import platform
 import pandas as pd
+import numpy as np
 from typing import Type
 from contextlib import contextmanager
 
@@ -276,6 +277,9 @@ class DbUpdateBetas(_RefMaps):
         df["voxel_id"] = df.apply(
             lambda x: self.voxel_label(x.voxel_name), axis=1
         )
+
+        # Manage NaNs
+        df = df.replace({np.nan: None})
 
         # Determine relevant columns for table
         id_list = self._id_cols(model)
