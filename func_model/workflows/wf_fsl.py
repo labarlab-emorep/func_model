@@ -1368,7 +1368,7 @@ def fsl_classify_mask(
                 emo_name,
                 "importance",
                 out_dir,
-                cluster=True,
+                cluster=False,
             )
         )
 
