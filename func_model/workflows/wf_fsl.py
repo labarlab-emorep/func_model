@@ -1366,7 +1366,7 @@ def fsl_classify_mask(
                 model_name,
                 con_name,
                 emo_name,
-                "binary",
+                "importance",
                 out_dir,
                 cluster=True,
             )
