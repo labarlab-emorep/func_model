@@ -268,6 +268,9 @@ optional arguments:
                         List of subject IDs to extract behavior beta-coefficients
   --sub-all             Extract beta-coefficients from all available subjects and
                         generate a master dataframe.
+  --preproc-type {scaled,smoothed}
+                        Whether to use scaled or smoothed preprocessed data.
+                        (default : scaled)
 
 ```
 
