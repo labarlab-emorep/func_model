@@ -412,7 +412,7 @@ class FslFirst(_SupportFslFirst):
 
         # Initialize needed classes, find preprocessed resting EPI
         make_fsf = model.MakeFirstFsf(
-            self._subj_work, self._proj_deriv, self._model_name
+            self._subj_work, self._proj_deriv, self._preproc_type, self._model_name
         )
         rest_preproc = self._sess_preproc[0]
 
@@ -443,7 +443,7 @@ class FslFirst(_SupportFslFirst):
         print("\tRunning first-level task model")
         self._setup()
         make_fsf = model.MakeFirstFsf(
-            self._subj_work, self._proj_deriv, self._model_name
+            self._subj_work, self._proj_deriv, self._preproc_type, self._model_name
         )
         self._make_cf = model.ConditionFiles(
             self._subj, self._sess, self._task, self._subj_work
