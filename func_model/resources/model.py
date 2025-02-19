@@ -1013,9 +1013,13 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         len_tr = helper.get_tr(preproc_path)
 
         # Setup replace dictionary, update design template
+        if self._preproc_type == 'scaled':
+            preproc_string = ''
+        else:
+            preproc_string = f"_preproc-{self._preproc_type}"
         field_switch = {
             "[[run]]": run,
-            "[[preproc_type]]": f"preproc-{self._preproc_type}",
+            "[[preproc_type]]": preproc_string,
             "[[num_vol]]": str(num_vol),
             "[[len_tr]]": str(len_tr),
             "[[preproc_path]]": pp_file,
@@ -1104,9 +1108,13 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
         # Start replace switch
         print("\tBuilding task design.fsf")
+        if self._preproc_type == 'scaled':
+            preproc_string = ''
+        else:
+            preproc_string = f"_preproc-{self._preproc_type}"
         field_switch = {
             "[[run]]": run,
-            "[[preproc_type]]": f"preproc-{self._preproc_type}",
+            "[[preproc_type]]": preproc_string,
             "[[num_vol]]": str(helper.count_vol(preproc_path)),
             "[[preproc_path]]": self._pp_path(preproc_path),
             "[[conf_path]]": confound_path,
