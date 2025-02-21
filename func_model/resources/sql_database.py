@@ -221,7 +221,14 @@ class DbUpdateBetas(_RefMaps):
         """Initialize."""
         super().__init__(db_con)
 
-    def check_db(self, subj: str, task: str, model: str, con: str) -> bool:
+    def check_db(
+        self,
+        subj: str,
+        task: str,
+        model: str,
+        con: str,
+        preproc: str = "scaled",
+    ) -> bool:
         """Check if beta table already has subject data.
 
         Example
@@ -235,8 +242,10 @@ class DbUpdateBetas(_RefMaps):
         """
         subj_id = int(subj.split("-ER")[-1])
         task_id = self.ref_task[task.split("-")[-1]]
+        preproc_str = "" if preproc == "scaled" else f"{preproc}_"
+        tbl_name = f"tbl_betas_{preproc_str}{model}_{con}_gm"
         sql_cmd = (
-            f"select * from tbl_betas_{model}_{con}_gm "
+            f"select * from {tbl_name} "
             + f"where task_id = {task_id} and subj_id = {subj_id} "
             + "limit 1"
         )
@@ -251,6 +260,7 @@ class DbUpdateBetas(_RefMaps):
         model: str,
         con: str,
         overwrite: bool,
+        preproc: str = "scaled",
     ):
         """Update beta table from pd.DataFrame.
 
@@ -268,7 +278,8 @@ class DbUpdateBetas(_RefMaps):
         )
 
         """
-        tbl_name = f"tbl_betas_{model}_{con}_gm"
+        preproc_str = "" if preproc == "scaled" else f"{preproc}_"
+        tbl_name = f"tbl_betas_{preproc_str}{model}_{con}_gm"
         print(f"\tUpdating db_emorep {tbl_name} for {subj}, {task}")
 
         # Add id columns
