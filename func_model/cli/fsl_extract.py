@@ -99,6 +99,7 @@ def _get_args():
         help=textwrap.dedent(
             """\
             Whether to use scaled or smoothed preprocessed data
+            (default : %(default)s)
             """
         ),
     )
