@@ -91,6 +91,18 @@ def _get_args():
             """
         ),
     )
+    parser.add_argument(
+        "--preproc-type",
+        type=str,
+        default="scaled",
+        choices=["smoothed", "scaled"],
+        help=textwrap.dedent(
+            """\
+            Whether to use scaled or smoothed preprocessed data
+            (default : %(default)s)
+            """
+        ),
+    )
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -114,6 +126,7 @@ def main():
     proj_dir = args.proj_dir
     model_name = args.model_name
     overwrite = args.overwrite
+    preproc_type = args.preproc_type
 
     # Assign contrast name (now that tog, replay are deprecated)
     if model_name == "lss":
@@ -135,7 +148,7 @@ def main():
 
     # Submit workflow
     ex_reg = wf_fsl.ExtractBetas(
-        proj_dir, subj_list, model_name, con_name, overwrite
+        proj_dir, subj_list, model_name, con_name, overwrite, preproc_type
     )
     ex_reg.get_betas()
 

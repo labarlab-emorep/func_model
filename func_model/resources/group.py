@@ -1288,6 +1288,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         overwrite,
         mot_thresh=0.2,
         max_value=9999,
+        preproc_type="scaled",
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
 
@@ -1325,6 +1326,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
         max_value : int, optional
             Maximum expected beta value, anything > max_value or
             < -max_value will be censored.
+        preproc_type : str, optional
+            {"scaled", "smoothed"}
+            Preprocessing used
 
         Notes
         -----
@@ -1345,6 +1349,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
             )
         if con_name not in ["stim", "tog"]:
             raise ValueError(f"Unsupported value for con_name : {con_name}")
+        if preproc_type not in ["scaled", "smoothed"]:
+            raise ValueError(
+                f"Unsupported value for preproc_type : {preproc_type}"
+            )
         if model_name == "sep" and con_name != "stim":
             raise ValueError(
                 "Unexpected model contrast pair : "
@@ -1354,6 +1362,11 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError(
                 "Unexpected model contrast pair : "
                 + f"{model_name}, {con_name}"
+            )
+        if model_name == "lss" and preproc_type == "smoothed":
+            raise ValueError(
+                "Unsupported model preprocessing pair : "
+                + f"{model_name}, {preproc_type}"
             )
 
         self._subj = subj
@@ -1366,6 +1379,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._overwrite = overwrite
         self._mot_thresh = mot_thresh
         self._max_value = max_value
+        self._preproc_type = preproc_type
 
         # Manage sep vs lss float precision
         if model_name == "lss":
@@ -1411,6 +1425,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
             self._task,
             self._model_name.split("-")[-1],
             self._con_name,
+            self._preproc_type,
         )
         db_con.close_con()
         return data_exist
@@ -1476,10 +1491,15 @@ class ExtractTaskBetas(matrix.NiftiArray):
             run = self._data_obj[idx][1]
 
             # Setup output path, write
+            preproc_str = (
+                ""
+                if self._preproc_type == "scaled"
+                else f"preproc-{self._preproc_type}_"
+            )
             out_path = os.path.join(
                 self._subj_out,
                 f"{self._subj}_{self._sess}_{self._task}_run-0{run}_"
-                + f"{self._model_level}_{self._model_name}_"
+                + f"{preproc_str}{self._model_level}_{self._model_name}_"
                 + f"con-{self._con_name}_betas.csv",
             )
             print(f"\tWriting : {out_path}")
@@ -1520,6 +1540,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
+                preproc=self._preproc_type,
             )
         if df_b.shape[1] > 2:
             update_betas.update_db(
@@ -1529,6 +1550,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
+                preproc=self._preproc_type,
             )
         db_con.close_con()
 

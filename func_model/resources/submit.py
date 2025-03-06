@@ -318,10 +318,16 @@ def schedule_fsl(
         if model_level == "first"
         else textwrap.dedent(_second_call())
     )
-    py_script = (
-        f"{log_dir}/run-fsl_model-{model_name}_"
-        + f"level-{model_level}_{subj}_{sess}.py"
-    )
+    if preproc_type == 'scaled':
+        py_script = (
+            f"{log_dir}/run-fsl_model-{model_name}_"
+            + f"level-{model_level}_{subj}_{sess}.py"
+        )
+    else:
+        py_script = (
+            f"{log_dir}/run-fsl_preproc-{preproc_type}_"
+            + f"model-{model_name}_level-{model_level}_{subj}_{sess}.py"
+        )
     with open(py_script, "w") as ps:
         ps.write(sbatch_cmd)
 
