@@ -492,11 +492,11 @@ def tpl_gm(out_dir, template_type):
     excl_comb = c3d_meth.comb(excl_list, "tmp_excl")
     excl_bin = c3d_meth.thresh(1, 15, 0, 1, excl_comb, "tmp_excl_bin")
     excl_mult = c3d_meth.mult(tpl_dseg, excl_bin, "tmp_gm")
-    gm_one = c3d_meth.thresh(1, 30, 1, 0, excl_mult, "tmp_gm_one")
     if template_type == "cortex":
-        out_path = gm_one
+        out_path = c3d_meth.thresh(1, 30, 1, 0, excl_mult, out_name)
 
     if template_type == "whole":
+        gm_one = c3d_meth.thresh(1, 30, 1, 0, excl_mult, "tmp_gm_one")
         # Create mask of cerebellum and brainstem
         incl_dict = {16: "bstem", 47: "rcereb", 8: "lcereb"}
         incl_list = []
