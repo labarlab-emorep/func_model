@@ -1169,6 +1169,7 @@ class ExtractBetas:
         con_name,
         overwrite,
         preproc_type,
+        template_type,
     ):
         """Initialize."""
         self._proj_dir = proj_dir
@@ -1177,6 +1178,7 @@ class ExtractBetas:
         self._con_name = con_name
         self._overwrite = overwrite
         self._preproc_type = preproc_type
+        self._template_type = template_type
 
         # Set attrs for future flexibility, get extraction methods
         self._model_level = "first"
@@ -1199,6 +1201,10 @@ class ExtractBetas:
         if self._preproc_type not in ["scaled", "smoothed"]:
             raise ValueError(
                 f"Unsupported value for preproc_type : {self._preproc_type}"
+            )
+        if self._template_type not in ["whole", "cortex"]:
+            raise ValueError(
+                f"Unsupported value for template_type : {self.template_type}"
             )
 
         # Validate argument combinations
@@ -1244,7 +1250,7 @@ class ExtractBetas:
         self._setup()
 
         # Get mask coordinates (set attr rm_voxel)
-        mask_path = masks.tpl_gm(self._out_dir)
+        mask_path = masks.tpl_gm(self._out_dir, self._template_type)
         self._ex_betas.mask_coord(mask_path)
 
         # Identify sessions

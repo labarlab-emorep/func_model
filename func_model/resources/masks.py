@@ -417,7 +417,7 @@ def group_mask(proj_deriv, subj_list, model_name, out_dir):
     return out_path
 
 
-def tpl_gm(out_dir):
+def tpl_gm(out_dir, template_type):
     """Make a gray matter mask from template priors.
 
     Make a binary gray matter mask from the Harvard-Oxford cortical
@@ -449,7 +449,8 @@ def tpl_gm(out_dir):
 
     """
     # Avoid repeating work
-    out_name = "tpl_GM_mask"
+    #TODO: implement template_type
+    out_name = f"tpl_template-{template_type}_GM_mask"
     out_path = os.path.join(out_dir, f"{out_name}.nii.gz")
     if os.path.exists(out_path):
         return out_path
@@ -492,25 +493,28 @@ def tpl_gm(out_dir):
     excl_bin = c3d_meth.thresh(1, 15, 0, 1, excl_comb, "tmp_excl_bin")
     excl_mult = c3d_meth.mult(tpl_dseg, excl_bin, "tmp_gm")
     gm_one = c3d_meth.thresh(1, 30, 1, 0, excl_mult, "tmp_gm_one")
+    if template_type == "cortex":
+        out_path = gm_one
 
-    # Create mask of cerebellum and brainstem
-    incl_dict = {16: "bstem", 47: "rcereb", 8: "lcereb"}
-    incl_list = []
-    for in_num, in_name in incl_dict.items():
-        incl_list.append(
-            c3d_meth.thresh(in_num, in_num, 1, 0, tpl_hcp_dseg, f"tmp_{in_name}")
-        )
+    if template_type == "whole":
+        # Create mask of cerebellum and brainstem
+        incl_dict = {16: "bstem", 47: "rcereb", 8: "lcereb"}
+        incl_list = []
+        for in_num, in_name in incl_dict.items():
+            incl_list.append(
+                c3d_meth.thresh(in_num, in_num, 1, 0, tpl_hcp_dseg, f"tmp_{in_name}")
+            )
 
-    # Add cerebellum and brainstem into mask, binarize
-    incl_comb = c3d_meth.comb(incl_list, "tmp_incl")
-    incl_bin = c3d_meth.thresh(1, 100, 1, 0, incl_comb, "tmp_incl_bin")
-    both_comb = c3d_meth.comb([gm_one, incl_bin], "tmp_final")
-    out_path = c3d_meth.thresh(1, 30, 1, 0, both_comb, out_name)
+        # Add cerebellum and brainstem into mask, binarize
+        incl_comb = c3d_meth.comb(incl_list, "tmp_incl")
+        incl_bin = c3d_meth.thresh(1, 100, 1, 0, incl_comb, "tmp_incl_bin")
+        both_comb = c3d_meth.comb([gm_one, incl_bin], "tmp_final")
+        out_path = c3d_meth.thresh(1, 30, 1, 0, both_comb, out_name)
 
     # Clean intermediates
     tmp_list = glob.glob(f"{out_dir}/tmp_*")
     #----DEBUG-----
-    raise RuntimeError('DEBU stop')
+    raise RuntimeError('DEBUG stop')
     #--------------
     for tmp_path in tmp_list:
         os.remove(tmp_path)
