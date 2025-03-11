@@ -509,6 +509,9 @@ def tpl_gm(out_dir):
 
     # Clean intermediates
     tmp_list = glob.glob(f"{out_dir}/tmp_*")
+    #----DEBUG-----
+    raise RuntimeError('DEBU stop')
+    #--------------
     for tmp_path in tmp_list:
         os.remove(tmp_path)
     return out_path
