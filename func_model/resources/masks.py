@@ -466,10 +466,17 @@ def tpl_gm(out_dir):
         "tpl-MNI152NLin6Asym",
         "tpl-MNI152NLin6Asym_res-02_atlas-HOSPA_desc-th25_dseg.nii.gz",
     )
-    if not os.path.exists(tpl_dseg):
-        raise FileNotFoundError(
-            f"Missing template segmentation profile : {tpl_dseg}"
-        )
+    tpl_hcp_dseg = os.path.join(
+        tplflow_dir,
+        "tpl-MNI152NLin6Asym",
+        "tpl-MNI152NLin6Asym_res-02_atlas-HCP_dseg.nii.gz"
+    )
+    seg_list = [tpl_dseg, tpl_hcp_dseg]
+    for seg in seg_list:
+        if not os.path.exists(seg):
+            raise FileNotFoundError(
+                f"Missing template segmentation profile : {seg}"
+            )
 
     # Find WM, CSF, brainstem labels
     c3d_meth = matrix.C3dMethods(out_dir)
@@ -483,8 +490,22 @@ def tpl_gm(out_dir):
     # Remove WM, CSF from mask, binarize GM
     excl_comb = c3d_meth.comb(excl_list, "tmp_excl")
     excl_bin = c3d_meth.thresh(1, 15, 0, 1, excl_comb, "tmp_excl_bin")
-    final_mult = c3d_meth.mult(tpl_dseg, excl_bin, "tmp_final")
-    out_path = c3d_meth.thresh(1, 30, 1, 0, final_mult, out_name)
+    excl_mult = c3d_meth.mult(tpl_dseg, excl_bin, "tmp_gm")
+    gm_one = c3d_meth.thresh(1, 30, 1, 0, excl_mult, "tmp_gm_one")
+
+    # Create mask of cerebellum and brainstem
+    incl_dict = {16: "bstem", 47: "rcereb", 8: "lcereb"}
+    incl_list = []
+    for in_num, in_name in incl_dict.items():
+        incl_list.append(
+            c3d_meth.thresh(in_num, in_num, 1, 0, tpl_hcp_dseg, f"tmp_{in_name}")
+        )
+
+    # Add cerebellum and brainstem into mask, binarize
+    incl_comb = c3d_meth.comb(incl_list, "tmp_incl")
+    incl_bin = c3d_meth.thresh(1, 100, 1, 0, incl_comb, "tmp_incl_bin")
+    both_comb = c3d_meth.comb([gm_one, incl_bin], "tmp_final")
+    out_path = c3d_meth.thresh(1, 30, 1, 0, both_comb, out_name)
 
     # Clean intermediates
     tmp_list = glob.glob(f"{out_dir}/tmp_*")
