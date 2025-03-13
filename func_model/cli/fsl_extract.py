@@ -107,7 +107,7 @@ def _get_args():
         "--template_type",
         type=str,
         default="whole",
-        choices=["whole","cortex"],
+        choices=["whole", "cortex"],
         help=textwrap.dedent(
             """\
             Whether to use only GM voxels in cortex or also
@@ -162,7 +162,13 @@ def main():
 
     # Submit workflow
     ex_reg = wf_fsl.ExtractBetas(
-        proj_dir, subj_list, model_name, con_name, overwrite, preproc_type, template_type
+        proj_dir,
+        subj_list,
+        model_name,
+        con_name,
+        overwrite,
+        preproc_type,
+        template_type,
     )
     ex_reg.get_betas()
 

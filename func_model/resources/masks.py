@@ -449,7 +449,6 @@ def tpl_gm(out_dir, template_type):
 
     """
     # Avoid repeating work
-    #TODO: implement template_type
     out_name = f"tpl_template-{template_type}_GM_mask"
     out_path = os.path.join(out_dir, f"{out_name}.nii.gz")
     if os.path.exists(out_path):
@@ -470,7 +469,7 @@ def tpl_gm(out_dir, template_type):
     tpl_hcp_dseg = os.path.join(
         tplflow_dir,
         "tpl-MNI152NLin6Asym",
-        "tpl-MNI152NLin6Asym_res-02_atlas-HCP_dseg.nii.gz"
+        "tpl-MNI152NLin6Asym_res-02_atlas-HCP_dseg.nii.gz",
     )
     seg_list = [tpl_dseg, tpl_hcp_dseg]
     for seg in seg_list:
@@ -502,7 +501,9 @@ def tpl_gm(out_dir, template_type):
         incl_list = []
         for in_num, in_name in incl_dict.items():
             incl_list.append(
-                c3d_meth.thresh(in_num, in_num, 1, 0, tpl_hcp_dseg, f"tmp_{in_name}")
+                c3d_meth.thresh(
+                    in_num, in_num, 1, 0, tpl_hcp_dseg, f"tmp_{in_name}"
+                )
             )
 
         # Add cerebellum and brainstem into mask, binarize
@@ -513,9 +514,6 @@ def tpl_gm(out_dir, template_type):
 
     # Clean intermediates
     tmp_list = glob.glob(f"{out_dir}/tmp_*")
-    #----DEBUG-----
-    raise RuntimeError('DEBUG stop')
-    #--------------
     for tmp_path in tmp_list:
         os.remove(tmp_path)
     return out_path

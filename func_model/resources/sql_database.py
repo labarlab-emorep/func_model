@@ -186,17 +186,47 @@ class _RefMaps:
             y: x for x, y in zip(df_task["task_id"], df_task["task_name"])
         }
 
-        # Reference voxels
-        df_vox = self._db_con.fetch_df(
-            "select * from ref_voxel_gm", ["voxel_id", "voxel_name"]
+        # Reference voxels for cortex
+        df_vox_cortex = self._db_con.fetch_df(
+            "select * from ref_voxel_gm_cortex", ["voxel_id", "voxel_name"]
         )
-        self.ref_voxel_gm = {
-            y: x for x, y in zip(df_vox["voxel_id"], df_vox["voxel_name"])
+        self.ref_voxel_gm_cortex = {
+            y: x
+            for x, y in zip(
+                df_vox_cortex["voxel_id"], df_vox_cortex["voxel_name"]
+            )
         }
 
-    def voxel_label(self, voxel_name: str) -> int:
+        # Reference voxels for whole-brain
+        df_vox_whole = self._db_con.fetch_df(
+            "select * from ref_voxel_gm_whole", ["voxel_id", "voxel_name"]
+        )
+        self.ref_voxel_gm_whole = {
+            y: x
+            for x, y in zip(
+                df_vox_whole["voxel_id"], df_vox_whole["voxel_name"]
+            )
+        }
+
+        # Reference preproc
+        df_preproc = self._db_con.fetch_df(
+            "select * from ref_preproc", ["preproc_id", "preproc_name"]
+        )
+        self.ref_preproc = {
+            y: x
+            for x, y in zip(
+                df_preproc["preproc_id"], df_preproc["preproc_name"]
+            )
+        }
+
+    def voxel_label(self, voxel_name: str, tpl_type: str) -> int:
         """Return voxel ID given voxel name."""
-        return self.ref_voxel_gm[voxel_name]
+        if tpl_type == "whole":
+            return self.ref_voxel_gm_whole[voxel_name]
+        elif tpl_type == "cortex":
+            return self.ref_voxel_gm_cortex[voxel_name]
+        else:
+            raise ValueError(f"Unsupported value for tpl_type : {tpl_type}")
 
 
 # %%
@@ -228,6 +258,7 @@ class DbUpdateBetas(_RefMaps):
         model: str,
         con: str,
         preproc: str = "scaled",
+        tpl_type: str = "whole",
     ) -> bool:
         """Check if beta table already has subject data.
 
@@ -242,11 +273,14 @@ class DbUpdateBetas(_RefMaps):
         """
         subj_id = int(subj.split("-ER")[-1])
         task_id = self.ref_task[task.split("-")[-1]]
-        preproc_str = "" if preproc == "scaled" else f"{preproc}_"
-        tbl_name = f"tbl_betas_{preproc_str}{model}_{con}_gm"
+        preproc_id = self.ref_preproc[preproc]
+        tpl_str = "" if model == "lss" else f"_{tpl_type}"
+        tbl_name = f"tbl_betas_{model}_{con}_gm{tpl_str}"
         sql_cmd = (
             f"select * from {tbl_name} "
-            + f"where task_id = {task_id} and subj_id = {subj_id} "
+            + f"where task_id = {task_id} "
+            + f"and subj_id = {subj_id} "
+            + f"and preproc_id = {preproc_id} "
             + "limit 1"
         )
         row = self._db_con.fetch_rows(sql_cmd)
@@ -261,6 +295,7 @@ class DbUpdateBetas(_RefMaps):
         con: str,
         overwrite: bool,
         preproc: str = "scaled",
+        tpl_type: str = "whole",
     ):
         """Update beta table from pd.DataFrame.
 
@@ -278,15 +313,17 @@ class DbUpdateBetas(_RefMaps):
         )
 
         """
-        preproc_str = "" if preproc == "scaled" else f"{preproc}_"
-        tbl_name = f"tbl_betas_{preproc_str}{model}_{con}_gm"
-        print(f"\tUpdating db_emorep {tbl_name} for {subj}, {task}")
+        tpl_str = "" if model == "lss" else f"_{tpl_type}"
+        tbl_name = f"tbl_betas_{model}_{con}_gm{tpl_str}"
+        print(f"\tUpdating db_emorep {tbl_name} for {subj}, {task}, {preproc}")
 
         # Add id columns
+        if model != "lss":
+            df["preproc_id"] = self.ref_preproc[preproc]
         df["subj_id"] = int(subj.split("-ER")[-1])
         df["task_id"] = self.ref_task[task.split("-")[-1]]
         df["voxel_id"] = df.apply(
-            lambda x: self.voxel_label(x.voxel_name), axis=1
+            lambda x: self.voxel_label(x.voxel_name, tpl_type), axis=1
         )
 
         # Manage NaNs
@@ -327,6 +364,7 @@ class DbUpdateBetas(_RefMaps):
             ]
         else:
             return [
+                "preproc_id",
                 "subj_id",
                 "task_id",
                 "num_block",

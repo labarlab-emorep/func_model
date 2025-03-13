@@ -1289,6 +1289,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         mot_thresh=0.2,
         max_value=9999,
         preproc_type="scaled",
+        template_type="whole",
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
 
@@ -1329,6 +1330,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
         preproc_type : str, optional
             {"scaled", "smoothed"}
             Preprocessing used
+        template_type : str, optional
+            {"whole", "cortex"}
+            Template used
 
         Notes
         -----
@@ -1352,6 +1356,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
         if preproc_type not in ["scaled", "smoothed"]:
             raise ValueError(
                 f"Unsupported value for preproc_type : {preproc_type}"
+            )
+        if template_type not in ["whole", "cortex"]:
+            raise ValueError(
+                f"Unsupported value for template_type : {template_type}"
             )
         if model_name == "sep" and con_name != "stim":
             raise ValueError(
@@ -1380,6 +1388,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._mot_thresh = mot_thresh
         self._max_value = max_value
         self._preproc_type = preproc_type
+        self._template_type = template_type
 
         # Manage sep vs lss float precision
         if model_name == "lss":
@@ -1426,14 +1435,12 @@ class ExtractTaskBetas(matrix.NiftiArray):
             self._model_name.split("-")[-1],
             self._con_name,
             self._preproc_type,
+            self._template_type,
         )
         db_con.close_con()
         return data_exist
 
-    def _mine_copes(
-        self,
-        design_path: Union[str, os.PathLike],
-    ) -> Tuple:
+    def _mine_copes(self, design_path: Union[str, os.PathLike]) -> Tuple:
         """Vectorize cope betas, return tuple of pd.DataFrame, run number."""
         # Determine run number for file name
         _run_dir = os.path.basename(os.path.dirname(design_path))
@@ -1491,17 +1498,20 @@ class ExtractTaskBetas(matrix.NiftiArray):
             run = self._data_obj[idx][1]
 
             # Setup output path, write
-            preproc_str = (
-                ""
-                if self._preproc_type == "scaled"
-                else f"preproc-{self._preproc_type}_"
-            )
             out_path = os.path.join(
                 self._subj_out,
+                "betas",
                 f"{self._subj}_{self._sess}_{self._task}_run-0{run}_"
-                + f"{preproc_str}{self._model_level}_{self._model_name}_"
-                + f"con-{self._con_name}_betas.csv",
+                + f"preproc-{self._preproc_type}_"
+                + f"{self._model_level}_"
+                + f"{self._model_name}_"
+                + f"con-{self._con_name}_"
+                + f"tpl-{self._template_type}_"
+                + "betas.csv",
             )
+            beta_folder = os.path.dirname(out_path)
+            if not os.path.exists(beta_folder):
+                os.makedirs(beta_folder)
             print(f"\tWriting : {out_path}")
             df.to_csv(out_path, index=False)
 
@@ -1541,6 +1551,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._con_name,
                 self._overwrite,
                 preproc=self._preproc_type,
+                tpl_type=self._template_type,
             )
         if df_b.shape[1] > 2:
             update_betas.update_db(
@@ -1551,6 +1562,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._con_name,
                 self._overwrite,
                 preproc=self._preproc_type,
+                tpl_type=self._template_type,
             )
         db_con.close_con()
 

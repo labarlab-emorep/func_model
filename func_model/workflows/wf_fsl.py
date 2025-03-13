@@ -412,7 +412,10 @@ class FslFirst(_SupportFslFirst):
 
         # Initialize needed classes, find preprocessed resting EPI
         make_fsf = model.MakeFirstFsf(
-            self._subj_work, self._proj_deriv, self._preproc_type, self._model_name
+            self._subj_work,
+            self._proj_deriv,
+            self._preproc_type,
+            self._model_name,
         )
         rest_preproc = self._sess_preproc[0]
 
@@ -443,7 +446,10 @@ class FslFirst(_SupportFslFirst):
         print("\tRunning first-level task model")
         self._setup()
         make_fsf = model.MakeFirstFsf(
-            self._subj_work, self._proj_deriv, self._preproc_type, self._model_name
+            self._subj_work,
+            self._proj_deriv,
+            self._preproc_type,
+            self._model_name,
         )
         self._make_cf = model.ConditionFiles(
             self._subj, self._sess, self._task, self._subj_work
@@ -1153,6 +1159,9 @@ class ExtractBetas:
     preproc_type : str
         {"scaled", "smoothed"}
         Preprocessing used
+    template_type : str
+        {"whole", "cortex"}
+        Template used
 
     Example
     -------
@@ -1204,7 +1213,7 @@ class ExtractBetas:
             )
         if self._template_type not in ["whole", "cortex"]:
             raise ValueError(
-                f"Unsupported value for template_type : {self.template_type}"
+                f"Unsupported value for template_type : {self._template_type}"
             )
 
         # Validate argument combinations
@@ -1220,7 +1229,8 @@ class ExtractBetas:
             )
         if self._model_name == "lss" and self._preproc_type == "smoothed":
             # It isn't expected that LSS will be run with smoothed
-            # But if desired, mainly needs a SQL table to hold betas
+            # But if desired, just needs a SQL table to hold betas
+            print("HINT: A SQL table is needed for LSS w/ smoothed...")
             raise ValueError(
                 "Unsupported model preprocessing pair : "
                 + f"{self._model_name}, {self._preproc_type}"
@@ -1306,9 +1316,12 @@ class ExtractBetas:
             + "/design.con"
         )
         if self._preproc_type == "scaled":
-            design_list = [x for x in design_list if "preproc-" not in x]
+            # Scaled folders don't have "preproc-scaled" in folder name
+            design_list = [
+                x for x in design_list if "preproc-smoothed" not in x
+            ]
         else:
-            design_list = [x for x in design_list if "preproc-" in x]
+            design_list = [x for x in design_list if "preproc-smoothed" in x]
         design_list = sorted(design_list)
         if not design_list:
             return
@@ -1323,6 +1336,7 @@ class ExtractBetas:
             subj_func,
             self._overwrite,
             preproc_type=self._preproc_type,
+            template_type=self._template_type,
         )
 
 
