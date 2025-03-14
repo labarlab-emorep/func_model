@@ -1400,7 +1400,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
         if not self._overwrite and data_exist:
             print(
                 f"\tData already exist for {subj}, {task}, "
-                + f"{model_name}, {con_name}; Continuing ..."
+                + f"{model_name}, {con_name}, "
+                + f"{preproc_type}, {template_type}; "
+                + "Continuing ..."
             )
             return
 
