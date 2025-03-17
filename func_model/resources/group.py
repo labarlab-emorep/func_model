@@ -1395,7 +1395,11 @@ class ExtractTaskBetas(matrix.NiftiArray):
             self._float_prec = 3
 
         # Check if records already exist in db_emorep
-        print(f"Working on {subj}, {task}, {model_name}, {con_name}")
+        print(
+            f"Working on {subj}, {task}, "
+            + f"{model_name}, {con_name},"
+            + f"{preproc_type}, {template_type}"
+        )
         data_exist = self._check_exist()
         if not self._overwrite and data_exist:
             print(
