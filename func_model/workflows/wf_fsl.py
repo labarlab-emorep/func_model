@@ -1342,7 +1342,14 @@ class ExtractBetas:
 
 # %%
 def fsl_classify_mask(
-    proj_dir, model_name, model_level, con_name, task_name, tpl_path
+    proj_dir,
+    model_name,
+    model_level,
+    con_name,
+    task_name,
+    binary_importance,
+    clf_tpl,
+    tpl_path,
 ):
     """Convert a dataframe of classifier values into NIfTI masks.
 
@@ -1366,6 +1373,12 @@ def fsl_classify_mask(
     task_name : str
         {"movies", "scenarios", "both"}
         Name of stimulus type
+    binary_importance : str
+        {"binary", "importance"}
+        Used to select tbl_plsda_*
+    clf_tpl : str
+        {"whole", "cortex"}
+        The template used for classification
     tpl_path : str, os.PathLike
         Location and name of template
 
@@ -1395,7 +1408,7 @@ def fsl_classify_mask(
     mk_mask = group.ImportanceMask(tpl_path)
 
     # Generate binary mask and cluster for each
-    # db_emorep.tbl_plsda_binary_gm.emo_* field
+    # db_emorep.tbl_plsda_*_gm_*.emo_* field
     mask_list = []
     emo_list = mk_mask.emo_names()
     for emo_name in emo_list:
@@ -1406,7 +1419,8 @@ def fsl_classify_mask(
                 model_name,
                 con_name,
                 emo_name,
-                "importance",
+                binary_importance,
+                clf_tpl,
                 out_dir,
                 cluster=False,
             )

@@ -1893,6 +1893,7 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         con_name,
         emo_name,
         binary_importance,
+        clf_tpl,
         out_dir,
         cluster=False,
     ):
@@ -1914,6 +1915,9 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         binary_importance : str
             {"binary", "importance"}
             Used to select tbl_plsda_*
+        clf_tpl : str
+            {"whole", "cortex"}
+            The template used for classification
         out_dir : str, os.PathLike
             Output directory path
         cluster : bool, optional
@@ -1940,6 +1944,8 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
             print_err("con_name", con_name)
         if binary_importance not in ["binary", "importance"]:
             print_err("binary_importance", binary_importance)
+        if clf_tpl not in ["whole", "cortex"]:
+            print_err("clf_tpl", clf_tpl)
         if cluster and not binary_importance == "binary":
             raise ValueError(
                 "Option 'cluster' only available when "
@@ -1972,14 +1978,14 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         )[0]
 
         # Pull data
-        plsda_table = f"tbl_plsda_{binary_importance}_gm"
+        plsda_table = f"tbl_plsda_{binary_importance}_gm_{clf_tpl}"
         print(
             f"\tDownloading data from {plsda_table} for emotion : {emo_name}"
         )
         sql_cmd = f"""select distinct
             b.voxel_name, a.emo_{emo_name}
             from {plsda_table} a
-            join ref_voxel_gm b on a.voxel_id = b.voxel_id
+            join ref_voxel_gm_{clf_tpl} b on a.voxel_id = b.voxel_id
             where a.fsl_task_id = {task_id} and a.fsl_model_id = {model_id}
                 and a.fsl_con_id = {con_id}
         """
@@ -1992,7 +1998,7 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         )
         out_file = (
             f"{binary_importance}_model-{model_name}_task-{task_name}_"
-            + f"con-{con_name}_emo-{emo_name}_map.nii.gz"
+            + f"con-{con_name}_emo-{emo_name}_tpl-{clf_tpl}_map.nii.gz"
         )
         out_path = os.path.join(out_dir, out_file)
         arr_fill = self._empty_matrix.copy()
@@ -2055,6 +2061,7 @@ class ConjunctAnalysis(_MapMethods):
             self._task_name,
             self._con_name,
             _emo,
+            self._clf_tpl,
             _suff,
         ) = os.path.basename(map_list[0]).split("_")
         self._clust_size = 5 if self._task_name == "scenarios" else 10
@@ -2064,7 +2071,8 @@ class ConjunctAnalysis(_MapMethods):
         omni_out = os.path.join(
             self._out_dir,
             f"{self._model_level}_{self._model_name}_{self._task_name}_"
-            + f"{self._con_name}_conj-omni_map.nii.gz",
+            + f"{self._con_name}_{self._clf_tpl}_"
+            + "conj-omni_map.nii.gz",
         )
         print("Building conjunction map : omni")
         self.c3d_add(self._map_list, omni_out)
@@ -2095,7 +2103,8 @@ class ConjunctAnalysis(_MapMethods):
             out_path = os.path.join(
                 self._out_dir,
                 f"{self._model_level}_{self._model_name}_{self._task_name}_"
-                + f"{self._con_name}_conj-{conj_name}{key}_map.nii.gz",
+                + f"{self._con_name}_{self._clf_tpl}_"
+                + f"conj-{conj_name}{key}_map.nii.gz",
             )
             print(f"Building conjunction map : {conj_name}{key}")
             self.c3d_add(val_list, out_path)
