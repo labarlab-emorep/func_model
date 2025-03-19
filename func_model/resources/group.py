@@ -2071,8 +2071,7 @@ class ConjunctAnalysis(_MapMethods):
         omni_out = os.path.join(
             self._out_dir,
             f"{self._model_level}_{self._model_name}_{self._task_name}_"
-            + f"{self._con_name}_{self._clf_tpl}_"
-            + "conj-omni_map.nii.gz",
+            + f"{self._con_name}_conj-omni_{self._clf_tpl}_map.nii.gz",
         )
         print("Building conjunction map : omni")
         self.c3d_add(self._map_list, omni_out)
@@ -2103,8 +2102,8 @@ class ConjunctAnalysis(_MapMethods):
             out_path = os.path.join(
                 self._out_dir,
                 f"{self._model_level}_{self._model_name}_{self._task_name}_"
-                + f"{self._con_name}_{self._clf_tpl}_"
-                + f"conj-{conj_name}{key}_map.nii.gz",
+                + f"{self._con_name}_conj-{conj_name}{key}_"
+                + f"{self._clf_tpl}_map.nii.gz",
             )
             print(f"Building conjunction map : {conj_name}{key}")
             self.c3d_add(val_list, out_path)
