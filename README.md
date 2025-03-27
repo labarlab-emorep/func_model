@@ -268,6 +268,13 @@ optional arguments:
                         List of subject IDs to extract behavior beta-coefficients
   --sub-all             Extract beta-coefficients from all available subjects and
                         generate a master dataframe.
+  --preproc-type {scaled,smoothed}
+                        Whether to use scaled or smoothed preprocessed data.
+                        (default : scaled)
+  --template_type {whole,cortex}
+                        Whether to use only GM voxels in cortex or also include
+                        cerebellum and brainstem.
+                        (default : whole)
 
 ```
 
@@ -361,6 +368,12 @@ optional arguments:
                         (default : sep)
   --proj-dir PROJ_DIR   Path to experiment-specific project directory
                         (default : /mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion)
+  --binary-importance {importance,binary}
+                        Map binary or importance classifier results
+                        (default : importance)
+  --clf-tpl {whole,cortex}
+                        The template used for classification
+                        (default : whole)
 
 Required Arguments:
   -t {movies,scenarios,all}, --task-name {movies,scenarios,all}
@@ -374,7 +387,7 @@ Required Arguments:
 Triggering this sub-package will execute the following workflow:
 
 1. Extract header data from MNI template
-1. Select requested data from `db_emorep.tbl_plsda_binary_*`
+1. Select requested data from `db_emorep.tbl_plsda_*_gm_*`
 1. Generate 3D binary map for each emotion
 1. Apply MNI metadata to 3D map
 1. Generate conjunction maps

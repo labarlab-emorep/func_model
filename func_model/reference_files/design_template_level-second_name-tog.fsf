@@ -30,7 +30,7 @@ set fmri(featwatcher_yn) 1
 set fmri(sscleanup_yn) 0
 
 # Output directory
-set fmri(outputdir) "[[subj_work]]/level-second_name-tog"
+set fmri(outputdir) "[[subj_work]]/[[preproc_type]]_level-second_name-tog"
 
 # TR(s)
 set fmri(tr) 2

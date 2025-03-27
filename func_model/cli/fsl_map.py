@@ -82,6 +82,30 @@ def _get_args():
             """
         ),
     )
+    parser.add_argument(
+        "--binary-importance",
+        type=str,
+        default="importance",
+        choices=["importance", "binary"],
+        help=textwrap.dedent(
+            """\
+            Map binary or importance classifier results
+            (default : %(default)s)
+            """
+        ),
+    )
+    parser.add_argument(
+        "--clf-tpl",
+        type=str,
+        default="whole",
+        choices=["whole", "cortex"],
+        help=textwrap.dedent(
+            """\
+            The template used for classification
+            (default : %(default)s)
+            """
+        ),
+    )
 
     required_args = parser.add_argument_group("Required Arguments")
     required_args.add_argument(
@@ -112,7 +136,7 @@ def main():
     """Trigger workflow."""
     # Check env
     if "labarserv2" not in platform.uname().node:
-        print("fsl_group is required to run on labarserv2.")
+        print("fsl_map is required to run on labarserv2.")
         sys.exit(1)
 
     # Get CLI input
@@ -122,6 +146,8 @@ def main():
     model_name = args.model_name
     model_level = args.model_level
     task_name = args.task_name
+    binary_importance = args.binary_importance
+    clf_tpl = args.clf_tpl
 
     # Check user input
     if not helper.valid_level(model_level):
@@ -149,7 +175,14 @@ def main():
 
     # Submit workflow
     wf_fsl.fsl_classify_mask(
-        proj_dir, model_name, model_level, con_name, task_name, tpl_path
+        proj_dir,
+        model_name,
+        model_level,
+        con_name,
+        task_name,
+        binary_importance,
+        clf_tpl,
+        tpl_path,
     )
 
 

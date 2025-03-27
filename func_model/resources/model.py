@@ -590,12 +590,13 @@ class _FirstSep:
 
     """
 
-    def __init__(self, fsf_edit, field_switch, subj_work, run):
+    def __init__(self, fsf_edit, field_switch, subj_work, run, preproc_type):
         """Initialize."""
         self._fsf_edit = fsf_edit
         self._field_switch = field_switch
         self._subj_work = subj_work
         self._run = run
+        self._preproc_type = preproc_type
 
     def write_fsf(self):
         """Make first-level FSF for model sep.
@@ -618,7 +619,10 @@ class _FirstSep:
         # Write out
         # design_path = self._write_first(fsf_edit)
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = f"{self._run}_level-first_name-sep_design.fsf"
+        if self._preproc_type == 'scaled':
+            out_name = f"{self._run}_level-first_name-sep_design.fsf"
+        else:
+            out_name = f"{self._run}_preproc-{self._preproc_type}_level-first_name-sep_design.fsf"
         out_path = _write_design(out_dir, out_name, self._fsf_edit)
         return out_path
 
@@ -705,12 +709,13 @@ class _FirstTog:
 
     """
 
-    def __init__(self, fsf_edit, field_switch, subj_work, run):
+    def __init__(self, fsf_edit, field_switch, subj_work, run, preproc_type):
         """Initialize."""
         self._fsf_edit = fsf_edit
         self._field_switch = field_switch
         self._subj_work = subj_work
         self._run = run
+        self._preproc_type = preproc_type
 
     def write_fsf(self):
         """Make first-level FSF for model tog.
@@ -732,7 +737,10 @@ class _FirstTog:
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = f"{self._run}_level-first_name-tog_design.fsf"
+        if self._preproc_type == 'scaled':
+            out_name = f"{self._run}_level-first_name-tog_design.fsf"
+        else:
+            out_name = f"{self._run}_preproc-{self._preproc_type}_level-first_name-tog_design.fsf"
         out_path = _write_design(out_dir, out_name, self._fsf_edit)
         return out_path
 
@@ -810,13 +818,14 @@ class _FirstLss:
     """
 
     def __init__(
-        self, fsf_edit, field_switch, subj_work, run, tog_cond, lss_cond
+        self, fsf_edit, field_switch, subj_work, run, preproc_type, tog_cond, lss_cond
     ):
         """Initialize."""
         self._fsf_edit = fsf_edit
         self._field_switch = field_switch
         self._subj_work = subj_work
         self._run = run
+        self._preproc_type = preproc_type
         self._tog_cond = tog_cond
         self._lss_cond = lss_cond
 
@@ -884,10 +893,16 @@ class _FirstLss:
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = (
-            f"{self._run}_level-first_name-lss_"
-            + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
-        )
+        if self._preproc_type == 'scaled':
+            out_name = (
+                f"{self._run}_level-first_name-lss_"
+                + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
+            )
+        else:
+            out_name = (
+                f"{self._run}_preproc-{self._preproc_type}_level-first_name-lss_"
+                + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
+            )
         out_path = _write_design(out_dir, out_name, fsf_edit)
         return out_path
 
@@ -928,7 +943,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
     """
 
-    def __init__(self, subj_work, proj_deriv, model_name):
+    def __init__(self, subj_work, proj_deriv, preproc_type, model_name):
         """Initialize."""
         if not helper.valid_name(model_name):
             raise ValueError(f"Unexpected value for model_name : {model_name}")
@@ -936,6 +951,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         print("\t\tInitializing MakeFirstFSF")
         self._subj_work = subj_work
         self._proj_deriv = proj_deriv
+        self._preproc_type = preproc_type
         self._model_name = model_name
         self._load_templates()
 
@@ -997,8 +1013,13 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         len_tr = helper.get_tr(preproc_path)
 
         # Setup replace dictionary, update design template
+        if self._preproc_type == 'scaled':
+            preproc_string = ''
+        else:
+            preproc_string = f"_preproc-{self._preproc_type}"
         field_switch = {
             "[[run]]": run,
+            "[[preproc_type]]": preproc_string,
             "[[num_vol]]": str(num_vol),
             "[[len_tr]]": str(len_tr),
             "[[preproc_path]]": pp_file,
@@ -1012,7 +1033,10 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = f"{run}_level-first_name-{self._model_name}_design.fsf"
+        if self._preproc_type == 'scaled':
+            out_name = f"{run}_level-first_name-{self._model_name}_design.fsf"
+        else:
+            out_name = f"{run}_preproc-{self._preproc_type}_level-first_name-{self._model_name}_design.fsf"
         design_path = _write_design(out_dir, out_name, fsf_edit)
         return design_path
 
@@ -1084,8 +1108,13 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
         # Start replace switch
         print("\tBuilding task design.fsf")
+        if self._preproc_type == 'scaled':
+            preproc_string = ''
+        else:
+            preproc_string = f"_preproc-{self._preproc_type}"
         field_switch = {
             "[[run]]": run,
+            "[[preproc_type]]": preproc_string,
             "[[num_vol]]": str(helper.count_vol(preproc_path)),
             "[[preproc_path]]": self._pp_path(preproc_path),
             "[[conf_path]]": confound_path,
@@ -1105,6 +1134,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
                 field_switch,
                 self._subj_work,
                 run,
+                self._preproc_type,
             )
         elif self._model_name == "tog":
             write_run = _FirstTog(
@@ -1112,6 +1142,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
                 field_switch,
                 self._subj_work,
                 run,
+                self._preproc_type,
             )
         elif self._model_name == "lss":
             write_run = _FirstLss(
@@ -1119,6 +1150,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
                 field_switch,
                 self._subj_work,
                 run,
+                self._preproc_type,
                 tog_cond,
                 lss_cond,
             )
