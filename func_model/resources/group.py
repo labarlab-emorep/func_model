@@ -1289,6 +1289,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         mot_thresh=0.2,
         max_value=9999,
         preproc_type="scaled",
+        template_type="whole",
     ):
         """Generate a matrix of beta-coefficients from FSL GLM cope files.
 
@@ -1329,6 +1330,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
         preproc_type : str, optional
             {"scaled", "smoothed"}
             Preprocessing used
+        template_type : str, optional
+            {"whole", "cortex"}
+            Template used
 
         Notes
         -----
@@ -1352,6 +1356,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
         if preproc_type not in ["scaled", "smoothed"]:
             raise ValueError(
                 f"Unsupported value for preproc_type : {preproc_type}"
+            )
+        if template_type not in ["whole", "cortex"]:
+            raise ValueError(
+                f"Unsupported value for template_type : {template_type}"
             )
         if model_name == "sep" and con_name != "stim":
             raise ValueError(
@@ -1380,18 +1388,25 @@ class ExtractTaskBetas(matrix.NiftiArray):
         self._mot_thresh = mot_thresh
         self._max_value = max_value
         self._preproc_type = preproc_type
+        self._template_type = template_type
 
         # Manage sep vs lss float precision
         if model_name == "lss":
             self._float_prec = 3
 
         # Check if records already exist in db_emorep
-        print(f"Working on {subj}, {task}, {model_name}, {con_name}")
+        print(
+            f"Working on {subj}, {task}, "
+            + f"{model_name}, {con_name},"
+            + f"{preproc_type}, {template_type}"
+        )
         data_exist = self._check_exist()
         if not self._overwrite and data_exist:
             print(
                 f"\tData already exist for {subj}, {task}, "
-                + f"{model_name}, {con_name}; Continuing ..."
+                + f"{model_name}, {con_name}, "
+                + f"{preproc_type}, {template_type}; "
+                + "Continuing ..."
             )
             return
 
@@ -1426,14 +1441,12 @@ class ExtractTaskBetas(matrix.NiftiArray):
             self._model_name.split("-")[-1],
             self._con_name,
             self._preproc_type,
+            self._template_type,
         )
         db_con.close_con()
         return data_exist
 
-    def _mine_copes(
-        self,
-        design_path: Union[str, os.PathLike],
-    ) -> Tuple:
+    def _mine_copes(self, design_path: Union[str, os.PathLike]) -> Tuple:
         """Vectorize cope betas, return tuple of pd.DataFrame, run number."""
         # Determine run number for file name
         _run_dir = os.path.basename(os.path.dirname(design_path))
@@ -1491,17 +1504,20 @@ class ExtractTaskBetas(matrix.NiftiArray):
             run = self._data_obj[idx][1]
 
             # Setup output path, write
-            preproc_str = (
-                ""
-                if self._preproc_type == "scaled"
-                else f"preproc-{self._preproc_type}_"
-            )
             out_path = os.path.join(
                 self._subj_out,
+                "betas",
                 f"{self._subj}_{self._sess}_{self._task}_run-0{run}_"
-                + f"{preproc_str}{self._model_level}_{self._model_name}_"
-                + f"con-{self._con_name}_betas.csv",
+                + f"preproc-{self._preproc_type}_"
+                + f"{self._model_level}_"
+                + f"{self._model_name}_"
+                + f"con-{self._con_name}_"
+                + f"tpl-{self._template_type}_"
+                + "betas.csv",
             )
+            beta_folder = os.path.dirname(out_path)
+            if not os.path.exists(beta_folder):
+                os.makedirs(beta_folder)
             print(f"\tWriting : {out_path}")
             df.to_csv(out_path, index=False)
 
@@ -1541,6 +1557,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._con_name,
                 self._overwrite,
                 preproc=self._preproc_type,
+                tpl_type=self._template_type,
             )
         if df_b.shape[1] > 2:
             update_betas.update_db(
@@ -1551,6 +1568,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._con_name,
                 self._overwrite,
                 preproc=self._preproc_type,
+                tpl_type=self._template_type,
             )
         db_con.close_con()
 
@@ -1875,6 +1893,7 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         con_name,
         emo_name,
         binary_importance,
+        clf_tpl,
         out_dir,
         cluster=False,
     ):
@@ -1896,6 +1915,9 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         binary_importance : str
             {"binary", "importance"}
             Used to select tbl_plsda_*
+        clf_tpl : str
+            {"whole", "cortex"}
+            The template used for classification
         out_dir : str, os.PathLike
             Output directory path
         cluster : bool, optional
@@ -1922,6 +1944,8 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
             print_err("con_name", con_name)
         if binary_importance not in ["binary", "importance"]:
             print_err("binary_importance", binary_importance)
+        if clf_tpl not in ["whole", "cortex"]:
+            print_err("clf_tpl", clf_tpl)
         if cluster and not binary_importance == "binary":
             raise ValueError(
                 "Option 'cluster' only available when "
@@ -1954,14 +1978,14 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         )[0]
 
         # Pull data
-        plsda_table = f"tbl_plsda_{binary_importance}_gm"
+        plsda_table = f"tbl_plsda_{binary_importance}_gm_{clf_tpl}"
         print(
             f"\tDownloading data from {plsda_table} for emotion : {emo_name}"
         )
         sql_cmd = f"""select distinct
             b.voxel_name, a.emo_{emo_name}
             from {plsda_table} a
-            join ref_voxel_gm b on a.voxel_id = b.voxel_id
+            join ref_voxel_gm_{clf_tpl} b on a.voxel_id = b.voxel_id
             where a.fsl_task_id = {task_id} and a.fsl_model_id = {model_id}
                 and a.fsl_con_id = {con_id}
         """
@@ -1974,7 +1998,7 @@ class ImportanceMask(matrix.NiftiArray, _MapMethods):
         )
         out_file = (
             f"{binary_importance}_model-{model_name}_task-{task_name}_"
-            + f"con-{con_name}_emo-{emo_name}_map.nii.gz"
+            + f"con-{con_name}_emo-{emo_name}_tpl-{clf_tpl}_map.nii.gz"
         )
         out_path = os.path.join(out_dir, out_file)
         arr_fill = self._empty_matrix.copy()
@@ -2037,6 +2061,7 @@ class ConjunctAnalysis(_MapMethods):
             self._task_name,
             self._con_name,
             _emo,
+            self._clf_tpl,
             _suff,
         ) = os.path.basename(map_list[0]).split("_")
         self._clust_size = 5 if self._task_name == "scenarios" else 10
@@ -2046,7 +2071,7 @@ class ConjunctAnalysis(_MapMethods):
         omni_out = os.path.join(
             self._out_dir,
             f"{self._model_level}_{self._model_name}_{self._task_name}_"
-            + f"{self._con_name}_conj-omni_map.nii.gz",
+            + f"{self._con_name}_conj-omni_{self._clf_tpl}_map.nii.gz",
         )
         print("Building conjunction map : omni")
         self.c3d_add(self._map_list, omni_out)
@@ -2077,7 +2102,8 @@ class ConjunctAnalysis(_MapMethods):
             out_path = os.path.join(
                 self._out_dir,
                 f"{self._model_level}_{self._model_name}_{self._task_name}_"
-                + f"{self._con_name}_conj-{conj_name}{key}_map.nii.gz",
+                + f"{self._con_name}_conj-{conj_name}{key}_"
+                + f"{self._clf_tpl}_map.nii.gz",
             )
             print(f"Building conjunction map : {conj_name}{key}")
             self.c3d_add(val_list, out_path)
