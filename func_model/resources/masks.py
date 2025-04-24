@@ -7,7 +7,9 @@ tpl_gm : Generate gray matter mask from template priors
 """
 
 import os
+import shutil
 import glob
+import importlib.resources
 from func_model.resources import helper
 from func_model.resources import submit
 from func_model.resources import matrix
@@ -416,16 +418,217 @@ def group_mask(proj_deriv, subj_list, model_name, out_dir):
     _ = submit.submit_subprocess(bash_cmd, out_path, "Group Mask")
     return out_path
 
+def fetch_mask(out_dir, template_type="cortex"):
+    """Make a gray matter mask from template priors or copy existing
+    map from reference_files.
 
-def tpl_gm(out_dir, template_type):
-    """Make a gray matter mask from template priors.
+    Parameters
+    ----------
+    out_dir : path
+        Location of output directory
+    template_type : str
+        {"whole", "cortex", "control", "default", "dorsattn", "limbic",
+         "salventattn", "somatomotor", "visual"}
+        Template used
 
-    Make a binary gray matter mask from the Harvard-Oxford cortical
-    and subcortical structural atlas. For more information on atlas,
-    see https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/Atlases.
+    Returns
+    -------
+    path
+        Location of generated gray matter mask
+    """
+
+    # Avoid repeating work
+    out_name = f"tpl_template-{template_type}_GM_mask"
+    out_path = os.path.join(out_dir, f"{out_name}.nii.gz")
+    if os.path.exists(out_path):
+        return out_path
+
+    anat_templates = [
+        "whole",
+        "cortex"
+    ]
+
+    func_templates = [
+        "control",
+        "default",
+        "dorsattn",
+        "limbic",
+        "salventattn",
+        "somatomotor",
+        "visual",
+    ]
+
+    def _tpl_gm(out_dir, template_type="cortex"):
+        """Make a gray matter mask from template priors.
+
+        Binary gray matter masks are created from the Harvard-Oxford
+        cortical and subcortical structural atlas. For more information
+        on atlas, see https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/Atlases.
+
+        Writes output to:
+            <out_dir>/tpl_template-{template_type}_GM_mask.nii.gz
+
+        Parameters
+        ----------
+        out_dir : path
+            Location of output directory
+
+        Returns
+        -------
+        path
+            Location of generated gray matter mask
+
+        Raises
+        ------
+        FileNotFoundError
+            Missing template priors
+
+        Notes
+        -----
+        Requires templateflow configured in environment and the template
+        tpl-MNI152NLin6Asym.
+
+        """
+        # Avoid repeating work
+        out_name = f"tpl_template-{template_type}_GM_mask"
+        out_path = os.path.join(out_dir, f"{out_name}.nii.gz")
+        if os.path.exists(out_path):
+            return out_path
+
+        # Orient to template priors
+        try:
+            tplflow_dir = os.environ["SINGULARITYENV_TEMPLATEFLOW_HOME"]
+        except KeyError:
+            raise EnvironmentError(
+                "Expected global variable SINGULARITYENV_TEMPLATEFLOW_HOME"
+            )
+        tpl_dseg = os.path.join(
+            tplflow_dir,
+            "tpl-MNI152NLin6Asym",
+            "tpl-MNI152NLin6Asym_res-02_atlas-HOSPA_desc-th25_dseg.nii.gz",
+        )
+        tpl_hcp_dseg = os.path.join(
+            tplflow_dir,
+            "tpl-MNI152NLin6Asym",
+            "tpl-MNI152NLin6Asym_res-02_atlas-HCP_dseg.nii.gz",
+        )
+        seg_list = [tpl_dseg, tpl_hcp_dseg]
+        for seg in seg_list:
+            if not os.path.exists(seg):
+                raise FileNotFoundError(
+                    f"Missing template segmentation profile : {seg}"
+                )
+
+        # Find WM, CSF, brainstem labels
+        c3d_meth = matrix.C3dMethods(out_dir)
+        excl_dict = {1: "lwm", 3: "lcsf", 12: "rwm", 14: "rcsf", 8: "bs"}
+        excl_list = []
+        for ex_num, ex_name in excl_dict.items():
+            excl_list.append(
+                c3d_meth.thresh(ex_num, ex_num, 1, 0, tpl_dseg, f"tmp_{ex_name}")
+            )
+
+        # Remove WM, CSF from mask, binarize GM
+        excl_comb = c3d_meth.comb(excl_list, "tmp_excl")
+        excl_bin = c3d_meth.thresh(1, 15, 0, 1, excl_comb, "tmp_excl_bin")
+        excl_mult = c3d_meth.mult(tpl_dseg, excl_bin, "tmp_gm")
+        if template_type == "cortex":
+            out_path = c3d_meth.thresh(1, 30, 1, 0, excl_mult, out_name)
+
+        if template_type == "whole":
+            gm_one = c3d_meth.thresh(1, 30, 1, 0, excl_mult, "tmp_gm_one")
+            # Create mask of cerebellum and brainstem
+            incl_dict = {16: "bstem", 47: "rcereb", 8: "lcereb"}
+            incl_list = []
+            for in_num, in_name in incl_dict.items():
+                incl_list.append(
+                    c3d_meth.thresh(
+                        in_num, in_num, 1, 0, tpl_hcp_dseg, f"tmp_{in_name}"
+                    )
+                )
+
+            # Add cerebellum and brainstem into mask, binarize
+            incl_comb = c3d_meth.comb(incl_list, "tmp_incl")
+            incl_bin = c3d_meth.thresh(1, 100, 1, 0, incl_comb, "tmp_incl_bin")
+            both_comb = c3d_meth.comb([gm_one, incl_bin], "tmp_final")
+            out_path = c3d_meth.thresh(1, 30, 1, 0, both_comb, out_name)
+
+        # Clean intermediates
+        tmp_list = glob.glob(f"{out_dir}/tmp_*")
+        for tmp_path in tmp_list:
+            os.remove(tmp_path)
+        return out_path
+
+    def _func_gm(out_dir, template_type):
+        """Copy network gray matter mask from templates.
+
+        Network masks were based on ICA decomposition of
+        resting-state data from 84 participants.
+
+        Writes output to:
+            <out_dir>/tpl_template-{template_type}_GM_mask.nii.gz
+
+        Parameters
+        ----------
+        out_dir : path
+            Location of output directory
+
+        Returns
+        -------
+        path
+            Location of copied gray matter mask
+
+        Raises
+        ------
+        FileNotFoundError
+            Missing template priors
+
+        """
+
+        # Avoid repeating work
+        out_name = f"tpl_template-{template_type}_GM_mask"
+        out_path = os.path.join(out_dir, f"{out_name}.nii.gz")
+        if os.path.exists(out_path):
+            return out_path
+
+        # Locate requested network mask
+        mask_name = f"{template_type}_gm_mask.nii.gz"
+        mask_dir = importlib.resources('func_model.reference_files')
+        mask_file = os.path.join(mask_dir, mask_name)
+
+        # Make sure mask exists
+        if not os.path.exists(mask_file):
+            raise FileExistsError(f"Could not find template mask: {mask_file}")
+
+        # Copy network mask
+        try:
+            shutil.copyfile(mask_file, out_path)
+        except:
+            raise RuntimeError(f"Could not copy mask file!\nmask_file : {mask_file}\nout_path : {out_path}")
+
+        return out_path
+
+
+    if template_type in anat_templates:
+        out_path = _tpl_gm(out_dir, template_type)
+    elif template_type in func_templates:
+        out_path = _func_gm(out_dir, template_type)
+    else:
+        raise ValueError(
+                f"Unsupported value for template_type : {template_type}"
+            )
+    return out_path
+
+def _tpl_gm(out_dir, template_type="cortex"):
+    """Make a gray matter mask from template priors or copy existing
+    map from reference_files.
+
+    Binary gray matter masks are created from the Harvard-Oxford
+    cortical and subcortical structural atlas. For more information
+    on atlas, see https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/Atlases.
 
     Writes output to:
-        <out_dir>/tpl_GM_mask.nii.gz
+        <out_dir>/tpl_template-{template_type}_GM_mask.nii.gz
 
     Parameters
     ----------

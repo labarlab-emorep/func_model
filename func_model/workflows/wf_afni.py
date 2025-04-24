@@ -475,7 +475,7 @@ def afni_extract(
 
     # Generate mask and identify censor coordinates
     if group_mask == "template":
-        mask_path = masks.tpl_gm(out_dir)
+        mask_path = masks.fetch_mask(out_dir)
     elif group_mask == "intersection":
         mask_path = masks.group_mask(proj_deriv, subj_list, out_dir)
     get_betas.mask_coord(mask_path)
@@ -676,7 +676,7 @@ def afni_ttest(
         dcn_sub.find_decons(task)
 
     # Make template mask, determine relevant subbrick label
-    mask_path = masks.tpl_gm(model_group)
+    mask_path = masks.fetch_mask(model_group)
     sub_label = group.make_subbrick_label(
         task,
         emo_name,
@@ -723,7 +723,7 @@ def afni_montecarlo(model_name, work_deriv, log_dir):
     # Setup work dirs
     sync_data = helper.SyncGroup(work_deriv)
     model_indiv, model_group = sync_data.setup_group()
-    mask_path = masks.tpl_gm(model_group)
+    mask_path = masks.fetch_mask(model_group)
 
     # Conduct Monte Carlo Simulations
     mon_car = group.MonteCarlo(
@@ -781,7 +781,7 @@ def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
         decon_dict[task] = dcn_sub.decon_dict
 
     # Execute LMEr
-    mask_path = masks.tpl_gm(model_group)
+    mask_path = masks.fetch_mask(model_group)
     lmer_test = group.LmerTest(model_group, mask_path)
     out_path = lmer_test.write_exec(
         model_name, decon_dict, emo_list, blk_coef, log_dir

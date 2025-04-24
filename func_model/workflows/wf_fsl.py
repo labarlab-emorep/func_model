@@ -1160,7 +1160,8 @@ class ExtractBetas:
         {"scaled", "smoothed"}
         Preprocessing used
     template_type : str
-        {"whole", "cortex"}
+        {"whole", "cortex", "control", "default", "dorsattn", "limbic",
+         "salventattn", "somatomotor", "visual"}
         Template used
 
     Example
@@ -1211,7 +1212,18 @@ class ExtractBetas:
             raise ValueError(
                 f"Unsupported value for preproc_type : {self._preproc_type}"
             )
-        if self._template_type not in ["whole", "cortex"]:
+        allowed_templates = [
+            "whole",
+            "cortex",
+            "control",
+            "default",
+            "dorsattn",
+            "limbic",
+            "salventattn",
+            "somatomotor",
+            "visual",
+        ]
+        if self._template_type not in allowed_templates:
             raise ValueError(
                 f"Unsupported value for template_type : {self._template_type}"
             )
@@ -1260,7 +1272,7 @@ class ExtractBetas:
         self._setup()
 
         # Get mask coordinates (set attr rm_voxel)
-        mask_path = masks.tpl_gm(self._out_dir, self._template_type)
+        mask_path = masks.fetch_mask(self._out_dir, self._template_type)
         self._ex_betas.mask_coord(mask_path)
 
         # Identify sessions
