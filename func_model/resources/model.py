@@ -619,10 +619,13 @@ class _FirstSep:
         # Write out
         # design_path = self._write_first(fsf_edit)
         out_dir = os.path.join(self._subj_work, "design_files")
-        if self._preproc_type == 'scaled':
+        if self._preproc_type == "scaled":
             out_name = f"{self._run}_level-first_name-sep_design.fsf"
         else:
-            out_name = f"{self._run}_preproc-{self._preproc_type}_level-first_name-sep_design.fsf"
+            out_name = (
+                f"{self._run}_preproc-{self._preproc_type}"
+                + "_level-first_name-sep_design.fsf"
+            )
         out_path = _write_design(out_dir, out_name, self._fsf_edit)
         return out_path
 
@@ -737,10 +740,13 @@ class _FirstTog:
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        if self._preproc_type == 'scaled':
+        if self._preproc_type == "scaled":
             out_name = f"{self._run}_level-first_name-tog_design.fsf"
         else:
-            out_name = f"{self._run}_preproc-{self._preproc_type}_level-first_name-tog_design.fsf"
+            out_name = (
+                f"{self._run}_preproc-{self._preproc_type}"
+                + "_level-first_name-tog_design.fsf"
+            )
         out_path = _write_design(out_dir, out_name, self._fsf_edit)
         return out_path
 
@@ -818,7 +824,14 @@ class _FirstLss:
     """
 
     def __init__(
-        self, fsf_edit, field_switch, subj_work, run, preproc_type, tog_cond, lss_cond
+        self,
+        fsf_edit,
+        field_switch,
+        subj_work,
+        run,
+        preproc_type,
+        tog_cond,
+        lss_cond,
     ):
         """Initialize."""
         self._fsf_edit = fsf_edit
@@ -893,14 +906,15 @@ class _FirstLss:
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        if self._preproc_type == 'scaled':
+        if self._preproc_type == "scaled":
             out_name = (
                 f"{self._run}_level-first_name-lss_"
                 + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
             )
         else:
             out_name = (
-                f"{self._run}_preproc-{self._preproc_type}_level-first_name-lss_"
+                f"{self._run}_preproc-{self._preproc_type}"
+                + "_level-first_name-lss_"
                 + f"{self._switch_lss['[[bids_desc_trial]]']}_design.fsf"
             )
         out_path = _write_design(out_dir, out_name, fsf_edit)
@@ -1013,8 +1027,8 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
         len_tr = helper.get_tr(preproc_path)
 
         # Setup replace dictionary, update design template
-        if self._preproc_type == 'scaled':
-            preproc_string = ''
+        if self._preproc_type == "scaled":
+            preproc_string = ""
         else:
             preproc_string = f"_preproc-{self._preproc_type}"
         field_switch = {
@@ -1033,10 +1047,13 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
         # Write out
         out_dir = os.path.join(self._subj_work, "design_files")
-        if self._preproc_type == 'scaled':
+        if self._preproc_type == "scaled":
             out_name = f"{run}_level-first_name-{self._model_name}_design.fsf"
         else:
-            out_name = f"{run}_preproc-{self._preproc_type}_level-first_name-{self._model_name}_design.fsf"
+            out_name = (
+                f"{run}_preproc-{self._preproc_type}"
+                + f"_level-first_name-{self._model_name}_design.fsf"
+            )
         design_path = _write_design(out_dir, out_name, fsf_edit)
         return design_path
 
@@ -1108,8 +1125,8 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
         # Start replace switch
         print("\tBuilding task design.fsf")
-        if self._preproc_type == 'scaled':
-            preproc_string = ''
+        if self._preproc_type == "scaled":
+            preproc_string = ""
         else:
             preproc_string = f"_preproc-{self._preproc_type}"
         field_switch = {

@@ -418,6 +418,7 @@ def group_mask(proj_deriv, subj_list, model_name, out_dir):
     _ = submit.submit_subprocess(bash_cmd, out_path, "Group Mask")
     return out_path
 
+
 def fetch_mask(out_dir, template_type="cortex"):
     """Make a gray matter mask from template priors or copy existing
     map from reference_files.
@@ -427,8 +428,8 @@ def fetch_mask(out_dir, template_type="cortex"):
     out_dir : path
         Location of output directory
     template_type : str
-        {"whole", "cortex", "control", "default", "dorsattn", "limbic",
-         "salventattn", "somatomotor", "visual"}
+        {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
+            "salventattn", "somatomotor", "visual"}
         Template used
 
     Returns
@@ -443,10 +444,7 @@ def fetch_mask(out_dir, template_type="cortex"):
     if os.path.exists(out_path):
         return out_path
 
-    anat_templates = [
-        "whole",
-        "cortex"
-    ]
+    anat_templates = ["whole", "cortex"]
 
     func_templates = [
         "control",
@@ -525,7 +523,9 @@ def fetch_mask(out_dir, template_type="cortex"):
         excl_list = []
         for ex_num, ex_name in excl_dict.items():
             excl_list.append(
-                c3d_meth.thresh(ex_num, ex_num, 1, 0, tpl_dseg, f"tmp_{ex_name}")
+                c3d_meth.thresh(
+                    ex_num, ex_num, 1, 0, tpl_dseg, f"tmp_{ex_name}"
+                )
             )
 
         # Remove WM, CSF from mask, binarize GM
@@ -593,21 +593,26 @@ def fetch_mask(out_dir, template_type="cortex"):
 
         # Locate requested network mask
         mask_name = f"{template_type}_gm_mask.nii.gz"
-        mask_dir = importlib.resources('func_model.reference_files')
+        mask_dir = importlib.resources("func_model.reference_files")
         mask_file = os.path.join(mask_dir, mask_name)
 
         # Make sure mask exists
         if not os.path.exists(mask_file):
-            raise FileExistsError(f"Could not find template mask: {mask_file}")
+            raise FileNotFoundError(
+                f"Could not find template mask: {mask_file}"
+            )
 
         # Copy network mask
         try:
             shutil.copyfile(mask_file, out_path)
         except:
-            raise RuntimeError(f"Could not copy mask file!\nmask_file : {mask_file}\nout_path : {out_path}")
+            raise RuntimeError(
+                "Could not copy mask file!"
+                + f"\nmask_file : {mask_file}"
+                + f"\nout_path : {out_path}"
+            )
 
         return out_path
-
 
     if template_type in anat_templates:
         out_path = _tpl_gm(out_dir, template_type)
@@ -615,9 +620,10 @@ def fetch_mask(out_dir, template_type="cortex"):
         out_path = _func_gm(out_dir, template_type)
     else:
         raise ValueError(
-                f"Unsupported value for template_type : {template_type}"
-            )
+            f"Unsupported value for template_type : {template_type}"
+        )
     return out_path
+
 
 def _tpl_gm(out_dir, template_type="cortex"):
     """Make a gray matter mask from template priors or copy existing

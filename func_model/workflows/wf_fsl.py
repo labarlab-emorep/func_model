@@ -1160,8 +1160,8 @@ class ExtractBetas:
         {"scaled", "smoothed"}
         Preprocessing used
     template_type : str
-        {"whole", "cortex", "control", "default", "dorsattn", "limbic",
-         "salventattn", "somatomotor", "visual"}
+        {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
+            "salventattn", "somatomotor", "visual"}
         Template used
 
     Example
@@ -1212,7 +1212,7 @@ class ExtractBetas:
             raise ValueError(
                 f"Unsupported value for preproc_type : {self._preproc_type}"
             )
-        allowed_templates = [
+        if self._template_type not in [
             "whole",
             "cortex",
             "control",
@@ -1222,8 +1222,7 @@ class ExtractBetas:
             "salventattn",
             "somatomotor",
             "visual",
-        ]
-        if self._template_type not in allowed_templates:
+        ]:
             raise ValueError(
                 f"Unsupported value for template_type : {self._template_type}"
             )
