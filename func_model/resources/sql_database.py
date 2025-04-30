@@ -186,27 +186,26 @@ class _RefMaps:
             y: x for x, y in zip(df_task["task_id"], df_task["task_name"])
         }
 
-        # Reference voxels for cortex
-        df_vox_cortex = self._db_con.fetch_df(
-            "select * from ref_voxel_gm_cortex", ["voxel_id", "voxel_name"]
-        )
-        self.ref_voxel_gm_cortex = {
-            y: x
-            for x, y in zip(
-                df_vox_cortex["voxel_id"], df_vox_cortex["voxel_name"]
+        # Reference voxels
+        for tpl_type in [
+            "whole",
+            "cortex",
+            "control",
+            "default",
+            "dorsattn",
+            "limbic",
+            "salventattn",
+            "somatomotor",
+            "visual",
+        ]:
+            df_vox = self._db_con.fetch_df(
+                f"select * from ref_voxel_gm_{tpl_type}",
+                ["voxel_id", "voxel_name"],
             )
-        }
-
-        # Reference voxels for whole-brain
-        df_vox_whole = self._db_con.fetch_df(
-            "select * from ref_voxel_gm_whole", ["voxel_id", "voxel_name"]
-        )
-        self.ref_voxel_gm_whole = {
-            y: x
-            for x, y in zip(
-                df_vox_whole["voxel_id"], df_vox_whole["voxel_name"]
-            )
-        }
+            ref_vox = {
+                y: x for x, y in zip(df_vox["voxel_id"], df_vox["voxel_name"])
+            }
+            setattr(self, f"ref_voxel_gm_{tpl_type}", ref_vox)
 
         # Reference preproc
         df_preproc = self._db_con.fetch_df(
@@ -219,12 +218,18 @@ class _RefMaps:
             )
         }
 
+        # Reference template
+        df_tpl = self._db_con.fetch_df(
+            "select * from ref_tpl", ["tpl_id", "tpl_name"]
+        )
+        self.ref_tpl = {
+            y: x for x, y in zip(df_tpl["tpl_id"], df_tpl["tpl_name"])
+        }
+
     def voxel_label(self, voxel_name: str, tpl_type: str) -> int:
         """Return voxel ID given voxel name."""
-        if tpl_type == "whole":
-            return self.ref_voxel_gm_whole[voxel_name]
-        elif tpl_type == "cortex":
-            return self.ref_voxel_gm_cortex[voxel_name]
+        if hasattr(self, f"ref_voxel_gm_{tpl_type}"):
+            return getattr(self, f"ref_voxel_gm_{tpl_type}")[voxel_name]
         else:
             raise ValueError(f"Unsupported value for tpl_type : {tpl_type}")
 
@@ -274,13 +279,18 @@ class DbUpdateBetas(_RefMaps):
         subj_id = int(subj.split("-ER")[-1])
         task_id = self.ref_task[task.split("-")[-1]]
         preproc_id = self.ref_preproc[preproc]
-        tpl_str = "" if model == "lss" else f"_{tpl_type}"
-        tbl_name = f"tbl_betas_{model}_{con}_gm{tpl_str}"
+        preproc_cmd = (
+            f"and preproc_id = {preproc_id} " if model != "lss" else ""
+        )
+        tpl_id = self.ref_tpl[tpl_type]
+        tpl_cmd = f"and tpl_id = {tpl_id} " if model != "lss" else ""
+        tbl_name = f"tbl_betas_{model}_{con}_gm"
         sql_cmd = (
             f"select * from {tbl_name} "
             + f"where task_id = {task_id} "
             + f"and subj_id = {subj_id} "
-            + f"and preproc_id = {preproc_id} "
+            + preproc_cmd
+            + tpl_cmd
             + "limit 1"
         )
         row = self._db_con.fetch_rows(sql_cmd)
@@ -313,12 +323,15 @@ class DbUpdateBetas(_RefMaps):
         )
 
         """
-        tpl_str = "" if model == "lss" else f"_{tpl_type}"
-        tbl_name = f"tbl_betas_{model}_{con}_gm{tpl_str}"
-        print(f"\tUpdating db_emorep {tbl_name} for {subj}, {task}, {preproc}")
+        tbl_name = f"tbl_betas_{model}_{con}_gm"
+        print(
+            f"\tUpdating db_emorep {tbl_name} for "
+            + f"{subj}, {task}, {preproc}, {tpl_type}"
+        )
 
         # Add id columns
         if model != "lss":
+            df["tpl_id"] = self.ref_tpl[tpl_type]
             df["preproc_id"] = self.ref_preproc[preproc]
         df["subj_id"] = int(subj.split("-ER")[-1])
         df["task_id"] = self.ref_task[task.split("-")[-1]]
@@ -347,10 +360,7 @@ class DbUpdateBetas(_RefMaps):
             vals = [f"{x}=values({x})" for x in emo_list]
             up_cmd = f" on duplicate key update {', '.join(vals)}"
             sql_cmd = sql_cmd + up_cmd
-        self._db_con.exec_many(
-            sql_cmd,
-            tbl_input,
-        )
+        self._db_con.exec_many(sql_cmd, tbl_input)
 
     def _id_cols(self, model: str) -> list:
         """Return list of primary key columns."""
@@ -364,6 +374,7 @@ class DbUpdateBetas(_RefMaps):
             ]
         else:
             return [
+                "tpl_id",
                 "preproc_id",
                 "subj_id",
                 "task_id",

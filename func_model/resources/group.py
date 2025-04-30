@@ -1331,7 +1331,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             {"scaled", "smoothed"}
             Preprocessing used
         template_type : str, optional
-            {"whole", "cortex"}
+            {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
+                "salventattn", "somatomotor", "visual"}
             Template used
 
         Notes
@@ -1357,7 +1358,17 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError(
                 f"Unsupported value for preproc_type : {preproc_type}"
             )
-        if template_type not in ["whole", "cortex"]:
+        if template_type not in [
+            "whole",
+            "cortex",
+            "control",
+            "default",
+            "dorsattn",
+            "limbic",
+            "salventattn",
+            "somatomotor",
+            "visual",
+        ]:
             raise ValueError(
                 f"Unsupported value for template_type : {template_type}"
             )
@@ -1397,7 +1408,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         # Check if records already exist in db_emorep
         print(
             f"Working on {subj}, {task}, "
-            + f"{model_name}, {con_name},"
+            + f"{model_name}, {con_name}, "
             + f"{preproc_type}, {template_type}"
         )
         data_exist = self._check_exist()
@@ -1420,8 +1431,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         # Write csv and update db_emorep
         # TODO deprecate _write_csv()
-        if model_name != "lss":
-            self._write_csv()
+        # if model_name != "lss":
+        #     self._write_csv()
 
         if model_name == "lss":
             self._update_fsl_betas_lss()

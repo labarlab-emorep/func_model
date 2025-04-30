@@ -107,11 +107,20 @@ def _get_args():
         "--template_type",
         type=str,
         default="whole",
-        choices=["whole", "cortex"],
+        choices=[
+            "whole",
+            "cortex",
+            "control",
+            "default",
+            "dorsattn",
+            "limbic",
+            "salventattn",
+            "somatomotor",
+            "visual",
+        ],
         help=textwrap.dedent(
             """\
-            Whether to use only GM voxels in cortex or also
-            include cerebellum and brainstem
+            Template used
             (default : %(default)s)
             """
         ),
