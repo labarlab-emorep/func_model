@@ -454,6 +454,13 @@ def fetch_mask(out_dir, template_type="cortex"):
         "salventattn",
         "somatomotor",
         "visual",
+        "control-scen",
+        "default-scen",
+        "dorsattn-scen",
+        "limbic-scen",
+        "salventattn-scen",
+        "somatomotor-scen",
+        "visual-scen",
     ]
 
     def _tpl_gm(out_dir, template_type="cortex"):

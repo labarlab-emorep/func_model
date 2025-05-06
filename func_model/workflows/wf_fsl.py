@@ -1161,7 +1161,9 @@ class ExtractBetas:
         Preprocessing used
     template_type : str
         {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
-            "salventattn", "somatomotor", "visual"}
+            "salventattn", "somatomotor", "visual", "control-scen",\
+            "default-scen", "dorsattn-scen", "limbic-scen",\
+            "salventattn-scen", "somatomotor-scen", "visual-scen"}
         Template used
 
     Example
@@ -1222,6 +1224,13 @@ class ExtractBetas:
             "salventattn",
             "somatomotor",
             "visual",
+            "control-scen",
+            "default-scen",
+            "dorsattn-scen",
+            "limbic-scen",
+            "salventattn-scen",
+            "somatomotor-scen",
+            "visual-scen",
         ]:
             raise ValueError(
                 f"Unsupported value for template_type : {self._template_type}"
