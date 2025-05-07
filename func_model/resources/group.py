@@ -1332,7 +1332,9 @@ class ExtractTaskBetas(matrix.NiftiArray):
             Preprocessing used
         template_type : str, optional
             {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
-                "salventattn", "somatomotor", "visual"}
+                "salventattn", "somatomotor", "visual", "control_scen",\
+                "default_scen", "dorsattn_scen", "limbic_scen",\
+                "salventattn_scen", "somatomotor_scen", "visual_scen"}
             Template used
 
         Notes
@@ -1368,6 +1370,13 @@ class ExtractTaskBetas(matrix.NiftiArray):
             "salventattn",
             "somatomotor",
             "visual",
+            "control_scen",
+            "default_scen",
+            "dorsattn_scen",
+            "limbic_scen",
+            "salventattn_scen",
+            "somatomotor_scen",
+            "visual_scen",
         ]:
             raise ValueError(
                 f"Unsupported value for template_type : {template_type}"

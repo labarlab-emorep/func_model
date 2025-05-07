@@ -429,7 +429,9 @@ def fetch_mask(out_dir, template_type="cortex"):
         Location of output directory
     template_type : str
         {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
-            "salventattn", "somatomotor", "visual"}
+            "salventattn", "somatomotor", "visual", "control_scen",\
+            "default_scen", "dorsattn_scen", "limbic_scen",\
+            "salventattn_scen", "somatomotor_scen", "visual_scen"}
         Template used
 
     Returns
@@ -454,13 +456,13 @@ def fetch_mask(out_dir, template_type="cortex"):
         "salventattn",
         "somatomotor",
         "visual",
-        "control-scen",
-        "default-scen",
-        "dorsattn-scen",
-        "limbic-scen",
-        "salventattn-scen",
-        "somatomotor-scen",
-        "visual-scen",
+        "control_scen",
+        "default_scen",
+        "dorsattn_scen",
+        "limbic_scen",
+        "salventattn_scen",
+        "somatomotor_scen",
+        "visual_scen",
     ]
 
     def _tpl_gm(out_dir, template_type="cortex"):

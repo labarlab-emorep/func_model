@@ -117,6 +117,13 @@ def _get_args():
             "salventattn",
             "somatomotor",
             "visual",
+            "control_scen",
+            "default_scen",
+            "dorsattn_scen",
+            "limbic_scen",
+            "salventattn_scen",
+            "somatomotor_scen",
+            "visual_scen",
         ],
         help=textwrap.dedent(
             """\

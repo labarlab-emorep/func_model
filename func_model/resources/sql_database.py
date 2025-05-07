@@ -197,6 +197,13 @@ class _RefMaps:
             "salventattn",
             "somatomotor",
             "visual",
+            "control_scen",
+            "default_scen",
+            "dorsattn_scen",
+            "limbic_scen",
+            "salventattn_scen",
+            "somatomotor_scen",
+            "visual_scen",
         ]:
             df_vox = self._db_con.fetch_df(
                 f"select * from ref_voxel_gm_{tpl_type}",
