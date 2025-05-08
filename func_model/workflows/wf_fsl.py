@@ -1247,14 +1247,6 @@ class ExtractBetas:
                 "Unexpected model contrast pair : "
                 + f"{self._model_name}, {self._con_name}"
             )
-        if self._model_name == "lss" and self._preproc_type == "smoothed":
-            # It isn't expected that LSS will be run with smoothed
-            # But if desired, just needs a SQL table to hold betas
-            print("HINT: A SQL table is needed for LSS w/ smoothed...")
-            raise ValueError(
-                "Unsupported model preprocessing pair : "
-                + f"{self._model_name}, {self._preproc_type}"
-            )
 
     def _setup(self):
         """Set attrs out_dir, proj_deriv and make dirs."""

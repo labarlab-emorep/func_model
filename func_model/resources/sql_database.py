@@ -311,8 +311,8 @@ class DbUpdateBetas(_RefMaps):
         model: str,
         con: str,
         overwrite: bool,
-        preproc: str = "scaled",
-        tpl_type: str = "whole",
+        preproc: str,
+        tpl_type: str,
     ):
         """Update beta table from pd.DataFrame.
 
@@ -337,9 +337,8 @@ class DbUpdateBetas(_RefMaps):
         )
 
         # Add id columns
-        if model != "lss":
-            df["tpl_id"] = self.ref_tpl[tpl_type]
-            df["preproc_id"] = self.ref_preproc[preproc]
+        df["tpl_id"] = self.ref_tpl[tpl_type]
+        df["preproc_id"] = self.ref_preproc[preproc]
         df["subj_id"] = int(subj.split("-ER")[-1])
         df["task_id"] = self.ref_task[task.split("-")[-1]]
         df["voxel_id"] = df.apply(
@@ -373,6 +372,8 @@ class DbUpdateBetas(_RefMaps):
         """Return list of primary key columns."""
         if model == "lss":
             return [
+                "tpl_id",
+                "preproc_id",
                 "subj_id",
                 "task_id",
                 "num_block",

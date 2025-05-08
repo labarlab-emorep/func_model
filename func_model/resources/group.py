@@ -1391,11 +1391,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 "Unexpected model contrast pair : "
                 + f"{model_name}, {con_name}"
             )
-        if model_name == "lss" and preproc_type == "smoothed":
-            raise ValueError(
-                "Unsupported model preprocessing pair : "
-                + f"{model_name}, {preproc_type}"
-            )
 
         self._subj = subj
         self._sess = sess
@@ -1576,8 +1571,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
-                preproc=self._preproc_type,
-                tpl_type=self._template_type,
+                self._preproc_type,
+                self._template_type,
             )
         if df_b.shape[1] > 2:
             update_betas.update_db(
@@ -1587,8 +1582,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
-                preproc=self._preproc_type,
-                tpl_type=self._template_type,
+                self._preproc_type,
+                self._template_type,
             )
         db_con.close_con()
 
@@ -1679,6 +1674,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
+                self._preproc_type,
+                self._template_type,
             )
         if df_b.shape[1] > 3:
             update_betas.update_db(
@@ -1688,6 +1685,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
+                self._preproc_type,
+                self._template_type,
             )
         db_con.close_con()
 
