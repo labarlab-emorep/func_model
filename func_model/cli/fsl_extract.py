@@ -127,7 +127,7 @@ def _get_args():
         ],
         help=textwrap.dedent(
             """\
-            Template used
+            Use GM voxels from whole brain, cortex, or a network.
             (default : %(default)s)
             """
         ),
