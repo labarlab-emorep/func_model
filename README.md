@@ -271,9 +271,12 @@ optional arguments:
   --preproc-type {scaled,smoothed}
                         Whether to use scaled or smoothed preprocessed data.
                         (default : scaled)
-  --template_type {whole,cortex}
-                        Whether to use only GM voxels in cortex or also include
-                        cerebellum and brainstem.
+  --template_type {
+        whole,cortex,control,default,dorsattn,limbic,salventattn,somatomotor,visual,
+        control_scen,default_scen,dorsattn_scen,limbic_scen,salventattn_scen,
+        somatomotor_scen,visual_scen
+    }
+                        Use GM voxels from whole brain, cortex, or a network.
                         (default : whole)
 
 ```

@@ -1160,7 +1160,10 @@ class ExtractBetas:
         {"scaled", "smoothed"}
         Preprocessing used
     template_type : str
-        {"whole", "cortex"}
+        {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
+            "salventattn", "somatomotor", "visual", "control_scen",\
+            "default_scen", "dorsattn_scen", "limbic_scen",\
+            "salventattn_scen", "somatomotor_scen", "visual_scen"}
         Template used
 
     Example
@@ -1211,7 +1214,24 @@ class ExtractBetas:
             raise ValueError(
                 f"Unsupported value for preproc_type : {self._preproc_type}"
             )
-        if self._template_type not in ["whole", "cortex"]:
+        if self._template_type not in [
+            "whole",
+            "cortex",
+            "control",
+            "default",
+            "dorsattn",
+            "limbic",
+            "salventattn",
+            "somatomotor",
+            "visual",
+            "control_scen",
+            "default_scen",
+            "dorsattn_scen",
+            "limbic_scen",
+            "salventattn_scen",
+            "somatomotor_scen",
+            "visual_scen",
+        ]:
             raise ValueError(
                 f"Unsupported value for template_type : {self._template_type}"
             )
@@ -1226,14 +1246,6 @@ class ExtractBetas:
             raise ValueError(
                 "Unexpected model contrast pair : "
                 + f"{self._model_name}, {self._con_name}"
-            )
-        if self._model_name == "lss" and self._preproc_type == "smoothed":
-            # It isn't expected that LSS will be run with smoothed
-            # But if desired, just needs a SQL table to hold betas
-            print("HINT: A SQL table is needed for LSS w/ smoothed...")
-            raise ValueError(
-                "Unsupported model preprocessing pair : "
-                + f"{self._model_name}, {self._preproc_type}"
             )
 
     def _setup(self):
@@ -1260,7 +1272,7 @@ class ExtractBetas:
         self._setup()
 
         # Get mask coordinates (set attr rm_voxel)
-        mask_path = masks.tpl_gm(self._out_dir, self._template_type)
+        mask_path = masks.fetch_mask(self._out_dir, self._template_type)
         self._ex_betas.mask_coord(mask_path)
 
         # Identify sessions

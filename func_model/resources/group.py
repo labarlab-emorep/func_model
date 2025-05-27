@@ -1331,7 +1331,10 @@ class ExtractTaskBetas(matrix.NiftiArray):
             {"scaled", "smoothed"}
             Preprocessing used
         template_type : str, optional
-            {"whole", "cortex"}
+            {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
+                "salventattn", "somatomotor", "visual", "control_scen",\
+                "default_scen", "dorsattn_scen", "limbic_scen",\
+                "salventattn_scen", "somatomotor_scen", "visual_scen"}
             Template used
 
         Notes
@@ -1357,7 +1360,24 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError(
                 f"Unsupported value for preproc_type : {preproc_type}"
             )
-        if template_type not in ["whole", "cortex"]:
+        if template_type not in [
+            "whole",
+            "cortex",
+            "control",
+            "default",
+            "dorsattn",
+            "limbic",
+            "salventattn",
+            "somatomotor",
+            "visual",
+            "control_scen",
+            "default_scen",
+            "dorsattn_scen",
+            "limbic_scen",
+            "salventattn_scen",
+            "somatomotor_scen",
+            "visual_scen",
+        ]:
             raise ValueError(
                 f"Unsupported value for template_type : {template_type}"
             )
@@ -1370,11 +1390,6 @@ class ExtractTaskBetas(matrix.NiftiArray):
             raise ValueError(
                 "Unexpected model contrast pair : "
                 + f"{model_name}, {con_name}"
-            )
-        if model_name == "lss" and preproc_type == "smoothed":
-            raise ValueError(
-                "Unsupported model preprocessing pair : "
-                + f"{model_name}, {preproc_type}"
             )
 
         self._subj = subj
@@ -1397,7 +1412,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
         # Check if records already exist in db_emorep
         print(
             f"Working on {subj}, {task}, "
-            + f"{model_name}, {con_name},"
+            + f"{model_name}, {con_name}, "
             + f"{preproc_type}, {template_type}"
         )
         data_exist = self._check_exist()
@@ -1420,8 +1435,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
 
         # Write csv and update db_emorep
         # TODO deprecate _write_csv()
-        if model_name != "lss":
-            self._write_csv()
+        # if model_name != "lss":
+        #     self._write_csv()
 
         if model_name == "lss":
             self._update_fsl_betas_lss()
@@ -1556,8 +1571,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
-                preproc=self._preproc_type,
-                tpl_type=self._template_type,
+                self._preproc_type,
+                self._template_type,
             )
         if df_b.shape[1] > 2:
             update_betas.update_db(
@@ -1567,8 +1582,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
-                preproc=self._preproc_type,
-                tpl_type=self._template_type,
+                self._preproc_type,
+                self._template_type,
             )
         db_con.close_con()
 
@@ -1659,6 +1674,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
+                self._preproc_type,
+                self._template_type,
             )
         if df_b.shape[1] > 3:
             update_betas.update_db(
@@ -1668,6 +1685,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
                 self._model_name.split("-")[-1],
                 self._con_name,
                 self._overwrite,
+                self._preproc_type,
+                self._template_type,
             )
         db_con.close_con()
 

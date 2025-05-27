@@ -107,11 +107,27 @@ def _get_args():
         "--template_type",
         type=str,
         default="whole",
-        choices=["whole", "cortex"],
+        choices=[
+            "whole",
+            "cortex",
+            "control",
+            "default",
+            "dorsattn",
+            "limbic",
+            "salventattn",
+            "somatomotor",
+            "visual",
+            "control_scen",
+            "default_scen",
+            "dorsattn_scen",
+            "limbic_scen",
+            "salventattn_scen",
+            "somatomotor_scen",
+            "visual_scen",
+        ],
         help=textwrap.dedent(
             """\
-            Whether to use only GM voxels in cortex or also
-            include cerebellum and brainstem
+            Use GM voxels from whole brain, cortex, or a network.
             (default : %(default)s)
             """
         ),
