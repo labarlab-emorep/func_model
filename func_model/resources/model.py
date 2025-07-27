@@ -108,16 +108,23 @@ class ConditionFiles:
         ).split("_")
 
     def _write_cond(
-        self, event_onset: list, event_duration: list, event_name: str
+        self, event_onset: list, event_duration: list, event_name: str,
+        event_param=None,
     ) -> Tuple[pd.DataFrame, os.PathLike]:
         """Compile and write conditions file."""
         if len(event_onset) != len(event_duration):
             raise ValueError(
                 "Lengths of event_onset, event_duration do not match"
             )
-        df = pd.DataFrame(
-            {"onset": event_onset, "duration": event_duration, "mod": 1}
-        )
+        if event_param is None:
+            df = pd.DataFrame(
+                {"onset": event_onset, "duration": event_duration, "mod": 1}
+            )
+        else:
+            df = pd.DataFrame(
+                {"onset": event_onset, "duration": event_duration,
+                 "mod": event_param}
+            )
         out_name = (
             f"{self._subj}_{self._sess}_{self._task}_{self._run}_"
             + f"desc-{event_name}_events.txt"
@@ -248,6 +255,51 @@ class ConditionFiles:
             out_dict[f"stim{t_emo}"] = stim_out
             out_dict[f"replay{t_emo}"] = rep_out
         return out_dict
+
+    def session_avparam_events(self):
+        """Generate Arousal/Valence parametric modulation condition files.
+
+        Session-specific events (scenarios, videos) are extracted and
+        then condition files with Arousal/Valence parametric weights
+        are generated. One parametric condition file for Arousal is created
+        and one parametric condition file for Valence is created. All
+        stimulus presentations are represented in each file.
+
+        Returns
+        -------
+        dict
+            key = event description
+            value = path, location of condition file
+
+        Raises
+        ------
+        TypeError
+            run_num is not int
+        ValueError
+            Index and position lists are not equal
+
+        """
+
+        # As in session_together_events, use list position and index to
+        # align replay with the appropriate emotion.
+        task_short = self._task.split("-")[-1]
+        idx_stim = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
+
+        # Extract onset and duration for every stimulus
+        out_dict = {}
+        stim_onset = self._df_run.loc[idx_stim, "onset"].tolist()
+        stim_duration = self._df_run.loc[idx_stim, "duration"].tolist()
+
+        # Write condition files
+        ##TODO: define stim_param
+        for param in ['arousal','valence']:
+            _, stim_out = self._write_cond(
+                stim_onset, stim_duration, f"stim{param}",
+                stim_param,
+            )
+            out_dict[f"stim{param}"] = stim_out
+        return out_dict
+
 
     def session_lss_events(self):
         """Generate condition files for LSS models.
