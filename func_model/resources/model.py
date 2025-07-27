@@ -292,6 +292,7 @@ class ConditionFiles:
 
         # Write condition files
         ##TODO: define stim_param
+        ##      Create self.stim_param elsewhere
         for param in ['arousal','valence']:
             _, stim_out = self._write_cond(
                 stim_onset, stim_duration, f"stim{param}",
