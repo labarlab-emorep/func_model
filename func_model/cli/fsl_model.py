@@ -15,7 +15,8 @@ Model names:
         first-level only
     - lss = similar to tog, but with each trial separate,
         first-level only
-    - param = all stimuli modeled together with parametric weighting
+    - avparam = all stimuli modeled together with Arousal/Valence
+        parametric weighting
 
 Level names:
     - first = first-level GLM
@@ -70,7 +71,7 @@ def _get_args():
         "--model-name",
         type=str,
         default="sep",
-        choices=["sep", "tog", "rest", "lss", "param"],
+        choices=["sep", "tog", "rest", "lss", "avparam"],
         help=textwrap.dedent(
             """\
             FSL model name, for triggering different workflows

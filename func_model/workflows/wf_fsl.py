@@ -535,7 +535,7 @@ class FslFirst(_SupportFslFirst):
             self._tog_cond, self._lss_cond = self._adj_cond(
                 self._make_cf.session_lss_events()
             )
-        elif self._model_name == "param":
+        elif self._model_name == "avparam":
             (_,) = self._adj_cond(self._make_cf.session_avparam_events())
 
     def _adj_cond(self, *args: Union[dict, Tuple[dict, dict]]) -> tuple:
