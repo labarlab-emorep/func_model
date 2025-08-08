@@ -284,21 +284,29 @@ class ConditionFiles:
         # align replay with the appropriate emotion.
         task_short = self._task.split("-")[-1]
         idx_stim = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
+        idx_replay = np.where(self._df_run["trial_type"] == "replay")[0]
 
         # Extract onset and duration for every stimulus
         out_dict = {}
         stim_onset = self._df_run.loc[idx_stim, "onset"].tolist()
         stim_duration = self._df_run.loc[idx_stim, "duration"].tolist()
 
-        # Write condition files
+        # Write condition files for parametric modulation
         ##TODO: define stim_param
         ##      Create self.stim_param elsewhere
+        ##TODO: write replayall condition file
         for param in ['arousal','valence']:
             _, stim_out = self._write_cond(
                 stim_onset, stim_duration, f"stim{param}",
                 stim_param,
             )
             out_dict[f"stim{param}"] = stim_out
+
+        # Write condition file for all events
+        _, stim_out = self._write_cond(
+            stim_onset, stim_duration, f"stimall",
+        )
+        out_dict[f"stimall"] = stim_out
         return out_dict
 
 
