@@ -290,23 +290,51 @@ class ConditionFiles:
         out_dict = {}
         stim_onset = self._df_run.loc[idx_stim, "onset"].tolist()
         stim_duration = self._df_run.loc[idx_stim, "duration"].tolist()
+        replay_onset = self._df_run.loc[idx_replay, "onset"].tolist()
+        replay_duration = self._df_run.loc[idx_replay, "duration"].tolist()
 
         # Write condition files for parametric modulation
-        ##TODO: define stim_param
+        ##TODO: define stim_param: {'arousal': [], 'valence': []}
         ##      Create self.stim_param elsewhere
-        ##TODO: write replayall condition file
-        for param in ['arousal','valence']:
-            _, stim_out = self._write_cond(
-                stim_onset, stim_duration, f"stim{param}",
-                stim_param,
-            )
-            out_dict[f"stim{param}"] = stim_out
+
+        # Write condition file for arousal-modulated stim
+        _, stimarous_out = self._write_cond(
+            stim_onset, stim_duration, f"stimArousParam",
+            stim_param['arousal']
+        )
+        out_dict[f"stimArousParam"] = stimarous_out
+
+        # Write condition file for valence-modulated stim
+        _, stimval_out = self._write_cond(
+            stim_onset, stim_duration, f"stimValParam",
+            stim_param['valence']
+        )
+        out_dict[f"stimValParam"] = stimval_out
+
+        # Write condition file for arousal-modulated replay
+        _, reparous_out = self._write_cond(
+            stim_onset, stim_duration, f"replayArousParam",
+            stim_param['arousal']
+        )
+        out_dict[f"replayArousParam"] = reparous_out
+
+        # Write condition file for valence-modulated replay
+        _, repval_out = self._write_cond(
+            stim_onset, stim_duration, f"replayValParam",
+            stim_param['valence']
+        )
+        out_dict[f"replayValParam"] = repval_out
 
         # Write condition file for all events
         _, stim_out = self._write_cond(
-            stim_onset, stim_duration, f"stimall",
+            stim_onset, stim_duration, f"stimAll",
         )
-        out_dict[f"stimall"] = stim_out
+        out_dict[f"stimAll"] = stim_out
+        # Write condition file for all replays
+        _, replay_out = self._write_cond(
+            replay_onset, replay_duration, f"replayAll"
+        )
+        out_dict[f"replayAll"] = replay_out
         return out_dict
 
 
