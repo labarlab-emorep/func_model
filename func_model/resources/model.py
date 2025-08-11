@@ -1009,9 +1009,95 @@ class _FirstLss:
         out_path = _write_design(out_dir, out_name, fsf_edit)
         return out_path
 
+# %%
+class _Firstavparam:
+    """Support writing first-level avparam model design.fsf.
+
+    Parameters
+    ----------
+    fsf_edit : str
+        Loaded design template
+    field_switch : dict
+        Maps replacement fields in template to values
+    subj_work : str, os.PathLike
+        Subject output location
+    run : str
+        BIDs run identifier
+
+    Methods
+    -------
+    write_fsf()
+        Coordinating writing of design.fsf, returns path to file
+
+    """
+
+    def __init__(self, fsf_edit, field_switch, subj_work, run, preproc_type):
+        """Initialize."""
+        self._fsf_edit = fsf_edit
+        self._field_switch = field_switch
+        self._subj_work = subj_work
+        self._run = run
+        self._preproc_type = preproc_type
+
+    def write_fsf(self):
+        """Make first-level FSF for model avparam.
+
+        Write a design FSF by updating fields in the template FSF for
+        model_name == avparam. Write out design files to subject working
+        directory.
+
+        Returns
+        -------
+        path
+            Location, name of design FSF file
+
+        """
+        # Update field_switch, make design file
+        self._sep_switch() #TODO continue here
+        for old, new in self._field_switch.items():
+            self._fsf_edit = self._fsf_edit.replace(old, new)
+
+        # Write out
+        # design_path = self._write_first(fsf_edit)
+        out_dir = os.path.join(self._subj_work, "design_files")
+        if self._preproc_type == "scaled":
+            out_name = f"{self._run}_level-first_name-sep_design.fsf"
+        else:
+            out_name = (
+                f"{self._run}_preproc-{self._preproc_type}"
+                + "_level-first_name-sep_design.fsf"
+            )
+        out_path = _write_design(out_dir, out_name, self._fsf_edit)
+        return out_path
+
+    def _sep_switch(self):
+        """Update switch dictionary for model "avparam".
+
+        Find replay and stimulus emotion condition files for run,
+        update private attr _field_switch for avparam specific conditions.
+
+        """
+        # Find stim and replay emotion condition files
+        # TODO receive these via workflows.FslFirst._sep_cond
+
+        avparams_desc = ['stimAll','stimArousParam','stimValParam',
+                         'replayAll','replayArousParam','replayValParam',
+                         ]
+        for desc in avparams_desc:
+            event_file = sorted(
+                glob.glob(
+                    f"{self._subj_work}/condition_files/*{self._run}_"
+                    + f"desc-{desc}*_events.txt"
+                )
+            )
+            if len(event_file) != 1:
+                raise ValueError("Failed to find exactly one events file"
+                                 + f" for description: {desc}")
+            self._field_switch[f"{desc}Path"] = event_file[0]
+
 
 # %%
-class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
+class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss, _Firstavparam):
     """Generate first-level design FSF files for FSL modelling.
 
     Inherits _FirstSep, _FirstTog, _FirstLss.
@@ -1259,6 +1345,14 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
                 self._preproc_type,
                 tog_cond,
                 lss_cond,
+            )
+        elif self._model_name == "avparam":
+            write_run = _Firstavparam(
+                fsf_edit,
+                field_switch,
+                self._subj_work,
+                run,
+                self._preproc_type,
             )
         fsf_path = write_run.write_fsf()
         return fsf_path
