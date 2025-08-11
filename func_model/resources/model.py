@@ -313,14 +313,14 @@ class ConditionFiles:
 
         # Write condition file for arousal-modulated replay
         _, reparous_out = self._write_cond(
-            stim_onset, stim_duration, f"replayArousParam",
+            replay_onset, replay_duration, f"replayArousParam",
             stim_param['arousal']
         )
         out_dict[f"replayArousParam"] = reparous_out
 
         # Write condition file for valence-modulated replay
         _, repval_out = self._write_cond(
-            stim_onset, stim_duration, f"replayValParam",
+            replay_onset, replay_duration, f"replayValParam",
             stim_param['valence']
         )
         out_dict[f"replayValParam"] = repval_out
