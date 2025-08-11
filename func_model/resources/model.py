@@ -1077,8 +1077,7 @@ class _Firstavparam:
         update private attr _field_switch for avparam specific conditions.
 
         """
-        # Find stim and replay emotion condition files
-        # TODO receive these via workflows.FslFirst._sep_cond
+        # Find stim and replay parametric condition files
 
         avparams_desc = ['stimAll','stimArousParam','stimValParam',
                          'replayAll','replayArousParam','replayValParam',
