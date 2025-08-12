@@ -1466,6 +1466,9 @@ class MakeSecondFsf:
         Output work location for intermediates
     proj_deriv : str, os.PathLike
         Location of project deriviatives directory
+    preproc_type : str
+        [smoothed | scaled]
+        Preprocessing of EPI which went into first-level analysis
     model_name : str
         FSL model name, specifies template selection from
         func_model.reference_files.
@@ -1483,11 +1486,12 @@ class MakeSecondFsf:
 
     """
 
-    def __init__(self, subj_work, subj_deriv, model_name):
+    def __init__(self, subj_work, subj_deriv, preproc_type, model_name):
         """Initialize."""
         print("\t\tInitializing MakeSecondFSF")
         self._subj_work = subj_work
         self._subj_deriv = subj_deriv
+        self._preproc_type = preproc_type
         self._model_name = model_name
 
     def write_task_fsf(self):
@@ -1507,15 +1511,19 @@ class MakeSecondFsf:
             "[[subj_work]]": self._subj_work,
         }
 
-        # Find all copes, update field_switch for emotion name
-        # and cope path.
-        cope_dict = self._get_copes()
-        cnt_cope = 1
-        for cnt_ev, ev_name in enumerate(cope_dict):
-            field_switch[f"[[ev_{cnt_ev + 1}_name]]"] = ev_name
-            for _, cope_path in cope_dict[ev_name].items():
-                field_switch[f"[[ev_{cnt_cope}_cope]]"] = cope_path
-                cnt_cope += 1
+        if self._model_name in ['sep', 'tog']:
+            # Find all copes, update field_switch for emotion name
+            # and cope path.
+            cope_dict = self._get_copes()
+            cnt_cope = 1
+            for cnt_ev, ev_name in enumerate(cope_dict):
+                field_switch[f"[[ev_{cnt_ev + 1}_name]]"] = ev_name
+                for _, cope_path in cope_dict[ev_name].items():
+                    field_switch[f"[[ev_{cnt_cope}_cope]]"] = cope_path
+                    cnt_cope += 1
+        elif self._model_name == 'avparam':
+            # Update field_switch
+            field_switch["[[preproc_type]]"] = self._preproc_type
 
         # Load template and update planned values
         design_tpl = helper.load_reference(
