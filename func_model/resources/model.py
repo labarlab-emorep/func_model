@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 from typing import Union, Tuple
 from func_model.resources import submit
+from func_model.resources import sql_database
 from func_model.resources import helper
 
 
@@ -108,23 +109,24 @@ class ConditionFiles:
         ).split("_")
 
     def _write_cond(
-        self, event_onset: list, event_duration: list, event_name: str,
-        event_param=None,
+        self,
+        event_onset: list,
+        event_duration: list,
+        event_name: str,
+        event_param: Union[list, int] = 1,
     ) -> Tuple[pd.DataFrame, os.PathLike]:
         """Compile and write conditions file."""
         if len(event_onset) != len(event_duration):
             raise ValueError(
                 "Lengths of event_onset, event_duration do not match"
             )
-        if event_param is None:
-            df = pd.DataFrame(
-                {"onset": event_onset, "duration": event_duration, "mod": 1}
-            )
-        else:
-            df = pd.DataFrame(
-                {"onset": event_onset, "duration": event_duration,
-                 "mod": event_param}
-            )
+        df = pd.DataFrame(
+            {
+                "onset": event_onset,
+                "duration": event_duration,
+                "mod": event_param,
+            }
+        )
         out_name = (
             f"{self._subj}_{self._sess}_{self._task}_{self._run}_"
             + f"desc-{event_name}_events.txt"
@@ -256,6 +258,69 @@ class ConditionFiles:
             out_dict[f"replay{t_emo}"] = rep_out
         return out_dict
 
+    def _set_av_ratings(self):
+        """Sets attribute av_ratings as a df of arousal and valence
+        stimuli ratings."""
+
+        # Get references for task and emotion ID's from SQL
+        db_con = sql_database.DbConnect()
+        ref = {}
+        for item in ["task", "emo"]:
+            df_ref = db_con.fetch_df(
+                f"select * from ref_{item}", [f"{item}_id", f"{item}_name"]
+            )
+            key_col, val_col = (
+                (f"{item}_name", f"{item}_id")
+                if item == "task"
+                else (f"{item}_id", f"{item}_name")
+            )
+            ref[item] = dict(zip(df_ref[key_col], df_ref[val_col]))
+
+        # And also get the ratings table from SQL
+        task_value = self._task.replace("task-", "")
+        ref_task_id = ref["task"][task_value]
+        sql_cmd = (
+            "select * from tbl_av_stimulus_ratings "
+            + f"where task_id = {ref_task_id}"
+        )
+        cols = ["task_id", "emo_id", "num_stim", "arousal", "valence"]
+        df_ratings = db_con.fetch_df(sql_cmd, cols)
+        db_con.close_con()
+
+        # Map emotion column and set index
+        df_ratings["emo_id"] = df_ratings["emo_id"].map(ref["emo"])
+        df_ratings.rename(columns={"emo_id": "emotion"}, inplace=True)
+        df_ratings = df_ratings[["emotion", "num_stim", "arousal", "valence"]]
+        df_ratings.set_index(["emotion", "num_stim"], inplace=True)
+
+        # Mean center and scale ratings, also round
+        df_ratings = df_ratings.astype(float)
+        df_ratings = df_ratings - df_ratings.mean()
+        df_ratings = df_ratings / df_ratings.abs().max()
+        df_ratings["arousal"] = df_ratings["arousal"].round(4)
+        df_ratings["valence"] = df_ratings["valence"].round(4)
+
+        # And finally, set attribute
+        self.av_ratings = df_ratings
+        self.av_ratings_task = self._task  # also remember task of ratings
+
+    def _get_av_stim_param(self, idx_stim: np.ndarray) -> dict:
+        """Gets arousal/valence stimuli values for avparam."""
+
+        # Convert to stim_ids and get keys
+        stim_ids = self._df_run.loc[idx_stim, "stim_info"].tolist()
+        keys = [
+            (parts[0], int(parts[1].split(".")[0]))
+            for parts in (x.split("_") for x in stim_ids)
+        ]
+
+        # Access values from av_ratings attribute
+        stim_param_av = {
+            p: [self.av_ratings.loc[k, p] for k in keys]
+            for p in ["arousal", "valence"]
+        }
+        return stim_param_av
+
     def session_avparam_events(self):
         """Generate Arousal/Valence parametric modulation condition files.
 
@@ -280,6 +345,14 @@ class ConditionFiles:
 
         """
 
+        # Set av_ratings attribute if not set already
+        if not hasattr(self, "av_ratings"):
+            self._set_av_ratings()
+        else:
+            # If it already has av_ratings, ensure it's the right task
+            if self._task != self.av_ratings_task:
+                self._set_av_ratings()
+
         # As in session_together_events, use list position and index to
         # align replay with the appropriate emotion.
         task_short = self._task.split("-")[-1]
@@ -293,50 +366,50 @@ class ConditionFiles:
         replay_onset = self._df_run.loc[idx_replay, "onset"].tolist()
         replay_duration = self._df_run.loc[idx_replay, "duration"].tolist()
 
-        # Write condition files for parametric modulation
-        ##TODO: define stim_param: {'arousal': [], 'valence': []}
-        ##      Create self.stim_param elsewhere
+        # Define arousal/valence stim_param
+        stim_param = self._get_av_stim_param(idx_stim)
 
         # Write condition file for arousal-modulated stim
         _, stimarous_out = self._write_cond(
-            stim_onset, stim_duration, f"stimArousParam",
-            stim_param['arousal']
+            stim_onset, stim_duration, "stimArousParam", stim_param["arousal"]
         )
-        out_dict[f"stimArousParam"] = stimarous_out
+        out_dict["stimArousParam"] = stimarous_out
 
         # Write condition file for valence-modulated stim
         _, stimval_out = self._write_cond(
-            stim_onset, stim_duration, f"stimValParam",
-            stim_param['valence']
+            stim_onset, stim_duration, "stimValParam", stim_param["valence"]
         )
-        out_dict[f"stimValParam"] = stimval_out
+        out_dict["stimValParam"] = stimval_out
 
         # Write condition file for arousal-modulated replay
         _, reparous_out = self._write_cond(
-            replay_onset, replay_duration, f"replayArousParam",
-            stim_param['arousal']
+            replay_onset,
+            replay_duration,
+            "replayArousParam",
+            stim_param["arousal"],
         )
-        out_dict[f"replayArousParam"] = reparous_out
+        out_dict["replayArousParam"] = reparous_out
 
         # Write condition file for valence-modulated replay
         _, repval_out = self._write_cond(
-            replay_onset, replay_duration, f"replayValParam",
-            stim_param['valence']
+            replay_onset,
+            replay_duration,
+            "replayValParam",
+            stim_param["valence"],
         )
-        out_dict[f"replayValParam"] = repval_out
+        out_dict["replayValParam"] = repval_out
 
         # Write condition file for all events
-        _, stim_out = self._write_cond(
-            stim_onset, stim_duration, f"stimAll",
-        )
-        out_dict[f"stimAll"] = stim_out
+        _, stim_out = self._write_cond(stim_onset, stim_duration, "stimAll")
+        out_dict["stimAll"] = stim_out
+
         # Write condition file for all replays
         _, replay_out = self._write_cond(
-            replay_onset, replay_duration, f"replayAll"
+            replay_onset, replay_duration, "replayAll"
         )
-        out_dict[f"replayAll"] = replay_out
-        return out_dict
+        out_dict["replayAll"] = replay_out
 
+        return out_dict
 
     def session_lss_events(self):
         """Generate condition files for LSS models.
@@ -1009,6 +1082,7 @@ class _FirstLss:
         out_path = _write_design(out_dir, out_name, fsf_edit)
         return out_path
 
+
 # %%
 class _Firstavparam:
     """Support writing first-level avparam model design.fsf.
@@ -1053,7 +1127,7 @@ class _Firstavparam:
 
         """
         # Update field_switch, make design file
-        self._sep_switch() #TODO continue here
+        self._sep_switch()  # TODO continue here
         for old, new in self._field_switch.items():
             self._fsf_edit = self._fsf_edit.replace(old, new)
 
@@ -1079,9 +1153,14 @@ class _Firstavparam:
         """
         # Find stim and replay parametric condition files
 
-        avparams_desc = ['stimAll','stimArousParam','stimValParam',
-                         'replayAll','replayArousParam','replayValParam',
-                         ]
+        avparams_desc = [
+            "stimAll",
+            "stimArousParam",
+            "stimValParam",
+            "replayAll",
+            "replayArousParam",
+            "replayValParam",
+        ]
         for desc in avparams_desc:
             event_file = sorted(
                 glob.glob(
@@ -1090,8 +1169,10 @@ class _Firstavparam:
                 )
             )
             if len(event_file) != 1:
-                raise ValueError("Failed to find exactly one events file"
-                                 + f" for description: {desc}")
+                raise ValueError(
+                    "Failed to find exactly one events file"
+                    + f" for description: {desc}"
+                )
             self._field_switch[f"{desc}Path"] = event_file[0]
 
 
