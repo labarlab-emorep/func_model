@@ -554,6 +554,8 @@ class FslFirst(_SupportFslFirst):
         use_short = (
             True if self._run == "run-04" or self._run == "run-08" else False
         )
+        if self._model_name == "avparam":
+            use_short = False
         if self._spec_case.spec_subj():
             use_short = self._spec_case.run_spec(
                 "adjust_short", self._run, use_short
