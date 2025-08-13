@@ -1226,7 +1226,7 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss, _Firstavparam):
 
     def _load_templates(self):
         """Load design templates."""
-        if self._model_name == "rest":
+        if self._model_name in ["rest", "avparam"]:
             self._tp_full = helper.load_reference(
                 "design_template_level-first_" + f"name-{self._model_name}.fsf"
             )
