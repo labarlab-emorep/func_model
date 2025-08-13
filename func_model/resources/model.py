@@ -1135,11 +1135,11 @@ class _Firstavparam:
         # design_path = self._write_first(fsf_edit)
         out_dir = os.path.join(self._subj_work, "design_files")
         if self._preproc_type == "scaled":
-            out_name = f"{self._run}_level-first_name-sep_design.fsf"
+            out_name = f"{self._run}_level-first_name-avparam_design.fsf"
         else:
             out_name = (
                 f"{self._run}_preproc-{self._preproc_type}"
-                + "_level-first_name-sep_design.fsf"
+                + "_level-first_name-avparam_design.fsf"
             )
         out_path = _write_design(out_dir, out_name, self._fsf_edit)
         return out_path
