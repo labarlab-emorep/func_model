@@ -858,7 +858,7 @@ set fmri(tempfilt_yn9) 1
 set fmri(deriv_yn9) 1
 
 # Custom EV file (EV 9)
-set fmri(custom9) "emosel_path"
+set fmri(custom9) "[[emosel_path]]"
 
 # Orthogonalise EV 9 wrt EV 0
 set fmri(ortho9.0) 0
