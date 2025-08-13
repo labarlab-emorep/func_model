@@ -33,7 +33,7 @@ set fmri(sscleanup_yn) 0
 set fmri(outputdir) "[[subj_work]]/[[run]][[preproc_type]]_level-first_name-avparam"
 
 # TR(s)
-set fmri(tr) 2.000000 
+set fmri(tr) 2.000000
 
 # Total volumes
 set fmri(npts) [[num_vol]]
@@ -418,7 +418,7 @@ set fmri(ortho2.9) 0
 set fmri(ortho2.10) 0
 
 # EV 3 title
-set fmri(evtitle3) "replayArousPram"
+set fmri(evtitle3) "replayArousParam"
 
 # Basic waveform shape (EV 3)
 # 0 : Square
@@ -450,7 +450,7 @@ set fmri(tempfilt_yn3) 1
 set fmri(deriv_yn3) 0
 
 # Custom EV file (EV 3)
-set fmri(custom3) "[[replayArousPramPath]]"
+set fmri(custom3) "[[replayArousParamPath]]"
 
 # Orthogonalise EV 3 wrt EV 0
 set fmri(ortho3.0) 0

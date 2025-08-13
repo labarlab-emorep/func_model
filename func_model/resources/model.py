@@ -1173,7 +1173,7 @@ class _Firstavparam:
                     "Failed to find exactly one events file"
                     + f" for description: {desc}"
                 )
-            self._field_switch[f"{desc}Path"] = event_file[0]
+            self._field_switch[f"[[{desc}Path]]"] = event_file[0]
 
 
 # %%
