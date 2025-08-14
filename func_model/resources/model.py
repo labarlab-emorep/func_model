@@ -1509,6 +1509,7 @@ class MakeSecondFsf:
         # Start switch
         field_switch = {
             "[[subj_work]]": self._subj_work,
+            "[[subj_deriv]]": self._subj_deriv,
         }
 
         if self._model_name in ['sep', 'tog']:
