@@ -293,28 +293,28 @@ set fmri(copeinput.7) 1
 set fmri(copeinput.8) 1
 
 # 4D AVW data or FEAT directory (1)
-set feat_files(1) "[[subj_deriv]]/run-01_[[preproc_type]]_level-first_name-avparam"
+set feat_files(1) "[[subj_deriv]]/run-01_[[preproc_type]]_level-first_name-avparam.feat"
 
 # 4D AVW data or FEAT directory (2)
-set feat_files(2) "[[subj_deriv]]/run-02_[[preproc_type]]_level-first_name-avparam"
+set feat_files(2) "[[subj_deriv]]/run-02_[[preproc_type]]_level-first_name-avparam.feat"
 
 # 4D AVW data or FEAT directory (3)
-set feat_files(3) "[[subj_deriv]]/run-03_[[preproc_type]]_level-first_name-avparam"
+set feat_files(3) "[[subj_deriv]]/run-03_[[preproc_type]]_level-first_name-avparam.feat"
 
 # 4D AVW data or FEAT directory (4)
-set feat_files(4) "[[subj_deriv]]/run-04_[[preproc_type]]_level-first_name-avparam"
+set feat_files(4) "[[subj_deriv]]/run-04_[[preproc_type]]_level-first_name-avparam.feat"
 
 # 4D AVW data or FEAT directory (5)
-set feat_files(5) "[[subj_deriv]]/run-05_[[preproc_type]]_level-first_name-avparam"
+set feat_files(5) "[[subj_deriv]]/run-05_[[preproc_type]]_level-first_name-avparam.feat"
 
 # 4D AVW data or FEAT directory (6)
-set feat_files(6) "[[subj_deriv]]/run-06_[[preproc_type]]_level-first_name-avparam"
+set feat_files(6) "[[subj_deriv]]/run-06_[[preproc_type]]_level-first_name-avparam.feat"
 
 # 4D AVW data or FEAT directory (7)
-set feat_files(7) "[[subj_deriv]]/run-07_[[preproc_type]]_level-first_name-avparam"
+set feat_files(7) "[[subj_deriv]]/run-07_[[preproc_type]]_level-first_name-avparam.feat"
 
 # 4D AVW data or FEAT directory (8)
-set feat_files(8) "[[subj_deriv]]/run-08_[[preproc_type]]_level-first_name-avparam"
+set feat_files(8) "[[subj_deriv]]/run-08_[[preproc_type]]_level-first_name-avparam.feat"
 
 # Add confound EVs text file
 set fmri(confoundevs) 0
