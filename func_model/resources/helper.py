@@ -229,6 +229,9 @@ class SupportFsl:
             -e "ssh -i {self._rsa_key}" \
             -rauv {src} {dst}
         """
+        print("Submitting rsync:")
+        print(f"\tsource: {src}")
+        print(f"\tdst: {dst}")
         h_out, h_err = self._quick_sp(bash_cmd)
         return (h_out, h_err)
 
