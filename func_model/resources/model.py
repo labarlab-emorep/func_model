@@ -1535,7 +1535,7 @@ class MakeSecondFsf:
 
         # Write design file, return location
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = f"level-second_name-{self._model_name}_design.fsf"
+        out_name = f"preproc-{self._preproc_type}_level-second_name-{self._model_name}_design.fsf"
         out_path = _write_design(out_dir, out_name, design_tpl)
         if not os.path.exists(out_path):
             raise FileNotFoundError(f"Expected : {out_path}")
