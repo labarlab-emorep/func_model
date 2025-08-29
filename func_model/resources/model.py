@@ -1230,6 +1230,9 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss, _Firstavparam):
             self._tp_full = helper.load_reference(
                 "design_template_level-first_" + f"name-{self._model_name}.fsf"
             )
+            self._tp_short = helper.load_reference(
+                "design_template_level-first_" + f"name-{self._model_name}" + "_desc-short.fsf"
+            )
         else:
             self._tp_full = helper.load_reference(
                 "design_template_level-first_"
