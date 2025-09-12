@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 from typing import Union, Tuple
 from func_model.resources import submit
+from func_model.resources import sql_database
 from func_model.resources import helper
 
 
@@ -108,7 +109,11 @@ class ConditionFiles:
         ).split("_")
 
     def _write_cond(
-        self, event_onset: list, event_duration: list, event_name: str
+        self,
+        event_onset: list,
+        event_duration: list,
+        event_name: str,
+        event_param: Union[list, int] = 1,
     ) -> Tuple[pd.DataFrame, os.PathLike]:
         """Compile and write conditions file."""
         if len(event_onset) != len(event_duration):
@@ -116,7 +121,11 @@ class ConditionFiles:
                 "Lengths of event_onset, event_duration do not match"
             )
         df = pd.DataFrame(
-            {"onset": event_onset, "duration": event_duration, "mod": 1}
+            {
+                "onset": event_onset,
+                "duration": event_duration,
+                "mod": event_param,
+            }
         )
         out_name = (
             f"{self._subj}_{self._sess}_{self._task}_{self._run}_"
@@ -247,6 +256,159 @@ class ConditionFiles:
             )
             out_dict[f"stim{t_emo}"] = stim_out
             out_dict[f"replay{t_emo}"] = rep_out
+        return out_dict
+
+    def _set_av_ratings(self):
+        """Sets attribute av_ratings as a df of arousal and valence
+        stimuli ratings."""
+
+        # Get references for task and emotion ID's from SQL
+        db_con = sql_database.DbConnect()
+        ref = {}
+        for item in ["task", "emo"]:
+            df_ref = db_con.fetch_df(
+                f"select * from ref_{item}", [f"{item}_id", f"{item}_name"]
+            )
+            key_col, val_col = (
+                (f"{item}_name", f"{item}_id")
+                if item == "task"
+                else (f"{item}_id", f"{item}_name")
+            )
+            ref[item] = dict(zip(df_ref[key_col], df_ref[val_col]))
+
+        # And also get the ratings table from SQL
+        task_value = self._task.replace("task-", "")
+        ref_task_id = ref["task"][task_value]
+        sql_cmd = (
+            "select * from tbl_av_stimulus_ratings "
+            + f"where task_id = {ref_task_id}"
+        )
+        cols = ["task_id", "emo_id", "num_stim", "arousal", "valence"]
+        df_ratings = db_con.fetch_df(sql_cmd, cols)
+        db_con.close_con()
+
+        # Map emotion column and set index
+        df_ratings["emo_id"] = df_ratings["emo_id"].map(ref["emo"])
+        df_ratings.rename(columns={"emo_id": "emotion"}, inplace=True)
+        df_ratings = df_ratings[["emotion", "num_stim", "arousal", "valence"]]
+        df_ratings.set_index(["emotion", "num_stim"], inplace=True)
+
+        # Mean center and scale ratings, also round
+        df_ratings = df_ratings.astype(float)
+        df_ratings = df_ratings - df_ratings.mean()
+        df_ratings = df_ratings / df_ratings.abs().max()
+        df_ratings["arousal"] = df_ratings["arousal"].round(4)
+        df_ratings["valence"] = df_ratings["valence"].round(4)
+
+        # And finally, set attribute
+        self.av_ratings = df_ratings
+        self.av_ratings_task = self._task  # also remember task of ratings
+
+    def _get_av_stim_param(self, idx_stim: np.ndarray) -> dict:
+        """Gets arousal/valence stimuli values for avparam."""
+
+        # Convert to stim_ids and get keys
+        stim_ids = self._df_run.loc[idx_stim, "stim_info"].tolist()
+        keys = [
+            (parts[0], int(parts[1].split(".")[0]))
+            for parts in (x.split("_") for x in stim_ids)
+        ]
+
+        # Access values from av_ratings attribute
+        stim_param_av = {
+            p: [self.av_ratings.loc[k, p] for k in keys]
+            for p in ["arousal", "valence"]
+        }
+        return stim_param_av
+
+    def session_avparam_events(self):
+        """Generate Arousal/Valence parametric modulation condition files.
+
+        Session-specific events (scenarios, videos) are extracted and
+        then condition files with Arousal/Valence parametric weights
+        are generated. One parametric condition file for Arousal is created
+        and one parametric condition file for Valence is created. All
+        stimulus presentations are represented in each file.
+
+        Returns
+        -------
+        dict
+            key = event description
+            value = path, location of condition file
+
+        Raises
+        ------
+        TypeError
+            run_num is not int
+        ValueError
+            Index and position lists are not equal
+
+        """
+
+        # Set av_ratings attribute if not set already
+        if not hasattr(self, "av_ratings"):
+            self._set_av_ratings()
+        else:
+            # If it already has av_ratings, ensure it's the right task
+            if self._task != self.av_ratings_task:
+                self._set_av_ratings()
+
+        # As in session_together_events, use list position and index to
+        # align replay with the appropriate emotion.
+        task_short = self._task.split("-")[-1]
+        idx_stim = np.where(self._df_run["trial_type"] == task_short[:-1])[0]
+        idx_replay = np.where(self._df_run["trial_type"] == "replay")[0]
+
+        # Extract onset and duration for every stimulus
+        out_dict = {}
+        stim_onset = self._df_run.loc[idx_stim, "onset"].tolist()
+        stim_duration = self._df_run.loc[idx_stim, "duration"].tolist()
+        replay_onset = self._df_run.loc[idx_replay, "onset"].tolist()
+        replay_duration = self._df_run.loc[idx_replay, "duration"].tolist()
+
+        # Define arousal/valence stim_param
+        stim_param = self._get_av_stim_param(idx_stim)
+
+        # Write condition file for arousal-modulated stim
+        _, stimarous_out = self._write_cond(
+            stim_onset, stim_duration, "stimArousParam", stim_param["arousal"]
+        )
+        out_dict["stimArousParam"] = stimarous_out
+
+        # Write condition file for valence-modulated stim
+        _, stimval_out = self._write_cond(
+            stim_onset, stim_duration, "stimValParam", stim_param["valence"]
+        )
+        out_dict["stimValParam"] = stimval_out
+
+        # Write condition file for arousal-modulated replay
+        _, reparous_out = self._write_cond(
+            replay_onset,
+            replay_duration,
+            "replayArousParam",
+            stim_param["arousal"],
+        )
+        out_dict["replayArousParam"] = reparous_out
+
+        # Write condition file for valence-modulated replay
+        _, repval_out = self._write_cond(
+            replay_onset,
+            replay_duration,
+            "replayValParam",
+            stim_param["valence"],
+        )
+        out_dict["replayValParam"] = repval_out
+
+        # Write condition file for all events
+        _, stim_out = self._write_cond(stim_onset, stim_duration, "stimAll")
+        out_dict["stimAll"] = stim_out
+
+        # Write condition file for all replays
+        _, replay_out = self._write_cond(
+            replay_onset, replay_duration, "replayAll"
+        )
+        out_dict["replayAll"] = replay_out
+
         return out_dict
 
     def session_lss_events(self):
@@ -922,7 +1084,100 @@ class _FirstLss:
 
 
 # %%
-class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
+class _Firstavparam:
+    """Support writing first-level avparam model design.fsf.
+
+    Parameters
+    ----------
+    fsf_edit : str
+        Loaded design template
+    field_switch : dict
+        Maps replacement fields in template to values
+    subj_work : str, os.PathLike
+        Subject output location
+    run : str
+        BIDs run identifier
+
+    Methods
+    -------
+    write_fsf()
+        Coordinating writing of design.fsf, returns path to file
+
+    """
+
+    def __init__(self, fsf_edit, field_switch, subj_work, run, preproc_type):
+        """Initialize."""
+        self._fsf_edit = fsf_edit
+        self._field_switch = field_switch
+        self._subj_work = subj_work
+        self._run = run
+        self._preproc_type = preproc_type
+
+    def write_fsf(self):
+        """Make first-level FSF for model avparam.
+
+        Write a design FSF by updating fields in the template FSF for
+        model_name == avparam. Write out design files to subject working
+        directory.
+
+        Returns
+        -------
+        path
+            Location, name of design FSF file
+
+        """
+        # Update field_switch, make design file
+        self._sep_switch()  # TODO continue here
+        for old, new in self._field_switch.items():
+            self._fsf_edit = self._fsf_edit.replace(old, new)
+
+        # Write out
+        # design_path = self._write_first(fsf_edit)
+        out_dir = os.path.join(self._subj_work, "design_files")
+        if self._preproc_type == "scaled":
+            out_name = f"{self._run}_level-first_name-avparam_design.fsf"
+        else:
+            out_name = (
+                f"{self._run}_preproc-{self._preproc_type}"
+                + "_level-first_name-avparam_design.fsf"
+            )
+        out_path = _write_design(out_dir, out_name, self._fsf_edit)
+        return out_path
+
+    def _sep_switch(self):
+        """Update switch dictionary for model "avparam".
+
+        Find replay and stimulus emotion condition files for run,
+        update private attr _field_switch for avparam specific conditions.
+
+        """
+        # Find stim and replay parametric condition files
+
+        avparams_desc = [
+            "stimAll",
+            "stimArousParam",
+            "stimValParam",
+            "replayAll",
+            "replayArousParam",
+            "replayValParam",
+        ]
+        for desc in avparams_desc:
+            event_file = sorted(
+                glob.glob(
+                    f"{self._subj_work}/condition_files/*{self._run}_"
+                    + f"desc-{desc}*_events.txt"
+                )
+            )
+            if len(event_file) != 1:
+                raise ValueError(
+                    "Failed to find exactly one events file"
+                    + f" for description: {desc}"
+                )
+            self._field_switch[f"[[{desc}Path]]"] = event_file[0]
+
+
+# %%
+class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss, _Firstavparam):
     """Generate first-level design FSF files for FSL modelling.
 
     Inherits _FirstSep, _FirstTog, _FirstLss.
@@ -971,9 +1226,12 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
 
     def _load_templates(self):
         """Load design templates."""
-        if self._model_name == "rest":
+        if self._model_name in ["rest", "avparam"]:
             self._tp_full = helper.load_reference(
                 "design_template_level-first_" + f"name-{self._model_name}.fsf"
+            )
+            self._tp_short = helper.load_reference(
+                "design_template_level-first_" + f"name-{self._model_name}" + "_desc-short.fsf"
             )
         else:
             self._tp_full = helper.load_reference(
@@ -1171,6 +1429,14 @@ class MakeFirstFsf(_FirstSep, _FirstTog, _FirstLss):
                 tog_cond,
                 lss_cond,
             )
+        elif self._model_name == "avparam":
+            write_run = _Firstavparam(
+                fsf_edit,
+                field_switch,
+                self._subj_work,
+                run,
+                self._preproc_type,
+            )
         fsf_path = write_run.write_fsf()
         return fsf_path
 
@@ -1203,6 +1469,9 @@ class MakeSecondFsf:
         Output work location for intermediates
     proj_deriv : str, os.PathLike
         Location of project deriviatives directory
+    preproc_type : str
+        [smoothed | scaled]
+        Preprocessing of EPI which went into first-level analysis
     model_name : str
         FSL model name, specifies template selection from
         func_model.reference_files.
@@ -1220,11 +1489,12 @@ class MakeSecondFsf:
 
     """
 
-    def __init__(self, subj_work, subj_deriv, model_name):
+    def __init__(self, subj_work, subj_deriv, preproc_type, model_name):
         """Initialize."""
         print("\t\tInitializing MakeSecondFSF")
         self._subj_work = subj_work
         self._subj_deriv = subj_deriv
+        self._preproc_type = preproc_type
         self._model_name = model_name
 
     def write_task_fsf(self):
@@ -1242,17 +1512,22 @@ class MakeSecondFsf:
         # Start switch
         field_switch = {
             "[[subj_work]]": self._subj_work,
+            "[[subj_deriv]]": self._subj_deriv,
         }
 
-        # Find all copes, update field_switch for emotion name
-        # and cope path.
-        cope_dict = self._get_copes()
-        cnt_cope = 1
-        for cnt_ev, ev_name in enumerate(cope_dict):
-            field_switch[f"[[ev_{cnt_ev + 1}_name]]"] = ev_name
-            for _, cope_path in cope_dict[ev_name].items():
-                field_switch[f"[[ev_{cnt_cope}_cope]]"] = cope_path
-                cnt_cope += 1
+        if self._model_name in ['sep', 'tog']:
+            # Find all copes, update field_switch for emotion name
+            # and cope path.
+            cope_dict = self._get_copes()
+            cnt_cope = 1
+            for cnt_ev, ev_name in enumerate(cope_dict):
+                field_switch[f"[[ev_{cnt_ev + 1}_name]]"] = ev_name
+                for _, cope_path in cope_dict[ev_name].items():
+                    field_switch[f"[[ev_{cnt_cope}_cope]]"] = cope_path
+                    cnt_cope += 1
+        elif self._model_name == 'avparam':
+            # Update field_switch
+            field_switch["[[preproc_type]]"] = f"preproc-{self._preproc_type}"
 
         # Load template and update planned values
         design_tpl = helper.load_reference(
@@ -1263,7 +1538,7 @@ class MakeSecondFsf:
 
         # Write design file, return location
         out_dir = os.path.join(self._subj_work, "design_files")
-        out_name = f"level-second_name-{self._model_name}_design.fsf"
+        out_name = f"preproc-{self._preproc_type}_level-second_name-{self._model_name}_design.fsf"
         out_path = _write_design(out_dir, out_name, design_tpl)
         if not os.path.exists(out_path):
             raise FileNotFoundError(f"Expected : {out_path}")

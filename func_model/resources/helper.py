@@ -69,7 +69,7 @@ def valid_mvm_test(test_name: str) -> bool:
 
 def valid_name(model_name: str) -> bool:
     """Check if model name is valid."""
-    return model_name in ["sep", "tog", "rest", "lss"]
+    return model_name in ["sep", "tog", "rest", "lss", "avparam"]
 
 
 def valid_level(model_level: str) -> bool:
@@ -229,6 +229,9 @@ class SupportFsl:
             -e "ssh -i {self._rsa_key}" \
             -rauv {src} {dst}
         """
+        print("Submitting rsync:")
+        print(f"\tsource: {src}")
+        print(f"\tdst: {dst}")
         h_out, h_err = self._quick_sp(bash_cmd)
         return (h_out, h_err)
 

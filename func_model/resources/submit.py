@@ -305,6 +305,7 @@ def schedule_fsl(
                 "{subj}",
                 "{sess}",
                 "{model_name}",
+                "{preproc_type}",
                 "{proj_deriv}",
                 "{work_deriv}",
                 "{log_dir}",

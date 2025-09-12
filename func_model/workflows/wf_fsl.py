@@ -535,6 +535,8 @@ class FslFirst(_SupportFslFirst):
             self._tog_cond, self._lss_cond = self._adj_cond(
                 self._make_cf.session_lss_events()
             )
+        elif self._model_name == "avparam":
+            (_,) = self._adj_cond(self._make_cf.session_avparam_events())
 
     def _adj_cond(self, *args: Union[dict, Tuple[dict, dict]]) -> tuple:
         """Adjust condition files if needed."""
@@ -552,6 +554,8 @@ class FslFirst(_SupportFslFirst):
         use_short = (
             True if self._run == "run-04" or self._run == "run-08" else False
         )
+        if self._model_name == "avparam":
+            use_short = False
         if self._spec_case.spec_subj():
             use_short = self._spec_case.run_spec(
                 "adjust_short", self._run, use_short
@@ -613,6 +617,9 @@ class FslSecond(_SupportFslSecond):
     model_name : str
         Name of FSL model, for keeping condition files and
         output organized
+    preproc_type : str
+        [smoothed | scaled]
+        Preprocessed EPI type which went into first-level models
     proj_deriv : path
         Location of project BIDs derivatives, for finding
         preprocessed output
@@ -640,6 +647,7 @@ class FslSecond(_SupportFslSecond):
         subj,
         sess,
         model_name,
+        preproc_type,
         proj_deriv,
         work_deriv,
         log_dir,
@@ -648,12 +656,15 @@ class FslSecond(_SupportFslSecond):
         """Initialize."""
         if not helper.valid_name(model_name):
             raise ValueError(f"Unexpected model name : {model_name}")
+        if not helper.valid_preproc(preproc_type):
+            raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslSecond")
         super().__init__(keoki_path)
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
+        self._preproc_type = preproc_type
         self._proj_deriv = proj_deriv
         self._work_deriv = work_deriv
         self._log_dir = log_dir
@@ -672,7 +683,10 @@ class FslSecond(_SupportFslSecond):
         # Make second-level design
         self._setup()
         make_sec = model.MakeSecondFsf(
-            self._subj_work, self._subj_deriv, self._model_name
+            self._subj_work,
+            self._subj_deriv,
+            self._preproc_type,
+            self._model_name,
         )
         design_path = make_sec.write_task_fsf()
 

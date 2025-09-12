@@ -15,6 +15,8 @@ Model names:
         first-level only
     - lss = similar to tog, but with each trial separate,
         first-level only
+    - avparam = all stimuli modeled together with Arousal/Valence
+        parametric weighting
 
 Level names:
     - first = first-level GLM
@@ -69,7 +71,7 @@ def _get_args():
         "--model-name",
         type=str,
         default="sep",
-        choices=["sep", "tog", "rest", "lss"],
+        choices=["sep", "tog", "rest", "lss", "avparam"],
         help=textwrap.dedent(
             """\
             FSL model name, for triggering different workflows
@@ -181,7 +183,7 @@ def main():
     log_dir = os.path.join(
         work_deriv,
         f"logs/func-fsl_model-{model_name}_"
-        + f"{now_time.strftime('%Y-%m-%d_%H:%M')}",
+        + f"{now_time.strftime('%Y-%m-%d_%H%M')}",
     )
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
