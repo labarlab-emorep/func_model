@@ -4,7 +4,7 @@ submit_subprocess : submit and check for output of bash command
 submit_sbatch : schedule bash command with Slurm
 schedule_afni : schedule AFNI workflow with Slurm
 schedule_fsl : schedule FSL workflow with Slurm
-schedule_afni_group_setup : download data from Keoki
+schedule_afni_group_setup : download data from the lab data server
 schedule_afni_group_subbrick : mine deconvolve files for subbrick IDs
 schedule_afni_group_etac : conduct t-testing via ETAC (3dttest++)
 schedule_afni_group_lmer : conduct linear mixed effects models via 3dLMEr

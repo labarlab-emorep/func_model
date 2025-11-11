@@ -1253,7 +1253,7 @@ class ExtractTaskBetas(matrix.NiftiArray):
     of interest. Converts extracted beta weights into a dataframe.
 
     Extracted beta weights are sent to a tbl_betas_* in db_emorep,
-    and are also written to Keoki. Inherits
+    and are also written to the lab data server. Inherits
     func_model.resources.general.matrix.NiftiArray.
 
     Methods

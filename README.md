@@ -22,15 +22,15 @@ AFNI-based sub-package/workflow navigation:
 - [afni_etac](#afni_etac) : Conduct student or paired T-testing using the ETAC approach
 - [afni_lmer](#afni_lmer) : Conduct a linear mixed effects analysis
 
-These various workflows are written for either the DCC or labarserv2. Specifically, all AFNI and the fsl_model workflows are written for the DCC, while the fsl_extract, fsl_map, and fsl_group are written for labarserv2.
+These various workflows are written for either the DCC or the lab server. Specifically, all AFNI and the fsl_model workflows are written for the DCC, while the fsl_extract, fsl_map, and fsl_group are written for the lab server.
 
 
 ## General Usage
-- Install package into the appropriate project environment (on DCC or labarserv2) given desired workflow via `$python setup.py install`.
+- Install package into the appropriate project environment (on DCC or the lab server) given desired workflow via `$python setup.py install`.
 - Trigger general package help and usage via entrypoint `$func_model`:
 
 ```
-(emorep)[nmm51-dcc: ~]$func_model
+$func_model
 
 Version : 4.3.2
 
@@ -53,17 +53,17 @@ Sub-packages written for Duke Compute Cluster (DCC):
     - afni_lmer
     - fsl_model
 
-Sub-packages written for labarserv2:
+Sub-packages written for the lab server:
 
     - fsl_extract
     - fsl_map
     - fsl_group
 ```
-Note that [fsl_model](#fsl_model) is written for execution on the Duke Compute Cluster (DCC) while the remaining three sub-packages/workflows are written for execution on labarserv2.
+Note that [fsl_model](#fsl_model) is written for execution on the Duke Compute Cluster (DCC) while the remaining three sub-packages/workflows are written for execution on the lab server.
 
 
 ## General Requirements
-- The [fsl_model](#fsl_model) workflow requires the global variable `RSA_LS2` to contain a path to an RSA key for labarserv2.
+- The [fsl_model](#fsl_model) workflow requires the global variable `RSA_LS2` to contain a path to an RSA key for the lab server.
 - The workflows [fsl_extract](#fsl_extract) and [fsl_map](#fsl_map) require the global variable `SQL_PASS` to hold the user password for the MySQL database `db_emorep`.
 
 Example:
@@ -74,7 +74,7 @@ $echo "export SQL_PASS=foobar" >> ~/.bashrc && source ~/.bashrc
 
 
 ## fsl_model
-This sub-package is written to be executed on the DCC and conducts first- and second-level modeling using an FSL-based pipeline. It requires that preprocessed data already exists and is available on Keoki using the EmoRep derivatives structure (see [func_preprocess](https://github.com/labarlab-emorep/func_preprocess)).
+This sub-package is written to be executed on the DCC and conducts first- and second-level modeling using an FSL-based pipeline. It requires that preprocessed data already exists and is available on the lab data server using the EmoRep derivatives structure (see [func_preprocess](https://github.com/labarlab-emorep/func_preprocess)).
 
 A number of different models are supported:
 * `sep`: Model the emotion stimulus and replay events separately
@@ -86,7 +86,7 @@ Additionally, second-level modeling is possible for `sep` and `tog`, once first-
 
 
 ### Setup
-* Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+* Generate an RSA key on the DCC for the lab server and set the global variable `RSA_LS2` to hold the path for the key
 * Ensure the FSL is configured and executable in the environment
 
 
@@ -94,7 +94,7 @@ Additionally, second-level modeling is possible for `sep` and `tog`, once first-
 The CLI `$fsl_model` supplies a number of options (as well as their corresponding defaults if optional) that allow the user to specify the subject, session, type, and level of the FSL model. Trigger sub-package help and usage via `$fsl_model`:
 
 ```
-(emorep)[nmm51-dcc: ~]$fsl_model
+$fsl_model
 usage: fsl_model [-h] [--model-level {first,second}] [--model-name {sep,tog,rest,lss}] [--preproc-type {scaled,smoothed}]
                  [--proj-dir PROJ_DIR] [--ses-list {ses-day2,ses-day3} [{ses-day2,ses-day3} ...]] -s SUB_LIST [SUB_LIST ...]
 
@@ -123,7 +123,7 @@ Level names:
 Notes
 -----
 - Requires environmental variable 'RSA_LS2' to contain
-    location of RSA key for labarserv2
+    location of RSA key for the lab server
 
 Examples
 --------
@@ -145,7 +145,7 @@ optional arguments:
                         Determine whether to use scaled or smoothed preprocessed EPIs
                         (default : scaled)
   --proj-dir PROJ_DIR   Path to BIDS-formatted project directory
-                        (default : /hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS)
+                        (default : os.environ["CLUSTER_BIDS_DIR"])
   --ses-list {ses-day2,ses-day3} [{ses-day2,ses-day3} ...]
                         List of subject IDs to submit for pre-processing
                         (default : ['ses-day2', 'ses-day3'])
@@ -160,7 +160,7 @@ Required Arguments:
 ### Functionality
 `fsl_model` spawns a parent sbatch job for each subject x session specified, each of which runs the following workflow:
 
-1. Download the required data from Keoki via labarserv2.
+1. Download the required data from the lab data server via the lab server.
     1. First-level models: fMRIPrep and fsl_denoise derivatives
     1. Second-level models: first-level feat derivatives
 2. (Second-level models) Bypass registration requirement
@@ -169,7 +169,7 @@ Required Arguments:
     2. First-level models: Confound files by mining fMRIPrep *_desc-confounds_timeseries.tsv files.
     2. All-models: Design FSF files by populating pre-generated templates found at `func_model.reference_files.design_template_<model-level>_<model-name>_desc-*.fsf`. For first-level models, desc-full designs are for runs 1-3, 5-7 while desc-short designs are for runs 4, 8.
 4. Schedule child jobs to parallelize executing each design file via FSL's `feat`.
-5. Upload output data to Keoki via labarserv2
+5. Upload output data to the lab data server via the lab server
 6. Clean up session directories on DCC.
 
 Modeled output is organized in the derivatives sub-directory 'model_fsl':
@@ -215,7 +215,7 @@ Output is organized within the BIDS func directory, using a number of directorie
 
 
 ## fsl_extract
-This sub-package is written to be executed on labarserv2 and functions to extract first-level beta-coefficients from each voxel to populate the SQL table `db_emorep.tbl_betas_*`.
+This sub-package is written to be executed on the lab server and functions to extract first-level beta-coefficients from each voxel to populate the SQL table `db_emorep.tbl_betas_*`.
 
 
 ### Setup
@@ -232,7 +232,7 @@ usage: fsl_extract [-h] [--model-name {lss,sep}] [--overwrite] [--proj-dir PROJ_
 
 Extract voxel beta weights from FSL FEAT files.
 
-Written for the local labarserv2 environment.
+Written for the local the lab server environment.
 
 Mine FSL GLM files for contrasts of interest and generate a
 dataframe of voxel beta-coefficients. Dataframes may be masked by
@@ -263,7 +263,7 @@ optional arguments:
                         (default : sep)
   --overwrite           Whether to overwrite existing records
   --proj-dir PROJ_DIR   Path to experiment-specific project directory
-                        (default : /mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion)
+                        (default : os.environ["SERVER_PROJ_DIR"])
   --sub-list SUB_LIST [SUB_LIST ...]
                         List of subject IDs to extract behavior beta-coefficients
   --sub-all             Extract beta-coefficients from all available subjects and
@@ -309,7 +309,7 @@ Triggering this sub-package will execute the following workflow:
 
 
 ## fsl_map
-This sub-package is written to be executed on labarserv2 and serves to generate a file in MNI coordinate space from an array of values. Specifically, the output of [fsl_extract](#fsl_extract)  is used as the input for classification, which in turn generates a binary table where 1 indicates the coordinate/voxel/feature contributed significantly to classification. This table is stored at `db_emorep.tbl_plsda_binary_*` and the selected values are used to reconstruct a binary cluster map in MNI space.
+This sub-package is written to be executed on the lab server and serves to generate a file in MNI coordinate space from an array of values. Specifically, the output of [fsl_extract](#fsl_extract)  is used as the input for classification, which in turn generates a binary table where 1 indicates the coordinate/voxel/feature contributed significantly to classification. This table is stored at `db_emorep.tbl_plsda_binary_*` and the selected values are used to reconstruct a binary cluster map in MNI space.
 
 Maps can be made for different task names:
 * `movies`: Generate a map from the classifier trained on the movie task
@@ -343,7 +343,7 @@ usage: fsl_map [-h] [--contrast-name {stim,replay,tog}] [--model-level {first}] 
 
 Generate NIfTI masks from classifier output.
 
-Written for the local labarserv2 environment.
+Written for the local the lab server environment.
 
 Convert data from db_emorep.tbl_plsda_binary_gm into
 NIfTI files build in MNI template space. Then generate
@@ -370,7 +370,7 @@ optional arguments:
                         FSL model name, for triggering different workflows
                         (default : sep)
   --proj-dir PROJ_DIR   Path to experiment-specific project directory
-                        (default : /mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion)
+                        (default : os.environ["SERVER_PROJ_DIR"])
   --binary-importance {importance,binary}
                         Map binary or importance classifier results
                         (default : importance)
@@ -459,7 +459,7 @@ Unfortunately, third- and particularly fourth-level are breaking the FSL GUI nee
 
 
 ## afni_model
-This subpackage is written to be executed on the DCC. It serves to model the session EPI data via AFNI's `3dDeconvolve` and `3dREMLfit`, and requires that [preprocessed](https://github.com/labarlab-emorep/func_preprocess) exists and is available on Keoki using the EmoRep derivative structure. These models collapse across runs, modeling the entire session.
+This subpackage is written to be executed on the DCC. It serves to model the session EPI data via AFNI's `3dDeconvolve` and `3dREMLfit`, and requires that [preprocessed](https://github.com/labarlab-emorep/func_preprocess) exists and is available on the lab data server using the EmoRep derivative structure. These models collapse across runs, modeling the entire session.
 
 A number of different models are available:
 - `task`: Model the task stimuli for each emotion, not including replay, to produce a coefficient reflective of 10 stimulus presentations
@@ -468,7 +468,7 @@ A number of different models are available:
 
 
 ### Setup
-- Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+- Generate an RSA key on the DCC for the lab server and set the global variable `RSA_LS2` to hold the path for the key
 - Set the global variable `SING_AFNI` to hold the path to an AFNI singularity image.
 - Verify that `c3d` is executable in the shell
 
@@ -477,7 +477,7 @@ A number of different models are available:
 A CLI supplies available options, and their defaults, which allow the user to specify the subject, session and model name. Trigger the CLI via `$afni_model`:
 
 ```
-(emorep)[nmm51-dcc: ~]$afni_model
+$afni_model
 usage: afni_model [-h] [--model-name {mixed,task,block,rest}] [--sess {ses-day2,ses-day3} [{ses-day2,ses-day3} ...]] -s SUBJ [SUBJ ...]
 
 Conduct AFNI-based models of EPI run files.
@@ -499,7 +499,7 @@ Model names:
 
 Requires
 --------
-- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'RSA_LS2' which has path to RSA key for the lab server
 - Global variable 'SING_AFNI' which has path to AFNI singularity image
 - c3d executable from PATH
 
@@ -536,20 +536,20 @@ $ ./array_cli.sh
 which will print a usage and example:
 
 ```
-(emorep)[nmm51-dcc: ~]$./array_cli.sh
+$./array_cli.sh
     Usage: ./array_cli.sh -e <sess> -m <model> [-a <path> -f <path>]
 
     Schedule array_submit.sh with SLURM scheduler as array of jobs. Finds
     participants with fMRIPrep output and missing model_afni decon output.
 
     Requires:
-        - Global variable 'RSA_LS2' which holds RSA key for labarserv2.
+        - Global variable 'RSA_LS2' which holds RSA key for the lab server.
 
     Optional Arguments:
         -a <path>
-            Keoki location of afni_model output
+            lab data server location of afni_model output
         -f <path>
-            Keoki location of fMRIPrep output
+            lab data server location of fMRIPrep output
 
     Required Arguments:
         -e [ses-day2|ses-day3]
@@ -564,13 +564,13 @@ which will print a usage and example:
 
 ```
 
-The workflow triggered by `array_cli.sh` will search Keoki for participants that (a) have fMRIPrep output and (b) are missing the AFNI output, and the submit an array for the detected participants. It is recommended to wait for an entire array to finish before triggering another with a different session or model name, and processing data for more than 10 participants at a time results in data synchronization issues.
+The workflow triggered by `array_cli.sh` will search the lab data server for participants that (a) have fMRIPrep output and (b) are missing the AFNI output, and the submit an array for the detected participants. It is recommended to wait for an entire array to finish before triggering another with a different session or model name, and processing data for more than 10 participants at a time results in data synchronization issues.
 
 
 ### Functionality
 `afni_model` spawns a parent sbatch job for each subject x session specified, each of which runs the following workflow:
 
-1. Download fMRIPrep output and rawdata events files from Keoki
+1. Download fMRIPrep output and rawdata events files from the lab data server
 1. Conduct extra preprocessing starting with fMRIPrep preorcessed files:
     1. Make a func-anat intersection mask
     1. Make eroded WM, CSF masks
@@ -584,7 +584,7 @@ The workflow triggered by `array_cli.sh` will search Keoki for participants that
     1. Execute `3dDeconvolve` command to generate `3dREMLfit` command
     1. Build a noise estimation file from WM signal
     1. Execute `3dREMLfit`
-1. Upload data to Keoki and clean up
+1. Upload data to the lab data server and clean up
 
 Modeled output is organized in the derivatives sub-directory 'model_afni':
 
@@ -633,7 +633,7 @@ This sub-package is written to be executed on the DCC and functions to conduct A
 
 
 ### Setup
-- Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+- Generate an RSA key on the DCC for the lab server and set the global variable `RSA_LS2` to hold the path for the key
 - Set the global variable `SING_AFNI` to hold the path to an AFNI singularity image.
 
 
@@ -647,7 +647,7 @@ These steps should be executed in order, and the user is able to specify the tas
 
 
 ```
-(emorep)[nmm51-dcc: func_model]$afni_etac
+$afni_etac
 usage: afni_etac [-h] [--block-coef]
                  [--emo-name {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise}]
                  [--get-subbricks] [--model-name {mixed,task,block}] [--run-etac] [--run-setup] [--stat {student,paired}]
@@ -670,7 +670,7 @@ Stat names:
 
 Requires
 --------
-- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'RSA_LS2' which has path to RSA key for the lab server
 - Global variable 'SING_AFNI' which has path to AFNI singularity image
 
 Notes
@@ -724,7 +724,7 @@ When specifying `--model-name`, the input parameter should correspond to the mod
 
 
 ### Functionality
-First, downloading data from Keoki is available with the `--run-setup` option, for which the user will also specify the desired task and model name (see, [afni_model](#afni_model)). Running setup will build the directory structure on the DCC and then download the requested data from Keoki. Downloaded subject will be found at '/work/user/EmoRep/model_afni', and a directory for group analyses will be found at '/work/user/EmoRep/model_afni_group'.
+First, downloading data from the lab data server is available with the `--run-setup` option, for which the user will also specify the desired task and model name (see, [afni_model](#afni_model)). Running setup will build the directory structure on the DCC and then download the requested data from the lab data server. Downloaded subject will be found at 'os.environ["WORK_DIR"]/user/EmoRep/model_afni', and a directory for group analyses will be found at 'os.environ["WORK_DIR"]/user/EmoRep/model_afni_group'.
 
 Second, the deconvolved sub-brick labels are extracted with the `--get-subbricks` option. A unique file for each sub-brick of interest will be written to the subject's 'func' directory, and a washout file will also be written if `--stat paired` is used. When using `mixed` models, the task sub-brick named [mov|sce]Emo for a movie or scenario emotion, respectively, while the block sub-brick is named blk[M|S]Emo.
 
@@ -739,7 +739,7 @@ Third, the T-test workflow is available via `--run-etac`, which will run with th
         1. H power = 0
         1. P threshold = 0.01, 0.005, 0.002, 0.001
     1. Execute `3dttest++`
-1. Upload output to Keoki and clean up DCC
+1. Upload output to the lab data server and clean up DCC
 
 T-test output can be found in the model_afni_group directory of experiments2/EmoRep/Exp2_Compute_Emotion/analyses that corresponds to the type of statistic, task, model, and emotion:
 
@@ -772,7 +772,7 @@ This sub-package is written to be executed on the DCC and functions to conduct a
 
 
 ### Setup
-- Generate an RSA key on the DCC for labarserv2 and set the global variable `RSA_LS2` to hold the path for the key
+- Generate an RSA key on the DCC for the lab server and set the global variable `RSA_LS2` to hold the path for the key
 - Set the global variable `SING_AFNI` to hold the path to an AFNI singularity image.
     - *NOTE*: This approach requires a version of AFNI released after 2022, and the singularity needs to have functional R packages brms, lmerTest, phia, and afex among others. These packages are not working in the current (2024-07-31) AFNI docker container, accordingly we are using an in-house container hosted at https://hub.docker.com/r/nmuncy/afni_ub24.
 
@@ -788,7 +788,7 @@ A CLI is accesible at `$afni_lmer` which provides a help, options, and examples.
 These steps should be conduct in order (Monte Carlo simulations can be done after downloading the data), and the user is able to specify the relevant model name and/or coefficient type for each step:
 
 ```
-(emorep)[nmm51-dcc: func_model]$afni_lmer
+$afni_lmer
 usage: afni_lmer [-h] [--block-coef] [--get-subbricks]
                  [--emo-list {amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} [{amusement,anger,anxiety,awe,calmness,craving,disgust,excitement,fear,horror,joy,neutral,romance,sadness,surprise} ...]]
                  [--model-name {mixed,task,block}] [--run-mc] [--run-lmer] [--run-setup]
@@ -800,7 +800,7 @@ treating subjects as random effects via:
     Y = emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)
 
 Three steps are involved in setting up and executing this analysis:
-downloading data from keoki, determining subbrick IDs, and the
+downloading data from the lab data server, determining subbrick IDs, and the
 actual LME model (see Example below).
 
 Model names correspond to afni_model output:
@@ -814,7 +814,7 @@ available by including the option --block-coef.
 
 Requires
 --------
-- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'RSA_LS2' which has path to RSA key for the lab server
 - Global variable 'SING_AFNI' which has path to AFNI singularity image
 
 Notes
@@ -866,7 +866,7 @@ When specifying `--model-name`, the input parameter should correspond to the mod
 ### Functionality
 The first and second steps are identical to [afni_etac](#afni_etac).
 
-First, downloading data from Keoki is available with the `--run-setup` option, for which the user will also specify the desired task and model name (see, [afni_model](#afni_model)). Running setup will build the directory structure on the DCC and then download the requested data from Keoki. Downloaded subject will be found at '/work/user/EmoRep/model_afni', and a directory for group analyses will be found at '/work/user/EmoRep/model_afni_group'.
+First, downloading data from the lab data server is available with the `--run-setup` option, for which the user will also specify the desired task and model name (see, [afni_model](#afni_model)). Running setup will build the directory structure on the DCC and then download the requested data from the lab data server. Downloaded subject will be found at 'os.environ["WORK_DIR"]/user/EmoRep/model_afni', and a directory for group analyses will be found at 'os.environ["WORK_DIR"]/user/EmoRep/model_afni_group'.
 
 Second, the deconvolved sub-brick labels are extracted with the `--get-subbricks` option. A unique file for each sub-brick of interest will be written to the subject's 'func' directory, and a washout file will also be written if `--stat paired` is used. When using `mixed` models, the task sub-brick named [mov|sce]Emo for a movie or scenario emotion, respectively, while the block sub-brick is named blk[M|S]Emo.
 
@@ -878,7 +878,7 @@ Third, the stat workflow is available via `--run-lmer`, which will run the follo
 1. Build `3dLMEr` command and write to script
     1. The model includes main effects for each emotion and emotion.task interactions
 1. Execute `3dLMEr` command
-1. Upload data to Keoki and clean up DCC
+1. Upload data to the lab data server and clean up DCC
 
 
 Fourth, cluster thresholding parameters can be calculated via Monte Carlo simulations (`3dClustSim`) via the `--run-mc` option, which runs the workflow:
@@ -890,7 +890,7 @@ Fourth, cluster thresholding parameters can be calculated via Monte Carlo simula
 1. Conduct Monte Carlo simulations for:
     1. template gray matter voxels
     1. pthr=.001, athr=.05, iter=10000
-1. Upload data to Keoki and clean up DCC
+1. Upload data to the lab data server and clean up DCC
 
 The LMEr output, corresponding script, and simulations can be found in the model_afni_group directory of experiments2/EmoRep/Exp2_Compute_Emotion/analyses that reflects the type of statistic and model name:
 
@@ -912,7 +912,7 @@ analyses/model_afni_group/stat-lmer_model-task/
 Montages and cluster tables for emotion's main effects of the LMEr models can be generated by the script `func_model/bin/lmer_montages.sh`. This script is powered by AFNI and will iterate through a set of pre-planned subbricks to save cluster images (montages) and tables to the lmer output directory.
 
 Note that:
-- This script is written for execution on labarserv2
+- This script is written for execution on the lab server
 - Parameters have been set assuming athr=0.05, pthr=0.001, NN=2, bisided, K=12.
 - Some flexibilty has been provided if new cluster simulations are conducted
 
@@ -937,7 +937,7 @@ Note that:
         -c <int> = Clusterize threshold from 3dClustSim for bisided p=0.001
             (default: 12)
         -g <path> = Location of group directory
-            (default: /mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/analyses/model_afni_group)
+            (default: f"{os.environ["SERVER_PROJ_DIR"]}/analyses/model_afni_group)
         -n [1|2|3] = Nearest neighbors
             (default: 2)
         -t <str> = Template name

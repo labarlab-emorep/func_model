@@ -207,7 +207,7 @@ def clean_up(subj_work, subj_final, model_name):
 class SupportFsl:
     """General helper methods for first- and second-level workflows."""
 
-    def __init__(self, keoki_path: Union[str, os.PathLike]):
+    def __init__(self, server_path: Union[str, os.PathLike]):
         """Initialize."""
         try:
             self._rsa_key = os.environ["RSA_LS2"]
@@ -215,15 +215,15 @@ class SupportFsl:
             raise Exception(
                 "Missing required environmental variable RSA_LS2"
             ) from e
-        self._keoki_path = keoki_path
+        self._server_path = server_path
 
     @property
     def _ls2_ip(self):
-        """Return labarserv2 ip addr."""
-        return "ccn-labarserv2.vm.duke.edu"
+        """Return the lab server ip addr."""
+        return os.environ["SERVER_ADDR"]
 
     def _submit_rsync(self, src: str, dst: str) -> Tuple:
-        """Execute rsync between DCC and labarserv2."""
+        """Execute rsync between DCC and the lab server."""
         bash_cmd = f"""\
             rsync \
             -e "ssh -i {self._rsa_key}" \
@@ -249,20 +249,20 @@ class SupportFsl:
 
     def _push_data(self):
         """Make remote destination and send data there."""
-        keoki_dst = os.path.join(
-            self._keoki_path, "derivatives", self._final_dir, self._subj
+        server_dst = os.path.join(
+            self._server_path, "derivatives", self._final_dir, self._subj
         )
         make_dst = f"""\
             ssh \
                 -i {self._rsa_key} \
                 {os.environ["USER"]}@{self._ls2_ip} \
-                " command ; bash -c 'mkdir -p {keoki_dst}'"
+                " command ; bash -c 'mkdir -p {server_dst}'"
             """
         _, _ = self._quick_sp(make_dst)
 
         # Send data
         dst = os.path.join(
-            self._keoki_proj, "derivatives", self._final_dir, self._subj
+            self._server_proj, "derivatives", self._final_dir, self._subj
         )
         _, _ = self._submit_rsync(self._subj_final, dst)
 
@@ -273,15 +273,12 @@ class SyncGroup(SupportFsl):
     def __init__(self, work_deriv):
         """Initialize."""
         self._work_deriv = work_deriv
-        self._keoki_path = (
-            "/mnt/keoki/experiments2/EmoRep/"
-            + "Exp2_Compute_Emotion/data_scanner_BIDS"
-        )
-        super().__init__(self._keoki_path)
+        self._server_path = os.environ["SERVER_BIDS_DIR"]
+        super().__init__(self._server_path)
 
     @property
     def _ls2_addr(self) -> str:
-        """Return user@labarserv2."""
+        """Return user@server."""
         return os.environ["USER"] + "@" + self._ls2_ip
 
     def setup_group(self) -> tuple:
@@ -323,7 +320,7 @@ class SyncGroup(SupportFsl):
 
         # Get all subject data
         source_afni = os.path.join(
-            self._keoki_path, "derivatives", "model_afni", "sub-*"
+            self._server_path, "derivatives", "model_afni", "sub-*"
         )
         bash_cmd = f"""rsync \
             -e "ssh -i {self._rsa_key}" \
@@ -347,15 +344,15 @@ class SyncGroup(SupportFsl):
             raise FileNotFoundError("model_afni download failed")
 
     def send_group(self, test_dir: Union[str, os.PathLike]):
-        """Send group output to Keoki."""
-        keoki_dst = os.path.join(
-            os.path.dirname(self._keoki_path), "analyses", "model_afni_group"
+        """Send group output to lab data server."""
+        server_dst = os.path.join(
+            os.path.dirname(self._server_path), "analyses", "model_afni_group"
         )
         make_dst = f"""\
             ssh \
                 -i {self._rsa_key} \
                 {self._ls2_addr} \
-                " command ; bash -c 'mkdir -p {keoki_dst}'"
+                " command ; bash -c 'mkdir -p {server_dst}'"
         """
         _, _ = self._quick_sp(make_dst)
-        _, _ = self._submit_rsync(test_dir, f"{self._ls2_addr}:{keoki_dst}")
+        _, _ = self._submit_rsync(test_dir, f"{self._ls2_addr}:{server_dst}")

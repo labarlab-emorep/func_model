@@ -1,6 +1,6 @@
 r"""Generate NIfTI masks from classifier output.
 
-Written for the local labarserv2 environment.
+Written for the local lab server environment.
 
 Convert data from db_emorep.tbl_plsda_binary_gm into
 NIfTI files build in MNI template space. Then generate
@@ -74,7 +74,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
+        default=os.environ["SERVER_PROJ_DIR"],
         help=textwrap.dedent(
             """\
             Path to experiment-specific project directory
@@ -134,11 +134,6 @@ def _get_args():
 # %%
 def main():
     """Trigger workflow."""
-    # Check env
-    if "labarserv2" not in platform.uname().node:
-        print("fsl_map is required to run on labarserv2.")
-        sys.exit(1)
-
     # Get CLI input
     args = _get_args().parse_args()
     proj_dir = args.proj_dir

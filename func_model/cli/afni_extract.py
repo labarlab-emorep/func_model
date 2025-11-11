@@ -1,6 +1,6 @@
 """Extract voxel beta weights from deconvolved files.
 
-Written for the local labarserv2 environment.
+Written for the local lab server environment.
 
 Mine AFNI deconvolved files for sub-bricks/behaviors of interest
 and generate a dataframe of voxel beta-coefficients. Dataframes
@@ -54,7 +54,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
+        default=os.environ["SERVER_PROJ_DIR"],
         help=textwrap.dedent(
             """\
             Path to experiment-specific project directory

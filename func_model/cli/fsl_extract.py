@@ -1,6 +1,6 @@
 """Extract voxel beta weights from FSL FEAT files.
 
-Written for the local labarserv2 environment.
+Written for the local lab server environment.
 
 Mine FSL GLM files for contrasts of interest and generate a
 dataframe of voxel beta-coefficients. Dataframes may be masked by
@@ -63,7 +63,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
+        default=os.environ["SERVER_PROJ_DIR"]",
         help=textwrap.dedent(
             """\
             Path to experiment-specific project directory
@@ -143,11 +143,6 @@ def _get_args():
 # %%
 def main():
     """Trigger workflow."""
-    # Check env
-    if "labarserv2" not in platform.uname().node:
-        print("fsl_extract is required to run on labarserv2.")
-        sys.exit(1)
-
     # Get cli args
     args = _get_args().parse_args()
     subj_list = args.sub_list

@@ -1,4 +1,4 @@
-#!/bin/env /hpc/group/labarlab/research_bin/conda_envs/emorep/bin/python
+#!/bin/env [[CONDA ENVIRONMENT PYTHON]]
 """
 Run AFNI deconvolution workflow for subj, sess, model.
 
@@ -64,7 +64,7 @@ def main():
     subj = args.subj
 
     # Setup directories
-    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    work_deriv = os.path.join(os.environ["WORK_DIR"], os.environ["USER"], "EmoRep")
     log_dir = os.path.join(work_deriv, "logs", f"afni_{model_name}_batch")
     for _dir in [work_deriv, log_dir]:
         if not os.path.exists(_dir):

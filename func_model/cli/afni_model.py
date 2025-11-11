@@ -17,7 +17,7 @@ Model names:
 
 Requires
 --------
-- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'RSA_LS2' which has path to RSA key for the lab server
 - Global variable 'SING_AFNI' which has path to AFNI singularity image
 - c3d executable from PATH
 
@@ -106,7 +106,7 @@ def main():
     model_name = args.model_name
 
     # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    work_deriv = os.path.join(os.environ["WORK_DIR"], os.environ["USER"], "EmoRep")
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,

@@ -25,7 +25,7 @@ Level names:
 Notes
 -----
 - Requires environmental variable 'RSA_LS2' to contain
-    location of RSA key for labarserv2
+    location of RSA key for the lab server
 
 Examples
 --------
@@ -94,7 +94,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/hpc/group/labarlab/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
+        default=os.environ["CLUSTER_BIDS_DIR"],
         help=textwrap.dedent(
             """\
             Path to BIDS-formatted project directory
@@ -178,7 +178,7 @@ def main():
             sys.exit(1)
 
     # Setup work directory, for intermediates
-    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    work_deriv = os.path.join(os.environ["WORK_DIR"], os.environ["USER"], "EmoRep")
     now_time = datetime.now()
     log_dir = os.path.join(
         work_deriv,

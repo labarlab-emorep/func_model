@@ -92,7 +92,7 @@ class _SupportFslFirst(helper.SupportFsl):
         """Download required files for modeling."""
         # Set source paths and files for rest and task models
         source_time = os.path.join(
-            self._keoki_proj,
+            self._server_proj,
             "derivatives",
             "pre_processing",
             "fmriprep",
@@ -102,7 +102,7 @@ class _SupportFslFirst(helper.SupportFsl):
             "*timeseries.tsv",
         )
         source_preproc = os.path.join(
-            self._keoki_proj,
+            self._server_proj,
             "derivatives",
             "pre_processing",
             "fsl_denoise",
@@ -129,7 +129,7 @@ class _SupportFslFirst(helper.SupportFsl):
         if self._model_name == "rest":
             return
         source_events = os.path.join(
-            self._keoki_proj,
+            self._server_proj,
             "rawdata",
             self._subj,
             self._sess,
@@ -238,7 +238,7 @@ class _SupportFslSecond(helper.SupportFsl):
     def _get_first_model(self) -> list:
         """Download required output of FslFirst, return feat dir paths."""
         source_model = os.path.join(
-            self._keoki_proj,
+            self._server_proj,
             "derivatives/model_fsl",
             self._subj,
             self._sess,
@@ -322,7 +322,7 @@ class FslFirst(_SupportFslFirst):
     condition files for task-based models, then model the data
     via FSL's feat.
 
-    This workflow will sync with Keoki (via labarserv2), pulling
+    This workflow will sync with the lab data server (via the lab server), pulling
     required files and uploading workflow output.
 
     Parameters
@@ -346,8 +346,8 @@ class FslFirst(_SupportFslFirst):
         Output location for intermediates
     log_dir : path
         Output location for log files and scripts
-    keoki_path : str, os.PathLike, optional
-        Location of project directory on Keoki
+    server_path : str, os.PathLike, optional
+        Location of project directory on lab data server
 
     Methods
     -------
@@ -376,7 +376,7 @@ class FslFirst(_SupportFslFirst):
         proj_deriv,
         work_deriv,
         log_dir,
-        keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
+        server_path=os.environ["SERVER_BIDS_DIR"]
     ):
         """Initialize."""
         if not helper.valid_name(model_name):
@@ -385,7 +385,7 @@ class FslFirst(_SupportFslFirst):
             raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslFirst")
-        super().__init__(keoki_path)
+        super().__init__(server_path)
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
@@ -394,8 +394,8 @@ class FslFirst(_SupportFslFirst):
         self._proj_deriv = proj_deriv
         self._work_deriv = work_deriv
         self._log_dir = log_dir
-        self._keoki_proj = (
-            f"{os.environ['USER']}@{self._ls2_ip}:{self._keoki_path}"
+        self._server_proj = (
+            f"{os.environ['USER']}@{self._ls2_ip}:{self._server_path}"
         )
         self._spec_case = special_cases.SpecCases(subj, sess)
 
@@ -605,7 +605,7 @@ class FslSecond(_SupportFslSecond):
     Coordinate the generation and then feat execution of
     task-based second-level models.
 
-    This workflow will sync with Keoki (via labarserv2), pulling
+    This workflow will sync with the lab data server (via the lab server), pulling
     required files and uploading workflow output.
 
     Parameters
@@ -627,8 +627,8 @@ class FslSecond(_SupportFslSecond):
         Output location for intermediates
     log_dir : path
         Output location for log files and scripts
-    keoki_path : str, os.PathLike, optional
-        Location of project directory on Keoki
+    server_path : str, os.PathLike, optional
+        Location of project directory on lab data server
 
     Methods
     -------
@@ -651,7 +651,7 @@ class FslSecond(_SupportFslSecond):
         proj_deriv,
         work_deriv,
         log_dir,
-        keoki_path="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS",  # noqa: E501
+        server_path=os.environ["SERVER_BIDS_DIR"]
     ):
         """Initialize."""
         if not helper.valid_name(model_name):
@@ -660,7 +660,7 @@ class FslSecond(_SupportFslSecond):
             raise ValueError(f"Unspported preproc type : {preproc_type}")
 
         print("Initializing FslSecond")
-        super().__init__(keoki_path)
+        super().__init__(server_path)
         self._subj = subj
         self._sess = sess
         self._model_name = model_name
@@ -668,8 +668,8 @@ class FslSecond(_SupportFslSecond):
         self._proj_deriv = proj_deriv
         self._work_deriv = work_deriv
         self._log_dir = log_dir
-        self._keoki_proj = (
-            f"{os.environ['USER']}@{self._ls2_ip}:{self._keoki_path}"
+        self._server_proj = (
+            f"{os.environ['USER']}@{self._ls2_ip}:{self._server_path}"
         )
         self._model_level = "second"
 

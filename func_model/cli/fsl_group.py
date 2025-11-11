@@ -1,6 +1,6 @@
 """CLI for generating group-level files.
 
-Written for the local labarserv2 environment.
+Written for the local lab server environment.
 
 Generate files to help building third- and fourth-level design.fsf
 in the FSL GUI. Finds input data for the following GUI paths:
@@ -33,7 +33,7 @@ fsl_group -l fourth -c sess
 """
 
 # %%
-import sys
+import sys, os
 import platform
 import textwrap
 from argparse import ArgumentParser, RawTextHelpFormatter
@@ -61,7 +61,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default="/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion",
+        default=os.environ["SERVER_PROJ_DIR"],
         help=textwrap.dedent(
             """\
             Path to BIDS-formatted project directory
@@ -104,11 +104,6 @@ def _get_args():
 # %%
 def main():
     """Trigger workflow."""
-    # Check env
-    if "labarserv2" not in platform.uname().node:
-        print("fsl_group is required to run on labarserv2.")
-        sys.exit(1)
-
     # Get CLI input
     args = _get_args().parse_args()
     proj_dir = args.proj_dir

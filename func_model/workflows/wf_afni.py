@@ -3,7 +3,7 @@
 afni_task       : GLM task data via AFNI
 afni_rest       : deprecated, GLM rest data via AFNI
 afni_extract    : deprecated, extract task beta-coefficients from AFNI GLM
-DeconSubbrick   : download decon files from Keoki, find subbrick IDs
+DeconSubbrick   : download decon files from the lab data server, find subbrick IDs
 afni_ttest      : conduct T-testing via ETAC method
 afni_montecarlo : conduct Monte Carlo simulations
 afni_lmer       : conduct linear mixed effects model via 3dLMEr
@@ -31,11 +31,8 @@ class _SyncData(helper.SupportFsl):
         self._subj = subj
         self._sess = sess
         self._work_deriv = work_deriv
-        self._keoki_path = (
-            "/mnt/keoki/experiments2/EmoRep/"
-            + "Exp2_Compute_Emotion/data_scanner_BIDS"
-        )
-        super().__init__(self._keoki_path)
+        self._server_path = os.environ["SERVER_BIDS_DIR"]
+        super().__init__(self._server_path)
 
     def setup_indiv(self) -> tuple:
         """Setup working directories for individual models.
@@ -75,7 +72,7 @@ class _SyncData(helper.SupportFsl):
 
     @property
     def _ls2_addr(self) -> str:
-        """Return user@labarserv2."""
+        """Return user@server."""
         return os.environ["USER"] + "@" + self._ls2_ip
 
     def get_fmriprep(self):
@@ -95,7 +92,7 @@ class _SyncData(helper.SupportFsl):
 
         # Get fMRIPrep - anat, motion confs, func
         source_fp = os.path.join(
-            self._keoki_path,
+            self._server_path,
             "derivatives",
             "pre_processing",
             "fmriprep",
@@ -124,7 +121,7 @@ class _SyncData(helper.SupportFsl):
 
         # Get rawdata events
         source_raw = os.path.join(
-            self._keoki_path,
+            self._server_path,
             "rawdata",
             self._subj,
             self._sess,
@@ -200,25 +197,25 @@ class _SyncData(helper.SupportFsl):
         return save_list
 
     def send_decon(self):
-        """Send decon output to Keoki."""
+        """Send decon output to lab data server."""
         if not hasattr(self, "_subj_work"):
             self.setup_indiv()
 
         # Make output destination
-        keoki_dst = os.path.join(
-            self._keoki_path, "derivatives/model_afni", self._subj, self._sess
+        server_dst = os.path.join(
+            self._server_path, "derivatives/model_afni", self._subj, self._sess
         )
         make_dst = f"""\
             ssh \
                 -i {self._rsa_key} \
                 {self._ls2_addr} \
-                " command ; bash -c 'mkdir -p {keoki_dst}'"
+                " command ; bash -c 'mkdir -p {server_dst}'"
         """
         _, _ = self._quick_sp(make_dst)
 
-        # Send output directory to Keoki
+        # Send output directory to lab data server
         _, _ = self._submit_rsync(
-            self._subj_work, f"{self._ls2_addr}:{keoki_dst}"
+            self._subj_work, f"{self._ls2_addr}:{server_dst}"
         )
 
 
@@ -231,7 +228,7 @@ def afni_task(
 ):
     """Conduct AFNI-based deconvolution.
 
-    Download data from Keoki, generate timing files from
+    Download data from lab data server, generate timing files from
     rawdata events, motion files and preprocessed files
     from fMRIPrep. Then generate deconvultion files,
     nuissance files, and execute 3dREMLfit.
@@ -315,7 +312,7 @@ def afni_task(
     run_reml.generate_reml()
     _ = run_reml.exec_reml()
 
-    # Send data to Keoki, clean
+    # Send data to lab data server, clean
     sync_data.clean_deriv(task, model_name, sess_anat)
     sync_data.send_decon()
     shutil.rmtree(os.path.dirname(subj_work))
@@ -697,7 +694,7 @@ def afni_ttest(
         blk_coef,
     )
 
-    # Send output to Keoki, clean
+    # Send output to lab data server, clean
     out_dir = os.path.dirname(out_path)
     sync_data.send_group(out_dir)
     shutil.rmtree(out_dir)
@@ -732,7 +729,7 @@ def afni_montecarlo(model_name, work_deriv, log_dir):
     mon_car.noise_acf()
     out_path = mon_car.clustsim()
 
-    # Send output to Keoki, clean
+    # Send output to lab data server, clean
     out_dir = os.path.dirname(out_path)
     sync_data.send_group(out_dir)
     shutil.rmtree(out_dir)
@@ -787,7 +784,7 @@ def afni_lmer(model_name, emo_list, blk_coef, work_deriv, log_dir):
         model_name, decon_dict, emo_list, blk_coef, log_dir
     )
 
-    # Send output to Keoki, clean
+    # Send output to lab data server, clean
     out_dir = os.path.dirname(out_path)
     sync_data.send_group(out_dir)
     shutil.rmtree(out_dir)

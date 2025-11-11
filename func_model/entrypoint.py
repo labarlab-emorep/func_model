@@ -28,7 +28,7 @@ def main():
         - afni_lmer
         - fsl_model
 
-    Sub-packages written for labarserv2:
+    Sub-packages written for the lab server:
 
         - fsl_extract
         - fsl_map

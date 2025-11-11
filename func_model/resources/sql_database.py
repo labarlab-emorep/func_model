@@ -13,7 +13,7 @@ import numpy as np
 from typing import Type
 from contextlib import contextmanager
 
-if "labarserv2" in platform.uname().node:
+if os.environ["SERVER_NAME"] in platform.uname().node:
     import mysql.connector
 elif "dcc" in platform.uname().node:
     import pymysql
@@ -63,13 +63,13 @@ class DbConnect:
                 "No global variable 'SQL_PASS' defined in user env"
             ) from e
 
-        if "labarserv2" in platform.uname().node:
+        if os.environ["SERVER_NAME"] in platform.uname().node:
             self._connect_ls2()
         elif "dcc" in platform.uname().node:
             self._connect_dcc()
 
     def _connect_ls2(self):
-        """Connect to MySQL server from labarserv2."""
+        """Connect to MySQL server from the lab server."""
         self.con = mysql.connector.connect(
             host="localhost",
             user=os.environ["USER"],
@@ -97,13 +97,13 @@ class DbConnect:
 
     def _connect_ssh(self):
         """Start ssh tunnel."""
-        rsa_keoki = paramiko.RSAKey.from_private_key_file(
+        rsa_server = paramiko.RSAKey.from_private_key_file(
             os.environ["RSA_LS2"]
         )
         self._ssh_tunnel = SSHTunnelForwarder(
-            ("ccn-labarserv2.vm.duke.edu", 22),
+            (os.environ["SERVER_ADDR"], 22),
             ssh_username=os.environ["USER"],
-            ssh_pkey=rsa_keoki,
+            ssh_pkey=rsa_server,
             remote_bind_address=("127.0.0.1", 3306),
         )
         self._ssh_tunnel.start()

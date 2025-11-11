@@ -20,7 +20,7 @@ function Usage {
         -c <int> = Clusterize threshold from 3dClustSim for bisided p=0.001
             (default: 12)
         -g <path> = Location of group directory
-            (default: /mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/analyses/model_afni_group)
+            (default: f"{os.environ["SERVER_PROJ_DIR"]}/analyses/model_afni_group)
         -n [1|2|3] = Nearest neighbors
             (default: 2)
         -t <str> = Template name
@@ -36,7 +36,7 @@ USAGE
 }
 
 # Set default variables
-group_dir=/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/analyses/model_afni_group
+group_dir=$SERVER_PROJ_DIR/analyses/model_afni_group
 tpl_file=tpl-MNI152NLin6Asym_res-01_desc-brain_T1w.nii.gz
 n_nbr=2
 c_thr=12

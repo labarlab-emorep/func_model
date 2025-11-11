@@ -5,7 +5,7 @@ treating subjects as random effects via:
     Y = emotion*task+(1|Subj)+(1|Subj:emotion)+(1|Subj:task)
 
 Three steps are involved in setting up and executing this analysis:
-downloading data from keoki, determining subbrick IDs, and the
+downloading data from the lab data server, determining subbrick IDs, and the
 actual LME model (see Example below).
 
 Model names correspond to afni_model output:
@@ -19,7 +19,7 @@ available by including the option --block-coef.
 
 Requires
 --------
-- Global variable 'RSA_LS2' which has path to RSA key for labarserv2
+- Global variable 'RSA_LS2' which has path to RSA key for the lab server
 - Global variable 'SING_AFNI' which has path to AFNI singularity image
 
 Notes
@@ -143,7 +143,7 @@ def main():
     emo_list = args.emo_list
 
     # Setup log dirs
-    work_deriv = os.path.join("/work", os.environ["USER"], "EmoRep")
+    work_deriv = os.path.join(os.environ["WORK_DIR"], os.environ["USER"], "EmoRep")
     if run_setup:
         log_name = "func-afni_setup"
     elif get_sub:

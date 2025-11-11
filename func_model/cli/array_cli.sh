@@ -8,13 +8,13 @@ function Usage {
     participants with fMRIPrep output and missing model_afni decon output.
 
     Requires:
-        - Global variable 'RSA_LS2' which holds RSA key for labarserv2.
+        - Global variable 'RSA_LS2' which holds RSA key for the lab server.
 
     Optional Arguments:
         -a <path>
-            Keoki location of afni_model output
+            Lab data server location of afni_model output
         -f <path>
-            Keoki location of fMRIPrep output
+            Lab data server location of fMRIPrep output
 
     Required Arguments:
         -e [ses-day2|ses-day3]
@@ -31,7 +31,7 @@ USAGE
 }
 
 # Optional args
-deriv_dir=/mnt/keoki/experiments2/EmoRep/Exp2_Compute_Emotion/data_scanner_BIDS/derivatives
+deriv_dir=$SERVER_PROJ_DIR/data_scanner_BIDS/derivatives
 fmriprep_dir=${deriv_dir}/pre_processing/fmriprep
 afni_dir=${deriv_dir}/model_afni
 
@@ -80,16 +80,16 @@ if [ -z $sess ] || [ -z $model ]; then
 fi
 
 # Setup array, batch output location
-log_dir=/work/$(whoami)/EmoRep/logs/afni_array
+log_dir=$WORK_DIR/$(whoami)/EmoRep/logs/afni_array
 mkdir -p $log_dir
-mkdir /work/$(whoami)/EmoRep/logs/afni_${model}_batch
+mkdir $WORK_DIR/$(whoami)/EmoRep/logs/afni_${model}_batch
 
 # Find subjects with fMRIPrep output
 echo "Building list of subjects ..."
 fmriprep_list=(
     $(
         ssh -i $RSA_LS2 \
-            $(whoami)@ccn-labarserv2.vm.duke.edu \
+            $(whoami)@$SERVER_ADDR \
             " command ; bash -c 'ls ${fmriprep_dir} 2>/dev/null | grep sub* | grep -v html'"
     )
 )
@@ -100,7 +100,7 @@ task-*_desc-decon_model-${model}_stats_REML+tlrc.HEAD"
 decon_list=(
     $(
         ssh -i $RSA_LS2 \
-            $(whoami)@ccn-labarserv2.vm.duke.edu \
+            $(whoami)@$SERVER_ADDR \
             " command ; bash -c 'ls ${search_str} 2>/dev/null'"
     )
 )
