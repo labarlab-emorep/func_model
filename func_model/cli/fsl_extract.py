@@ -63,7 +63,7 @@ def _get_args():
     parser.add_argument(
         "--proj-dir",
         type=str,
-        default=os.environ["SERVER_PROJ_DIR"]",
+        default=os.environ["SERVER_PROJ_DIR"],
         help=textwrap.dedent(
             """\
             Path to experiment-specific project directory
