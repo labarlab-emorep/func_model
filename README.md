@@ -226,7 +226,7 @@ This sub-package is written to be executed on the lab server and functions to ex
 The CLI `$fsl_extract` allows the user to trigger beta-coefficient extraction of first-level models for specified subjects and fsl model names. Trigger sub-package help and usage via `$fsl_extract`:
 
 ```
-(emorep)[nmm51-vm: ~]$fsl_extract
+(emorep)[user-vm: ~]$fsl_extract
 usage: fsl_extract [-h] [--model-name {lss,sep}] [--overwrite] [--proj-dir PROJ_DIR] [--sub-list SUB_LIST [SUB_LIST ...]]
                    [--sub-all]
 
@@ -337,7 +337,7 @@ Additionally, maps can be made from different task coefficients/contrasts:
 The CLI `$fsl_map` allows the user to trigger map building in MNI space for specific classifier output. Trigger sub-package help and usage via `$fsl_map`:
 
 ```
-(emorep)[nmm51-vm: ~]$fsl_map
+(emorep)[user-vm: ~]$fsl_map
 usage: fsl_map [-h] [--contrast-name {stim,replay,tog}] [--model-level {first}] [--model-name {sep,tog}] [--proj-dir PROJ_DIR] -t
                {movies,scenarios,all}
 
@@ -918,7 +918,7 @@ Note that:
 
 
 ```
-(emorep)[nmm51-vm: bin]$./lmer_montages.sh
+(emorep)[user-vm: bin]$./lmer_montages.sh
     Usage: ./lmer_montages.sh -s <stat-name> [-c int] [-g group-path] [-n int] [-t template]
 
     Generate montages and cluster tables for emotion main effects of
