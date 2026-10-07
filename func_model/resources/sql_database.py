@@ -204,6 +204,8 @@ class _RefMaps:
             "salventattn_scen",
             "somatomotor_scen",
             "visual_scen",
+            "language",
+            "language_scen",
         ]:
             df_vox = self._db_con.fetch_df(
                 f"select * from ref_voxel_gm_{tpl_type}",

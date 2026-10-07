@@ -27,13 +27,14 @@ fsl_extract --sub-all --model-name lss
 """
 
 # %%
-import os
-import sys
 import glob
+import os
 import platform
+import sys
 import textwrap
-from copy import deepcopy
 from argparse import ArgumentParser, RawTextHelpFormatter
+from copy import deepcopy
+
 from func_model.workflows import wf_fsl
 
 
@@ -124,6 +125,8 @@ def _get_args():
             "salventattn_scen",
             "somatomotor_scen",
             "visual_scen",
+            "language",
+            "language_scen",
         ],
         help=textwrap.dedent(
             """\

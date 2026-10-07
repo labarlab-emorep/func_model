@@ -6,13 +6,12 @@ tpl_gm : Generate gray matter mask from template priors
 
 """
 
-import os
-import shutil
 import glob
 import importlib.resources
-from func_model.resources import helper
-from func_model.resources import submit
-from func_model.resources import matrix
+import os
+import shutil
+
+from func_model.resources import helper, matrix, submit
 
 # TODO refactor so methods are more modular
 
@@ -431,7 +430,8 @@ def fetch_mask(out_dir, template_type="cortex"):
         {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
             "salventattn", "somatomotor", "visual", "control_scen",\
             "default_scen", "dorsattn_scen", "limbic_scen",\
-            "salventattn_scen", "somatomotor_scen", "visual_scen"}
+            "salventattn_scen", "somatomotor_scen", "visual_scen",
+            "language", "language_scen"}
         Template used
 
     Returns
@@ -463,6 +463,8 @@ def fetch_mask(out_dir, template_type="cortex"):
         "salventattn_scen",
         "somatomotor_scen",
         "visual_scen",
+        "language",
+        "language_scen",
     ]
 
     def _tpl_gm(out_dir, template_type="cortex"):

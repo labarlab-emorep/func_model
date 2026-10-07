@@ -15,19 +15,15 @@ fsl_classify_mask : generate template mask from classifier output
 """
 
 # %%
-import os
 import glob
+import os
 import shutil
-from typing import Union
-from typing import Tuple
+from multiprocessing import Pool, Process
+
 import pandas as pd
-from multiprocessing import Process, Pool
 from natsort import natsorted
-from func_model.resources import masks
-from func_model.resources import model
-from func_model.resources import group
-from func_model.resources import helper
-from func_model.resources import special_cases
+
+from func_model.resources import group, helper, masks, model, special_cases
 
 
 # %%
@@ -1177,7 +1173,8 @@ class ExtractBetas:
         {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
             "salventattn", "somatomotor", "visual", "control_scen",\
             "default_scen", "dorsattn_scen", "limbic_scen",\
-            "salventattn_scen", "somatomotor_scen", "visual_scen"}
+            "salventattn_scen", "somatomotor_scen", "visual_scen",
+            "language", "language_scen"}
         Template used
 
     Example
@@ -1245,6 +1242,8 @@ class ExtractBetas:
             "salventattn_scen",
             "somatomotor_scen",
             "visual_scen",
+            "language",
+            "language_scen",
         ]:
             raise ValueError(
                 f"Unsupported value for template_type : {self._template_type}"

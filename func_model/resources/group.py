@@ -1334,7 +1334,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             {"whole", "cortex", "control", "default", "dorsattn", "limbic",\
                 "salventattn", "somatomotor", "visual", "control_scen",\
                 "default_scen", "dorsattn_scen", "limbic_scen",\
-                "salventattn_scen", "somatomotor_scen", "visual_scen"}
+                "salventattn_scen", "somatomotor_scen", "visual_scen",
+                "language", "language_scen"}
             Template used
 
         Notes
@@ -1377,6 +1378,8 @@ class ExtractTaskBetas(matrix.NiftiArray):
             "salventattn_scen",
             "somatomotor_scen",
             "visual_scen",
+            "language",
+            "language_scen",
         ]:
             raise ValueError(
                 f"Unsupported value for template_type : {template_type}"

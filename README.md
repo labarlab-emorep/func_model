@@ -274,7 +274,7 @@ optional arguments:
   --template_type {
         whole,cortex,control,default,dorsattn,limbic,salventattn,somatomotor,visual,
         control_scen,default_scen,dorsattn_scen,limbic_scen,salventattn_scen,
-        somatomotor_scen,visual_scen
+        somatomotor_scen,visual_scen,language,language_scen
     }
                         Use GM voxels from whole brain, cortex, or a network.
                         (default : whole)
