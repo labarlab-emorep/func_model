@@ -19,6 +19,7 @@ import glob
 import os
 import shutil
 from multiprocessing import Pool, Process
+from typing import Union
 
 import pandas as pd
 from natsort import natsorted
