@@ -1528,6 +1528,9 @@ class MakeSecondFsf:
         elif self._model_name == 'avparam':
             # Update field_switch
             field_switch["[[preproc_type]]"] = f"preproc-{self._preproc_type}"
+        if self._model_name == 'tog':
+            # Update field_switch
+            field_switch["[[preproc_type]]"] = f"preproc-{self._preproc_type}"
 
         # Load template and update planned values
         design_tpl = helper.load_reference(
